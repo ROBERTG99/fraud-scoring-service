@@ -120,18 +120,16 @@ def bounded_slope(x: F64, y: F64, max_slope: float = MAX_CALIBRATION_SLOPE) -> t
     moves outputs by up to 1e-3. Moving each breakpoint right just enough keeps the map monotone and
     Lipschitz, so native and ONNX scores agree within 1e-5.
     """
-    xs = [float(x[0])]
-    ys = [float(y[0])]
-    for x_raw, yi in zip(x[1:].tolist(), y[1:].tolist(), strict=True):
-        dy = yi - ys[-1]
-        xi = max(x_raw, xs[-1] + dy / max_slope, xs[-1] + 1e-9)
-        if xi > 1.0:
-            # Out of room: merge into the last point (keeps the map monotone and bounded).
-            ys[-1] = yi
-            continue
-        xs.append(xi)
-        ys.append(yi)
-    return np.asarray(xs), np.asarray(ys)
+    upper = max(1.0, float(x[-1]))
+    gap = [max((y[i + 1] - y[i]) / max_slope, 1e-9) for i in range(len(x) - 1)]
+    xs = [float(v) for v in x]
+    for i in range(1, len(xs)):  # forward: push right
+        xs[i] = max(xs[i], xs[i - 1] + gap[i - 1])
+    if xs[-1] > upper:  # out of room near 1: pull left from the upper bound
+        xs[-1] = upper
+        for i in range(len(xs) - 2, -1, -1):
+            xs[i] = min(xs[i], xs[i + 1] - gap[i])
+    return np.asarray(xs), np.asarray(y, dtype=np.float64)
 
 
 @dataclass

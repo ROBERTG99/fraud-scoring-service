@@ -65,7 +65,9 @@ def test_bounded_slope_is_monotone_and_lipschitz(xs: list[float], ys: list[float
     assert np.all(np.diff(by) >= 0)
     slopes = np.diff(by) / np.diff(bx)
     assert np.all(slopes <= T.MAX_CALIBRATION_SLOPE * (1 + 1e-9))
-    assert by[0] == y[0]
+    assert np.array_equal(by, y)  # calibrated values are kept; only breakpoints move
+    assert bx[-1] <= max(1.0, x[-1]) + 1e-12
+    assert bx[0] >= -1e-12
 
 
 def test_fallback_defaults_are_p90(prepared: T.Prepared) -> None:
