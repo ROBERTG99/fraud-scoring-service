@@ -196,7 +196,7 @@ func checkOnlyEarlier(rt *rapid.T, v Vector, tx events.Event, arrived []events.E
 	if v[IdxTxCount10m] != float64(c10) || v[IdxTxCount1h] != float64(c1h) || v[IdxTxCount24h] != float64(c24) || v[IdxAmountSum1h] != float64(sum1h) {
 		rt.Fatalf("tx windows %v want c10=%d c1h=%d c24=%d sum1h=%d", v, c10, c1h, c24, sum1h)
 	}
-	// Device and credential state keep only the latest sighting (ZADD GT), so they may under-count
+	// Device and MCC state keep only the latest sighting (ZADD GT, spec §4.4), so they may under-count
 	// when a later event arrived first, but never count a later event (docs/KNOWN_LIMITATIONS.md).
 	if v[IdxDistinctDevices24h] > float64(len(devSeen)) {
 		rt.Fatalf("distinct devices %v > %d earlier devices", v[IdxDistinctDevices24h], len(devSeen))
@@ -204,6 +204,7 @@ func checkOnlyEarlier(rt *rapid.T, v Vector, tx events.Event, arrived []events.E
 	if _, ok := devSeen[tx.DeviceID]; !ok && v[IdxNewDevice] != 1 {
 		rt.Fatalf("device %s has no earlier sighting but new_device=%v", tx.DeviceID, v[IdxNewDevice])
 	}
+	// Credential changes keep a bounded history, so minutes_since is exact.
 	for _, c := range []struct {
 		got  float64
 		last int64
@@ -212,8 +213,8 @@ func checkOnlyEarlier(rt *rapid.T, v Vector, tx events.Event, arrived []events.E
 		if c.last >= 0 {
 			exact = float64(min((T-c.last)/60_000, MinutesCap))
 		}
-		if c.got != exact && c.got != MinutesCap {
-			rt.Fatalf("minutes_since %v, want %v or cap", c.got, exact)
+		if c.got != exact {
+			rt.Fatalf("minutes_since %v, want %v", c.got, exact)
 		}
 	}
 }

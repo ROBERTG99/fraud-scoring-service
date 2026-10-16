@@ -32,9 +32,20 @@ local sum24, c24 = sum_window(KEYS[1], 86400000)
 local distinct = redis.call('ZCOUNT', KEYS[2], as_of - 86400000, excl)
 local dev = score_or_neg(KEYS[2], ARGV[4])
 local mcc = score_or_neg(KEYS[3], ARGV[5])
+-- Credential fields hold up to 16 change times (apply_event.lua); take the latest strictly before as_of.
+local function latest_before(list)
+  local best = -1
+  if list then
+    for v in string.gmatch(list, '[^,]+') do
+      local n = tonumber(v)
+      if n < as_of and n > best then best = n end
+    end
+  end
+  return best
+end
 local cred = redis.call('HMGET', KEYS[4], 'pwd_changed_ms', 'email_changed_ms')
-local pwd = tonumber(cred[1]) or -1
-local email = tonumber(cred[2]) or -1
+local pwd = latest_before(cred[1])
+local email = latest_before(cred[2])
 
 if ARGV[6] == '1' then
   redis.call('ZADD', KEYS[1], as_of, ARGV[2] .. '|' .. ARGV[3])

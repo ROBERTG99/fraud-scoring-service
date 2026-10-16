@@ -28,8 +28,26 @@ elseif kind == 'device' then
   elseif change == 'password_changed' or change == 'email_changed' then
     local field = 'pwd_changed_ms'
     if change == 'email_changed' then field = 'email_changed_ms' end
-    local cur = tonumber(redis.call('HGET', KEYS[4], field)) or -1
-    if ts > cur then redis.call('HSET', KEYS[4], field, ts) end
+    -- Keep the 16 most recent change times (ascending, comma-separated) so reads as of any
+    -- timestamp stay exact when changes arrive out of order.
+    local cur = redis.call('HGET', KEYS[4], field)
+    local list = {}
+    local present = false
+    if cur then
+      for v in string.gmatch(cur, '[^,]+') do
+        local n = tonumber(v)
+        if n == ts then present = true end
+        table.insert(list, n)
+      end
+    end
+    if not present then
+      table.insert(list, ts)
+      table.sort(list)
+      while #list > 16 do table.remove(list, 1) end
+      local parts = {}
+      for i, n in ipairs(list) do parts[i] = string.format('%d', n) end
+      redis.call('HSET', KEYS[4], field, table.concat(parts, ','))
+    end
     redis.call('PEXPIRE', KEYS[4], 7862400000)
   end
 end

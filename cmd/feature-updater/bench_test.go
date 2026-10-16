@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/twmb/franz-go/pkg/kfake"
 	"github.com/twmb/franz-go/pkg/kgo"
 
@@ -49,7 +48,7 @@ func syntheticRecords(n int) []*kgo.Record {
 func BenchmarkUpdater(b *testing.B) {
 	const n = 60_000
 	recs := syntheticRecords(n)
-	rdb := redis.NewClient(&redis.Options{Addr: testutil.RedisAddr(b), PoolSize: 64})
+	rdb := features.NewUpdaterRedisClient(testutil.RedisAddr(b)) // the production constructor
 	defer rdb.Close()
 	var best float64
 	for i := 0; i < b.N; i++ {

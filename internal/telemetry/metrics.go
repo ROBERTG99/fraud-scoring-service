@@ -56,6 +56,9 @@ var (
 	AccountEventsDropped = register(prometheus.NewCounter(prometheus.CounterOpts{
 		Name: "fraud_account_events_dropped_total", Help: "account_events rows dropped (writer queue full).",
 	}))
+	AccountEventsFailed = register(prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "fraud_account_events_insert_failed_total", Help: "account_events rows lost because a batch insert failed.",
+	}))
 	RulesVersion = register(prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "fraud_rules_version_info", Help: "Active rule-set version (value 1).",
 	}, []string{"version"}))

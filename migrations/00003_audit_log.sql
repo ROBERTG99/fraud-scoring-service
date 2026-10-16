@@ -10,7 +10,7 @@ CREATE TABLE audit_log (
   action    text NOT NULL,
   target    text NOT NULL,
   details   jsonb NOT NULL,
-  prev_hash text NOT NULL,
+  prev_hash text NOT NULL UNIQUE, -- a fork of the hash chain (two rows after the same parent) is rejected
   hash      text NOT NULL UNIQUE
 );
 CREATE INDEX audit_log_ts_idx ON audit_log (ts DESC);

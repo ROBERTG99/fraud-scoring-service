@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -142,4 +144,73 @@ func TestUpdaterRoutesInvalidToDLQ(t *testing.T) {
 	}
 	stop()
 	<-done
+}
+
+type flakyApplier struct {
+	fakeApplier
+	failures atomic.Int64
+}
+
+func (f *flakyApplier) ApplyEvents(ctx context.Context, evs []events.Event) error {
+	if f.failures.Add(-1) >= 0 {
+		return errors.New("redis down")
+	}
+	return f.fakeApplier.ApplyEvents(ctx, evs)
+}
+
+// TestRetriedBatchDoesNotDuplicateDLQ: when applying fails and the batch is retried, invalid
+// messages already routed to the DLQ are not published again.
+func TestRetriedBatchDoesNotDuplicateDLQ(t *testing.T) {
+	cluster, err := kfake.NewCluster(kfake.NumBrokers(1), kfake.SeedTopics(stream.Partitions, stream.AllTopics...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cluster.Close()
+	brokers := cluster.ListenAddrs()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	prod, err := kgo.NewClient(kgo.SeedBrokers(brokers...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prod.Close()
+	key := []byte("acc_000123")
+	if err := prod.ProduceSync(ctx,
+		&kgo.Record{Topic: stream.TopicLogin, Key: key, Value: fixture(t, "invalid/login_bad_method.json")},
+		&kgo.Record{Topic: stream.TopicLogin, Key: key, Value: fixture(t, "valid/login_02.json")},
+	).FirstErr(); err != nil {
+		t.Fatal(err)
+	}
+	applier := &flakyApplier{}
+	applier.failures.Store(3)
+	u, err := New(Config{Brokers: brokers, Group: "retry-test"}, applier, nopSink{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCtx, stop := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- u.Run(runCtx) }()
+	deadline := time.Now().Add(20 * time.Second)
+	for applier.count() < 1 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	stop()
+	<-done
+	if applier.count() != 1 {
+		t.Fatalf("applied %d events after retries, want 1", applier.count())
+	}
+	dlq, err := kgo.NewClient(kgo.SeedBrokers(brokers...), kgo.ConsumeTopics(stream.TopicDLQ), kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dlq.Close()
+	n := 0
+	pollCtx, pcancel := context.WithTimeout(ctx, 2*time.Second)
+	defer pcancel()
+	for pollCtx.Err() == nil {
+		n += dlq.PollFetches(pollCtx).NumRecords()
+	}
+	if n != 1 {
+		t.Fatalf("DLQ has %d messages after retries, want exactly 1", n)
+	}
 }

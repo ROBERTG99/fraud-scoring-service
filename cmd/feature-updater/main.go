@@ -57,7 +57,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	rdb := features.NewRedisClient(envOr("FRAUD_REDIS_ADDR", "127.0.0.1:8530"))
+	rdb := features.NewUpdaterRedisClient(envOr("FRAUD_REDIS_ADDR", "127.0.0.1:8530"))
 	defer rdb.Close()
 	fs := features.NewStore(rdb, "", spec)
 

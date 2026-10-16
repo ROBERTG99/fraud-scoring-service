@@ -62,20 +62,38 @@ func NewStore(rdb redis.Scripter, prefix string, spec *Spec) *Store {
 	return &Store{rdb: rdb, prefix: prefix, spec: spec}
 }
 
-// NewRedisClient builds a client tuned for the scoring path (pool 256, short timeouts).
+// NewRedisClient builds a client tuned for the scoring path (pool 256, short timeouts). Socket
+// timeouts are disabled so the caller's context deadline (8 ms on Score) governs every call.
 func NewRedisClient(addr string) *redis.Client {
 	return redis.NewClient(&redis.Options{
 		Addr:                  addr,
 		PoolSize:              256,
 		MinIdleConns:          32,
 		DialTimeout:           200 * time.Millisecond,
-		ReadTimeout:           50 * time.Millisecond,
-		WriteTimeout:          50 * time.Millisecond,
+		ReadTimeout:           -1,
+		WriteTimeout:          -1,
 		PoolTimeout:           20 * time.Millisecond,
-		MaxRetries:            0,
+		MaxRetries:            -1,
 		ContextTimeoutEnabled: true,
 	})
 }
+
+// NewUpdaterRedisClient builds a client for the feature-updater: batches of pipelined scripts can take
+// longer than a single Score call, so only the per-batch context deadline (2 s) bounds them.
+func NewUpdaterRedisClient(addr string) *redis.Client {
+	return redis.NewClient(&redis.Options{
+		Addr:                  addr,
+		PoolSize:              32,
+		DialTimeout:           time.Second,
+		ReadTimeout:           -1,
+		WriteTimeout:          -1,
+		PoolTimeout:           time.Second,
+		ContextTimeoutEnabled: true,
+	})
+}
+
+// MaxPipeline bounds one pipelined round trip in ApplyEvents.
+const MaxPipeline = 500
 
 // Keys returns the four per-account keys; the {account} hash tag keeps them in one cluster slot.
 func (s *Store) Keys(account string) []string {
@@ -201,6 +219,15 @@ func (s *Store) ApplyEvents(ctx context.Context, evs []events.Event) error {
 		}
 		return nil
 	}
+	for start := 0; start < len(evs); start += MaxPipeline {
+		if err := s.applyChunk(ctx, pl, evs[start:min(start+MaxPipeline, len(evs))]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) applyChunk(ctx context.Context, pl pipeliner, evs []events.Event) error {
 	for attempt := 0; attempt < 2; attempt++ {
 		pipe := pl.Pipeline()
 		for i := range evs {

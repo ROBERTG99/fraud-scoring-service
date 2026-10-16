@@ -91,7 +91,12 @@ func (pc *PartitionConsumer) Run(ctx context.Context) error {
 			w := pc.workers[tp{p.Topic, p.Partition}]
 			pc.mu.Unlock()
 			if w != nil {
-				w.recs <- p.Records
+				// Never block shutdown on a worker stuck retrying (for example while Redis is down).
+				select {
+				case w.recs <- p.Records:
+				case <-w.done:
+				case <-ctx.Done():
+				}
 			}
 		})
 		pc.cl.AllowRebalance()

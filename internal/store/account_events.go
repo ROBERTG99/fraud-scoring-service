@@ -13,7 +13,8 @@ import (
 )
 
 // AccountEventWriter buffers events and inserts them into account_events in batches.
-// It never blocks the caller: when the queue is full, rows are dropped and counted.
+// It never blocks the caller: when the queue is full or an insert fails, rows are dropped and counted
+// (timelines are best effort; Redis features and decisions do not depend on this table).
 type AccountEventWriter struct {
 	pool  *pgxpool.Pool
 	queue chan events.Event
@@ -58,6 +59,7 @@ func (w *AccountEventWriter) loop() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := InsertAccountEvents(ctx, w.pool, batch); err != nil {
 			w.log.Warn("account_events insert failed", "rows", len(batch), "err", err)
+			telemetry.AccountEventsFailed.Add(float64(len(batch)))
 		}
 		cancel()
 		batch = batch[:0]

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -43,6 +44,10 @@ type Updater struct {
 	valid    *stream.Validator
 	applied  atomic.Int64
 	lastTS   atomic.Int64
+	// dlqDone remembers the highest DLQ'd offset per partition so a retried batch (after an apply
+	// failure) does not publish the same invalid messages twice.
+	dlqMu   sync.Mutex
+	dlqDone map[string]int64
 }
 
 // UpdaterTopics are the topics the feature-updater consumes.
@@ -56,7 +61,7 @@ func New(cfg Config, applier Applier, sink Sink, log *slog.Logger) (*Updater, er
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	u := &Updater{cfg: cfg, applier: applier, sink: sink, log: log, valid: stream.MustValidator()}
+	u := &Updater{cfg: cfg, applier: applier, sink: sink, log: log, valid: stream.MustValidator(), dlqDone: map[string]int64{}}
 	pc, err := stream.NewPartitionConsumer(cfg.Brokers, cfg.Group, UpdaterTopics, u.handle, log,
 		kgo.ProducerLinger(0), kgo.RecordPartitioner(kgo.StickyKeyPartitioner(nil)))
 	if err != nil {
@@ -77,15 +82,27 @@ func (u *Updater) Applied() int64 { return u.applied.Load() }
 func (u *Updater) handle(ctx context.Context, topic string, partition int32, recs []*kgo.Record) error {
 	valid := make([]events.Event, 0, len(recs))
 	var dlq []*kgo.Record
+	var lastInvalid int64 = -1
 	now := u.cfg.Now()
+	key := topic + "/" + strconv.Itoa(int(partition))
+	u.dlqMu.Lock()
+	done, seen := u.dlqDone[key]
+	u.dlqMu.Unlock()
+	reject := func(r *kgo.Record, err error) {
+		if seen && r.Offset <= done {
+			return // already published by an earlier attempt of this batch
+		}
+		dlq = append(dlq, stream.DLQRecord(r, err, now))
+		lastInvalid = r.Offset
+	}
 	for _, r := range recs {
 		if err := u.valid.ValidateTopic(topic, r.Value); err != nil {
-			dlq = append(dlq, stream.DLQRecord(r, err, now))
+			reject(r, err)
 			continue
 		}
 		var e events.Event
 		if err := json.Unmarshal(r.Value, &e); err != nil {
-			dlq = append(dlq, stream.DLQRecord(r, err, now))
+			reject(r, err)
 			continue
 		}
 		valid = append(valid, e)
@@ -97,6 +114,9 @@ func (u *Updater) handle(ctx context.Context, topic string, partition int32, rec
 		if err != nil {
 			return fmt.Errorf("produce dlq: %w", err)
 		}
+		u.dlqMu.Lock()
+		u.dlqDone[key] = lastInvalid
+		u.dlqMu.Unlock()
 		telemetry.DLQTotal.WithLabelValues(topic).Add(float64(len(dlq)))
 		telemetry.UpdaterEvents.WithLabelValues(topic, "dlq").Add(float64(len(dlq)))
 		u.log.Info("routed invalid events to dlq", "topic", topic, "partition", partition, "count", len(dlq))

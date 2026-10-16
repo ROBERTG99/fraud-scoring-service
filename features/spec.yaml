@@ -9,7 +9,7 @@ sources:
   tx: transactions (ZSET fr:{acc}:tx, member "event_id|amount_minor", score event_ts_ms)
   dev: device_id of successful logins, device_bound events and transactions (ZSET fr:{acc}:dev, ZADD GT)
   mcc: mcc of transactions (ZSET fr:{acc}:mcc, ZADD GT)
-  cred: password_changed / email_changed device events (HASH fr:{acc}:cred, keep the latest)
+  cred: password_changed / email_changed device events (HASH fr:{acc}:cred, last 16 change times per field)
 
 retention_ms:
   tx: 87000000 # 24 h 5 min
