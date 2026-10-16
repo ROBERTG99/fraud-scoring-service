@@ -30,7 +30,7 @@ chore: configure commit attribution
 | T-07 | Event schemas and validators | M1 | done | `go test ./internal/stream` (TestInvalidEventRejected, TestSharedFixtures 40 fixtures) → ok; `uv run pytest tests/unit/test_events.py::test_shared_fixtures_agree` → pass (20 valid, 20 invalid) |
 | T-08 | Synthetic generator | M1 | done | `go test ./cmd/gen` (TestDeterministicSHA, TestFraudRateWithinTolerance, schema/order/split tests) → ok; `make gen-data SIZE=demo` → 200,000 events in 3.1 s, fraud rate 0.0080, sha256 ccd80914a827 |
 | T-09 | Migrations | M1 | done | `go test -tags integration ./internal/store` (TestUpDownUp, TestAuditLogRejectsUpdate, TestDecisionConstraints) → ok on Postgres 16 (testcontainers and compose.test.yaml) |
-| T-10 | Feature spec and offline features | M1 | todo | |
+| T-10 | Feature spec and offline features | M1 | done | `uv run pytest tests/unit/test_features.py` (Hypothesis test_point_in_time_excludes_future_events + vectorized vs naive, 150 examples each) → 4 passed; demo features in 1.2 s |
 | T-11 | Redis Lua feature store | M1 | todo | |
 | T-12 | Feature-updater and DLQ | M1 | todo | |
 | T-13 | Train/serve feature parity | M1 | todo | |
