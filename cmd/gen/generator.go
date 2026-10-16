@@ -55,11 +55,12 @@ type Config struct {
 	WarmupDays  int
 	StartMillis int64
 	Salt        string
+	Margin      float64 // legitimate volume above Events before trimming
 }
 
 // ConfigFor returns the configuration for SIZE=demo|eval.
 func ConfigFor(size string, seed uint64) (Config, error) {
-	cfg := Config{Size: size, Seed: seed, Days: 24, WarmupDays: 4, Salt: "synthetic-dev-salt",
+	cfg := Config{Size: size, Seed: seed, Days: 24, WarmupDays: 4, Salt: "synthetic-dev-salt", Margin: 1.06,
 		StartMillis: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC).UnixMilli()}
 	switch size {
 	case "demo":
@@ -67,7 +68,7 @@ func ConfigFor(size string, seed uint64) (Config, error) {
 	case "eval":
 		cfg.Events, cfg.Accounts = 2_000_000, 30_000
 	case "parity":
-		cfg.Events, cfg.Accounts, cfg.Days, cfg.WarmupDays = 5_000, 60, 6, 1
+		cfg.Events, cfg.Accounts, cfg.Days, cfg.WarmupDays, cfg.Margin = 5_000, 60, 6, 1, 1.25
 	default:
 		return cfg, fmt.Errorf("unknown size %q (demo|eval|parity)", size)
 	}
@@ -265,8 +266,8 @@ func (g *generator) makeAccounts() {
 		expected += (a.txRate + a.loginRate) * float64(g.cfg.Days)
 		g.accounts = append(g.accounts, a)
 	}
-	// Scale rates so legitimate volume is about 6% above the target; trim() removes the excess.
-	scale := 1.06 * float64(g.cfg.Events) / (expected + 2.4*float64(g.cfg.Accounts))
+	// Scale rates so legitimate volume is about Margin above the target; trim() removes the excess.
+	scale := g.cfg.Margin * float64(g.cfg.Events) / (expected + 2.4*float64(g.cfg.Accounts))
 	for _, a := range g.accounts {
 		a.txRate *= scale
 		a.loginRate *= scale

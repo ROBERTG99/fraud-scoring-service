@@ -33,7 +33,7 @@ chore: configure commit attribution
 | T-10 | Feature spec and offline features | M1 | done | `uv run pytest tests/unit/test_features.py` (Hypothesis test_point_in_time_excludes_future_events + vectorized vs naive, 150 examples each) → 4 passed; demo features in 1.2 s |
 | T-11 | Redis Lua feature store | M1 | done | `go test -race -tags integration ./internal/features/` (TestReadAsOfThenAddIsAtomic: 1 round trip per ScoreTx, 64 concurrent; TestOutOfOrderWithinFiveMinutes rapid 100 cases) → ok |
 | T-12 | Feature-updater and DLQ | M1 | done | `go test -race ./cmd/feature-updater -run TestUpdaterRoutesInvalidToDLQ` (kfake) → ok; `go test -tags integration -bench BenchmarkUpdater -benchtime 3x ./cmd/feature-updater` → 57,848 events/s (budget ≥ 10,000) |
-| T-13 | Train/serve feature parity | M1 | todo | |
+| T-13 | Train/serve feature parity | M1 | done | `make feature-parity` → 3430 transactions x 13 features, 0 mismatches (Go TestOnlineOfflineParity vs training/features.py) |
 | T-14 | Training, calibration, ONNX export | M2 | todo | |
 | T-15 | MLflow registry | M2 | todo | |
 | T-16 | BentoML model server | M2 | todo | |
