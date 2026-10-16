@@ -1,0 +1,203 @@
+package features
+
+import (
+	"context"
+	_ "embed"
+	"errors"
+	"fmt"
+	"strconv"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+
+	"github.com/ROBERTG99/fraud-scoring-service/internal/events"
+)
+
+//go:embed score_tx.lua
+var scoreTxLua string
+
+//go:embed apply_event.lua
+var applyEventLua string
+
+var (
+	scoreTxScript    = redis.NewScript(scoreTxLua)
+	applyEventScript = redis.NewScript(applyEventLua)
+)
+
+// ErrUnavailable means features could not be read in time; callers fall back to defaults.
+var ErrUnavailable = errors.New("features unavailable")
+
+// Tx is the subset of a transaction the feature store needs.
+type Tx struct {
+	EventID     string
+	AccountID   string
+	TSMillis    int64
+	AmountMinor int64
+	DeviceID    string
+	MCC         string
+	Channel     string
+}
+
+// Raw holds the values read by score_tx.lua (-1 means "absent").
+type Raw struct {
+	Count10m, Count1h, Sum1h, Count24h, Sum24h, Distinct24h int64
+	DeviceSeen, MCCSeen, PwdChanged, EmailChanged           int64
+}
+
+// Store reads and updates per-account feature state in Redis.
+type Store struct {
+	rdb    redis.Scripter
+	prefix string
+	spec   *Spec
+}
+
+// NewStore returns a store. prefix defaults to "fr" (keys fr:{acc}:tx, ...); tests use unique prefixes.
+func NewStore(rdb redis.Scripter, prefix string, spec *Spec) *Store {
+	if prefix == "" {
+		prefix = "fr"
+	}
+	if spec == nil {
+		spec = DefaultSpec()
+	}
+	return &Store{rdb: rdb, prefix: prefix, spec: spec}
+}
+
+// NewRedisClient builds a client tuned for the scoring path (pool 256, short timeouts).
+func NewRedisClient(addr string) *redis.Client {
+	return redis.NewClient(&redis.Options{
+		Addr:                  addr,
+		PoolSize:              256,
+		MinIdleConns:          32,
+		DialTimeout:           200 * time.Millisecond,
+		ReadTimeout:           50 * time.Millisecond,
+		WriteTimeout:          50 * time.Millisecond,
+		PoolTimeout:           20 * time.Millisecond,
+		MaxRetries:            0,
+		ContextTimeoutEnabled: true,
+	})
+}
+
+// Keys returns the four per-account keys; the {account} hash tag keeps them in one cluster slot.
+func (s *Store) Keys(account string) []string {
+	base := s.prefix + ":{" + account + "}:"
+	return []string{base + "tx", base + "dev", base + "mcc", base + "cred"}
+}
+
+// Spec returns the store's feature spec.
+func (s *Store) Spec() *Spec { return s.spec }
+
+// ScoreTx reads features as of tx.TSMillis (strictly earlier events) and adds tx, atomically.
+func (s *Store) ScoreTx(ctx context.Context, tx Tx) (Vector, Raw, error) {
+	raw, err := s.run(ctx, tx, true)
+	if err != nil {
+		return Vector{}, Raw{}, err
+	}
+	return s.Compute(raw, tx), raw, nil
+}
+
+// ReadAsOf reads features as of tx.TSMillis without adding the transaction.
+func (s *Store) ReadAsOf(ctx context.Context, tx Tx) (Vector, Raw, error) {
+	raw, err := s.run(ctx, tx, false)
+	if err != nil {
+		return Vector{}, Raw{}, err
+	}
+	return s.Compute(raw, tx), raw, nil
+}
+
+func (s *Store) run(ctx context.Context, tx Tx, add bool) (Raw, error) {
+	addFlag := "0"
+	if add {
+		addFlag = "1"
+	}
+	res, err := scoreTxScript.Run(ctx, s.rdb, s.Keys(tx.AccountID),
+		tx.TSMillis, tx.EventID, tx.AmountMinor, tx.DeviceID, tx.MCC, addFlag).Int64Slice()
+	if err != nil {
+		return Raw{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
+	}
+	if len(res) != 10 {
+		return Raw{}, fmt.Errorf("%w: score_tx returned %d values", ErrUnavailable, len(res))
+	}
+	return Raw{Count10m: res[0], Count1h: res[1], Sum1h: res[2], Count24h: res[3], Sum24h: res[4], Distinct24h: res[5],
+		DeviceSeen: res[6], MCCSeen: res[7], PwdChanged: res[8], EmailChanged: res[9]}, nil
+}
+
+// Compute turns raw Redis values into the feature vector (must match training/features.py exactly).
+func (s *Store) Compute(r Raw, tx Tx) Vector {
+	t := tx.TSMillis
+	var v Vector
+	v[IdxTxCount10m] = float64(r.Count10m)
+	v[IdxTxCount1h] = float64(r.Count1h)
+	v[IdxTxCount24h] = float64(r.Count24h)
+	v[IdxAmountSum1h] = float64(r.Sum1h)
+	v[IdxAmountMinor] = float64(tx.AmountMinor)
+	v[IdxDistinctDevices24h] = float64(r.Distinct24h)
+	v[IdxNewDevice] = 1
+	if r.DeviceSeen >= 0 && r.DeviceSeen < t && r.DeviceSeen >= t-Ms90d {
+		v[IdxNewDevice] = 0
+	}
+	v[IdxMinutesSincePwd] = minutesSince(r.PwdChanged, t)
+	v[IdxMinutesSinceEmail] = minutesSince(r.EmailChanged, t)
+	v[IdxMCCNovel30d] = 1
+	if r.MCCSeen >= 0 && r.MCCSeen < t && r.MCCSeen >= t-Ms30d {
+		v[IdxMCCNovel30d] = 0
+	}
+	v[IdxChannel] = s.spec.ChannelCode(tx.Channel)
+	v[IdxHourOfDay] = float64((t / Ms1h) % 24)
+	v[IdxAmountRatio24h] = 1
+	if r.Count24h > 0 {
+		v[IdxAmountRatio24h] = float64(tx.AmountMinor) / (float64(r.Sum24h) / float64(r.Count24h))
+	}
+	return v
+}
+
+func minutesSince(changed, t int64) float64 {
+	if changed < 0 || changed >= t {
+		return MinutesCap
+	}
+	return float64(min((t-changed)/60_000, MinutesCap))
+}
+
+// Fallback returns conservative defaults (spec fallback_defaults) for a transaction when Redis is down.
+func (s *Store) Fallback(tx Tx) Vector {
+	return FallbackVector(s.spec, tx)
+}
+
+// FallbackVector builds the FEATURES_UNAVAILABLE vector from spec defaults plus request fields.
+func FallbackVector(spec *Spec, tx Tx) Vector {
+	var v Vector
+	for i, name := range expectedNames {
+		v[i] = float64(spec.Fallback[name])
+	}
+	v[IdxAmountMinor] = float64(tx.AmountMinor)
+	v[IdxChannel] = spec.ChannelCode(tx.Channel)
+	v[IdxHourOfDay] = float64((tx.TSMillis / Ms1h) % 24)
+	v[IdxAmountRatio24h] = 1
+	return v
+}
+
+// ApplyEvent applies one event to the account's feature state (feature-updater).
+func (s *Store) ApplyEvent(ctx context.Context, e *events.Event) error {
+	kind := "tx"
+	switch e.Kind {
+	case events.KindLogin:
+		kind = "login"
+	case events.KindDevice:
+		kind = "device"
+	}
+	success := "0"
+	if e.Success {
+		success = "1"
+	}
+	err := applyEventScript.Run(ctx, s.rdb, s.Keys(e.AccountID), kind, strconv.FormatInt(e.TSMillis, 10), e.EventID,
+		e.AmountMinor, e.DeviceID, e.MCC, e.Change, success).Err()
+	if err != nil {
+		return fmt.Errorf("apply event %s: %w", e.EventID, err)
+	}
+	return nil
+}
+
+// TxFromEvent converts a transaction event to a feature-store Tx.
+func TxFromEvent(e *events.Event) Tx {
+	return Tx{EventID: e.EventID, AccountID: e.AccountID, TSMillis: e.TSMillis, AmountMinor: e.AmountMinor,
+		DeviceID: e.DeviceID, MCC: e.MCC, Channel: e.Channel}
+}
