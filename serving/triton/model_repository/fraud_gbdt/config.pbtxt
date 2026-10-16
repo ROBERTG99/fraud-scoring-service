@@ -1,0 +1,20 @@
+# Triton (KServe v2) config for the calibrated GBDT exported by training/export_onnx.py.
+# The ONNX file is copied to fraud_gbdt/1/model.onnx by scripts/triton_repo.sh (alias production).
+name: "fraud_gbdt"
+backend: "onnxruntime"
+max_batch_size: 0
+input [
+  {
+    name: "features"
+    data_type: TYPE_FP32
+    dims: [ -1, 13 ]
+  }
+]
+output [
+  {
+    name: "probability"
+    data_type: TYPE_FP32
+    dims: [ -1, 1 ]
+  }
+]
+instance_group [ { count: 2, kind: KIND_CPU } ]

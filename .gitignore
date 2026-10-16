@@ -36,3 +36,4 @@ mlruns/
 spool/
 evals/reports/*.json
 !evals/reports/baseline/
+serving/triton/model_repository/*/1/model.onnx

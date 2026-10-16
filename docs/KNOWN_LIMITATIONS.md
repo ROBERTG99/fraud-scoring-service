@@ -26,3 +26,11 @@ What is not done, approximate or out of scope. Each entry names where it shows u
   features; metrics on this data say nothing about production fraud (see `cmd/gen/PATTERNS.md`).
 - Isotonic calibration is post-processed to a maximum slope of 10 (docs/DECISIONS.md D-008), which slightly
   smooths very steep steps of the calibration map.
+
+## Serving
+
+- **Triton was not run in the build environment.** `nvcr.io/nvidia/tritonserver` is blocked by the network
+  policy (pull returned `Forbidden` on 2026-10-16). The `triton` compose profile, model repository
+  (`serving/triton/`) and KServe v2 client (`internal/model/triton.go`, `TestKServeV2RequestShape` against a
+  recorded request/response) exist, but `TestTritonGoldenVector` skips unless `FRAUD_TEST_TRITON_URL` points at
+  a running Triton (`make triton-up`). `make verify` never requires Triton.

@@ -1,0 +1,1 @@
+{"inputs":[{"name":"features","shape":[2,13],"datatype":"FP32","data":[0,1,3,4200,94000,2,1,43200,2,1,2,14,9.4,1,2,3,4,5,6,7,8,9,10,11,12,13]}],"outputs":[{"name":"probability"}]}
