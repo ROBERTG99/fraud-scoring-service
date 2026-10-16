@@ -23,7 +23,7 @@ chore: configure commit attribution
 |---|---|---|---|---|
 | T-01 | Bootstrap and attribution evidence | M0 | done | `uv run pytest tests/harness/test_repo_files.py` → 2 passed; §1.1 evidence above |
 | T-02 | Makefile and toolchains | M0 | done | `make bootstrap` → done in 35 s; `make check-fast` → exit 0 (go test ok, 41 pytest passed); `test_all_block_h_targets_declared` passes |
-| T-03 | Harness docs, rules, subagents, skills | M0 | todo | |
+| T-03 | Harness docs, rules, subagents, skills | M0 | in-progress | harness docs, rules, subagents, skills written; `test_harness_docs.py` 41 passed |
 | T-04 | Hooks with tests | M0 | todo | |
 | T-05 | Walking skeleton in Docker | M0 | todo | |
 | T-06 | Protobuf and codegen | M1 | todo | |
