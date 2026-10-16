@@ -175,8 +175,54 @@ func FallbackVector(spec *Spec, tx Tx) Vector {
 	return v
 }
 
-// ApplyEvent applies one event to the account's feature state (feature-updater).
+// ApplyEvent applies one event to the account's feature state.
 func (s *Store) ApplyEvent(ctx context.Context, e *events.Event) error {
+	if err := applyEventScript.Run(ctx, s.rdb, s.Keys(e.AccountID), applyArgs(e)...).Err(); err != nil {
+		return fmt.Errorf("apply event %s: %w", e.EventID, err)
+	}
+	return nil
+}
+
+type pipeliner interface {
+	Pipeline() redis.Pipeliner
+}
+
+// ApplyEvents applies a batch of events in one pipelined round trip (feature-updater hot path).
+func (s *Store) ApplyEvents(ctx context.Context, evs []events.Event) error {
+	if len(evs) == 0 {
+		return nil
+	}
+	pl, ok := s.rdb.(pipeliner)
+	if !ok {
+		for i := range evs {
+			if err := s.ApplyEvent(ctx, &evs[i]); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	for attempt := 0; attempt < 2; attempt++ {
+		pipe := pl.Pipeline()
+		for i := range evs {
+			e := &evs[i]
+			applyEventScript.EvalSha(ctx, pipe, s.Keys(e.AccountID), applyArgs(e)...)
+		}
+		_, err := pipe.Exec(ctx)
+		if err == nil {
+			return nil
+		}
+		if attempt == 0 && redis.HasErrorPrefix(err, "NOSCRIPT") {
+			if err := applyEventScript.Load(ctx, s.rdb).Err(); err != nil {
+				return err
+			}
+			continue
+		}
+		return fmt.Errorf("apply %d events: %w", len(evs), err)
+	}
+	return nil
+}
+
+func applyArgs(e *events.Event) []any {
 	kind := "tx"
 	switch e.Kind {
 	case events.KindLogin:
@@ -188,12 +234,7 @@ func (s *Store) ApplyEvent(ctx context.Context, e *events.Event) error {
 	if e.Success {
 		success = "1"
 	}
-	err := applyEventScript.Run(ctx, s.rdb, s.Keys(e.AccountID), kind, strconv.FormatInt(e.TSMillis, 10), e.EventID,
-		e.AmountMinor, e.DeviceID, e.MCC, e.Change, success).Err()
-	if err != nil {
-		return fmt.Errorf("apply event %s: %w", e.EventID, err)
-	}
-	return nil
+	return []any{kind, strconv.FormatInt(e.TSMillis, 10), e.EventID, e.AmountMinor, e.DeviceID, e.MCC, e.Change, success}
 }
 
 // TxFromEvent converts a transaction event to a feature-store Tx.
