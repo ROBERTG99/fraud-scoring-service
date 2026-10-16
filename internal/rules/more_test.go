@@ -89,3 +89,29 @@ rules: [{ id: R001, name: r, when: "true", action: REVIEW, reason_code: TEST_COD
 		t.Fatal("review threshold above decline must fail")
 	}
 }
+
+func TestBuiltinsRestricted(t *testing.T) {
+	for _, bad := range []string{"now() != nil", "len(mcc) > 3", "upper(mcc) == '5732'"} {
+		if _, err := CompileExpr(bad); err == nil {
+			t.Errorf("%q compiled; builtins other than min/max/abs must be disabled", bad)
+		}
+	}
+	for _, ok := range []string{"min(tx_count_1h, 3) > 1", "max(amount_minor, 1) > 0", "abs(amount_ratio_24h - 1) > 0.5"} {
+		if _, err := CompileExpr(ok); err != nil {
+			t.Errorf("%q: %v", ok, err)
+		}
+	}
+}
+
+func TestFileVersionMustMatchYAML(t *testing.T) {
+	dir := t.TempDir()
+	writeRules(t, dir, "2026.10.1", validYAML)
+	eng, err := NewEngine(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeRules(t, dir, "2026.10.9", validYAML) // file says 2026.10.9, YAML says 2026.10.1
+	if err := eng.Reload(); err == nil || eng.Active().Version != "2026.10.1" {
+		t.Fatalf("mismatched version accepted: %v", err)
+	}
+}

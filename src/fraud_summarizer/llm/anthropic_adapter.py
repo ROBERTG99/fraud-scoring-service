@@ -69,5 +69,6 @@ class AnthropicProvider:
             output_tokens=int(usage.output_tokens or 0),
             stop_reason=str(msg.stop_reason),
             cache_read_tokens=int(getattr(usage, "cache_read_input_tokens", 0) or 0),
+            cache_write_tokens=int(getattr(usage, "cache_creation_input_tokens", 0) or 0),
             extra={"request_id": getattr(msg, "_request_id", None)},
         )

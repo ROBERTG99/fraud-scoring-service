@@ -14,6 +14,7 @@ from fraud_summarizer.redact import contains_pii, luhn_ok, redact_text
         ("pan 5500005555555559", "pan [REDACTED_CARD]"),
         ("call +1 415 555 0100", "call [REDACTED_PHONE]"),
         ("call (020) 7946-0958", "call [REDACTED_PHONE]"),
+        ("ssn 123-45-6789", "ssn [REDACTED_SSN]"),
     ],
 )
 def test_redacts_pii(text: str, expected: str) -> None:
@@ -31,6 +32,8 @@ def test_redacts_pii(text: str, expected: str) -> None:
         "transaction 0192f000-0000-7000-8000-000000000001",
         "card 4111 1111 1111 1112 fails luhn",
         "1788000000123 ms",
+        "changed at 2026-10-16 09:58:00",
+        "event_ts 2026-09-20T10:03:00.000Z",
     ],
 )
 def test_keeps_non_pii(text: str) -> None:

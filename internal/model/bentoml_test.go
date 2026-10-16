@@ -102,3 +102,18 @@ func TestRequestShape(t *testing.T) {
 		t.Fatalf("prediction %+v", p)
 	}
 }
+
+func TestDefaultDeadlineWithoutContextDeadline(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(300 * time.Millisecond):
+		}
+	}))
+	defer srv.Close()
+	start := time.Now()
+	_, err := NewBentoML(srv.URL, nil).Predict(context.Background(), AliasProduction, [][]float32{make([]float32, 13)})
+	if !errors.Is(err, ErrUnavailable) || time.Since(start) > 100*time.Millisecond {
+		t.Fatalf("no default deadline: %v after %v", err, time.Since(start))
+	}
+}

@@ -34,9 +34,24 @@ class RouteConfig:
     routes: dict[str, Route]
     pricing: dict[str, tuple[float, float]]
 
-    def cost_usd(self, model: str, input_tokens: int, output_tokens: int) -> float:
+    def cost_usd(
+        self,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+        *,
+        cache_write_tokens: int = 0,
+        cache_read_tokens: int = 0,
+    ) -> float:
+        """USD for one call: uncached input at the list price, cache writes at 1.25x, cache reads at 0.1x."""
         inp, out = self.pricing.get(model, (0.0, 0.0))
-        return round(input_tokens * inp / 1e6 + output_tokens * out / 1e6, 6)
+        total = (
+            input_tokens * inp
+            + cache_write_tokens * inp * 1.25
+            + cache_read_tokens * inp * 0.1
+            + output_tokens * out
+        )
+        return round(total / 1e6, 6)
 
 
 def _resolve(raw: dict[str, Any], env: dict[str, str]) -> dict[str, Route]:

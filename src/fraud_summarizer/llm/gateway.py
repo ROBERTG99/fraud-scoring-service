@@ -1,6 +1,10 @@
 """LLM gateway: provider selection, timeouts, retries with backoff and jitter, fallback provider, token
 and cost accounting, tracing and a last-line PII redaction. Every call returns or raises with the full
 attempt history so the pipeline can write step records.
+
+Retries follow Appendix B exactly: only 408, 409, 429, 5xx, timeouts and connection errors. Invalid JSON or a
+schema violation is not retried on the same provider; the call moves to the fallback provider, if any, and
+otherwise the pipeline writes a `fallback` summary.
 """
 
 from __future__ import annotations
@@ -130,7 +134,13 @@ class LLMGateway:
                     except ProviderError as exc:
                         err = exc
                     else:
-                        cost = self.config.cost_usd(resp.model, resp.input_tokens, resp.output_tokens)
+                        cost = self.config.cost_usd(
+                            resp.model,
+                            resp.input_tokens,
+                            resp.output_tokens,
+                            cache_write_tokens=resp.cache_write_tokens,
+                            cache_read_tokens=resp.cache_read_tokens,
+                        )
                         attempts.append(
                             Attempt(
                                 provider_name,
@@ -186,16 +196,12 @@ class LLMGateway:
         try:
             data = json.loads(resp.text)
         except json.JSONDecodeError as exc:
-            raise ProviderError(
-                f"invalid JSON from model: {exc}", kind="invalid_json", retryable=True
-            ) from exc
+            raise ProviderError(f"invalid JSON from model: {exc}", kind="invalid_json") from exc
         if not isinstance(data, dict):
-            raise ProviderError("model output is not a JSON object", kind="invalid_json", retryable=True)
+            raise ProviderError("model output is not a JSON object", kind="invalid_json")
         if validate is not None:
             try:
                 validate(data)
             except ValueError as exc:  # pydantic.ValidationError is a ValueError
-                raise ProviderError(
-                    f"schema validation failed: {exc}", kind="schema", retryable=True
-                ) from exc
+                raise ProviderError(f"schema validation failed: {exc}", kind="schema") from exc
         return data

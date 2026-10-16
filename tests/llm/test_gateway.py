@@ -148,17 +148,33 @@ async def test_three_failures_without_fallback_exhausts() -> None:
     assert len(exc.value.attempts) == 3
 
 
-async def test_invalid_output_is_retried_and_cost_accounted() -> None:
+async def test_invalid_output_is_not_retried_but_falls_back() -> None:
     bad_schema = json.dumps(
         {"pattern": "phishing", "evidence": [], "recommended_checks": [], "confidence": 2}
     )
-    p = Scripted(["not json", bad_schema, ok_text()])
+    for bad, kind in (("not json", "invalid_json"), (bad_schema, "schema"), ("[1, 2]", "invalid_json")):
+        primary = Scripted([bad, ok_text()])
+        fallback = Scripted([ok_text()])
+        gw, sleeps = gateway(primary, fallback)
+        res = await run(gw)
+        assert len(primary.calls) == 1, "invalid output must not be retried (Appendix B)"
+        assert sleeps == []
+        assert [a.error_kind for a in res.attempts] == [kind, None]
+        assert res.provider == "openai"
+
+
+async def test_cost_accounting() -> None:
+    p = Scripted([ok_text()])
     gw, _ = gateway(p)
     res = await run(gw)
-    assert [a.error_kind for a in res.attempts] == ["invalid_json", "schema", None]
     # claude-haiku-5-5 at $0.10 / $0.50 per 1M tokens: 1000 in + 100 out = $0.00015
     assert res.cost_usd == pytest.approx(0.00015)
     assert res.input_tokens == 1000 and res.output_tokens == 100
+    cfg = load(env={})
+    # cache writes cost 1.25x and cache reads 0.1x of the input price
+    assert cfg.cost_usd(
+        "claude-haiku-5-5", 1000, 100, cache_write_tokens=1000, cache_read_tokens=10_000
+    ) == pytest.approx(0.00015 + 0.000125 + 0.0001)
 
 
 async def test_timeout_is_retryable() -> None:

@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -29,6 +30,7 @@ type Engine struct {
 	log      *slog.Logger
 	active   atomic.Pointer[RuleSet]
 	lastSeen atomic.Value // string: fingerprint of the directory
+	mu       sync.Mutex   // serialises Reload and OnLoad
 	onLoad   func(*RuleSet)
 }
 
@@ -46,6 +48,8 @@ func NewEngine(dir string, log *slog.Logger) (*Engine, error) {
 
 // OnLoad registers a callback run after each successful (re)load.
 func (e *Engine) OnLoad(f func(*RuleSet)) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	e.onLoad = f
 	if rs := e.Active(); rs != nil && f != nil {
 		f(rs)
@@ -97,6 +101,8 @@ func (e *Engine) latestFile() (string, string, error) {
 
 // Reload parses the highest-versioned file; on any error the active set is kept and the error returned.
 func (e *Engine) Reload() error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
 	path, fp, err := e.latestFile()
 	e.lastSeen.Store(fp)
 	if err != nil {
@@ -107,6 +113,11 @@ func (e *Engine) Reload() error {
 		return err
 	}
 	rs, err := Parse(raw)
+	if err == nil {
+		if want := fileRE.FindStringSubmatch(filepath.Base(path))[1]; rs.Version != want {
+			err = fmt.Errorf("rules: %s declares version %q", filepath.Base(path), rs.Version)
+		}
+	}
 	if err != nil {
 		e.log.Warn("rule set rejected; keeping previous version", "file", path, "err", err)
 		return err

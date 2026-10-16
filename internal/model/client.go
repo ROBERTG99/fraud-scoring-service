@@ -30,6 +30,16 @@ type Client interface {
 	Predict(ctx context.Context, alias string, rows [][]float32) (Prediction, error)
 }
 
+// DefaultTimeout bounds a model call whose context carries no deadline (spec §4.7: model 20 ms).
+const DefaultTimeout = 20 * time.Millisecond
+
+func withDefaultDeadline(ctx context.Context) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, DefaultTimeout)
+}
+
 // NewHTTPClient returns an HTTP client sized for the scoring path (512 connections per host).
 func NewHTTPClient() *http.Client {
 	tr := &http.Transport{

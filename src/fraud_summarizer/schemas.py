@@ -66,19 +66,31 @@ _UNSUPPORTED = {
     "title",
     "default",
 }
+_NAME_MAPS = {"properties", "$defs", "definitions"}
 
 
 def provider_schema(schema: dict[str, Any]) -> dict[str, Any]:
-    """Strip constraints providers' structured-output modes reject; Pydantic re-validates them locally."""
+    """Strip constraint keywords providers' structured-output modes reject; Pydantic re-validates them locally.
 
-    def strip(node: Any) -> Any:
-        if isinstance(node, dict):
-            out = {k: strip(v) for k, v in node.items() if k not in _UNSUPPORTED}
-            if out.get("type") == "object":
-                out["additionalProperties"] = False
-            return out
+    Only schema keywords are removed. Keys of `properties` / `$defs` maps are property names (a property
+    can be called `pattern`) and are always kept.
+    """
+
+    def strip_schema(node: Any) -> Any:
         if isinstance(node, list):
-            return [strip(v) for v in node]
-        return node
+            return [strip_schema(v) for v in node]
+        if not isinstance(node, dict):
+            return node
+        out: dict[str, Any] = {}
+        for key, value in node.items():
+            if key in _NAME_MAPS and isinstance(value, dict):
+                out[key] = {name: strip_schema(sub) for name, sub in value.items()}
+            elif key in _UNSUPPORTED:
+                continue
+            else:
+                out[key] = strip_schema(value)
+        if out.get("type") == "object":
+            out["additionalProperties"] = False
+        return out
 
-    return strip(copy.deepcopy(schema))  # type: ignore[no-any-return]
+    return strip_schema(copy.deepcopy(schema))  # type: ignore[no-any-return]

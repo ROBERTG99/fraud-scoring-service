@@ -17,6 +17,8 @@ _BLOCK = re.compile(re.escape(BEGIN) + r"\s*```json\s*(\{.*?\})\s*```\s*" + re.e
 
 def render(facts: dict[str, str]) -> str:
     body = json.dumps(dict(sorted(facts.items())), indent=1, ensure_ascii=False)
+    # Escape the characters that could close the fence or the tag from inside a value (JSON-valid escapes).
+    body = body.replace("<", "\\u003c").replace(">", "\\u003e").replace("`", "\\u0060")
     return f"{BEGIN}\n```json\n{body}\n```\n{END}"
 
 

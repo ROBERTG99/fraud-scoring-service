@@ -10,7 +10,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/expr-lang/expr"
@@ -19,6 +21,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/ROBERTG99/fraud-scoring-service/internal/features"
+	"github.com/ROBERTG99/fraud-scoring-service/internal/telemetry"
 	"github.com/ROBERTG99/fraud-scoring-service/schemas"
 )
 
@@ -114,6 +117,7 @@ type Rule struct {
 	Final       bool
 	Description string
 	program     *vm.Program
+	loggedErr   *atomic.Bool
 }
 
 // Match is a rule that fired.
@@ -209,8 +213,12 @@ func rulesSchema() (*jsonschema.Schema, error) {
 }
 
 // CompileExpr compiles a boolean rule expression against Env.
+//
+// Builtins are disabled except min, max and abs: rule outcomes must depend only on the env (no now(),
+// no randomness, no string/date helpers that could fail at runtime).
 func CompileExpr(when string) (*vm.Program, error) {
-	return expr.Compile(when, expr.Env(Env{}), expr.AsBool(), expr.Optimize(true))
+	return expr.Compile(when, expr.Env(Env{}), expr.AsBool(), expr.Optimize(true),
+		expr.DisableAllBuiltins(), expr.EnableBuiltin("min"), expr.EnableBuiltin("max"), expr.EnableBuiltin("abs"))
 }
 
 // Parse validates (JSON Schema), compiles and returns a rule set. Any error rejects the whole set.
@@ -262,18 +270,23 @@ func Parse(raw []byte) (*RuleSet, error) {
 			return nil, fmt.Errorf("rules: %s: %w", r.ID, err)
 		}
 		out.Rules = append(out.Rules, Rule{ID: r.ID, Name: r.Name, When: r.When, Action: act, ReasonCode: r.ReasonCode,
-			Final: r.Final, Description: r.Description, program: prog})
+			Final: r.Final, Description: r.Description, program: prog, loggedErr: new(atomic.Bool)})
 	}
 	return out, nil
 }
 
-// Evaluate returns the matching rules in rule-set order. A rule that errors at runtime does not match.
+// Evaluate returns the matching rules in rule-set order. A rule that errors at runtime does not match;
+// the error is counted (fraud_rule_errors_total) and logged once per rule set and rule.
 func (rs *RuleSet) Evaluate(env *Env) []Match {
 	var out []Match
 	for i := range rs.Rules {
 		r := &rs.Rules[i]
 		v, err := vm.Run(r.program, env)
 		if err != nil {
+			telemetry.RuleErrors.WithLabelValues(r.ID).Inc()
+			if r.loggedErr.CompareAndSwap(false, true) {
+				slog.Default().Warn("rule evaluation failed; treated as no match", "rule", r.ID, "version", rs.Version, "err", err)
+			}
 			continue
 		}
 		if b, ok := v.(bool); ok && b {

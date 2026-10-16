@@ -7,6 +7,12 @@ from __future__ import annotations
 
 import re
 
+# US SSN shape (labelled separately so it is not mistaken for a phone number).
+SSN = re.compile(r"(?<![\w-])\d{3}-\d{2}-\d{4}(?![\w-])")
+# Dates and times are not phone numbers: ISO dates, optionally followed by a time.
+DATE_TIME = re.compile(
+    r"\b\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?)?\b"
+)
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 # Card-like: 13-19 digits, optionally separated by spaces or dashes.
 CARD = re.compile(r"(?<![\w.])(?:\d[ -]?){12,18}\d(?![\w.])")
@@ -41,8 +47,18 @@ def _phone(m: re.Match[str]) -> str:
 
 def redact_text(text: str) -> str:
     text = EMAIL.sub("[REDACTED_EMAIL]", text)
+    text = SSN.sub("[REDACTED_SSN]", text)
     text = CARD.sub(_card, text)
-    return PHONE.sub(_phone, text)
+    # Protect ISO dates/times from the phone pattern, then restore them.
+    kept: list[str] = []
+
+    def _hold(m: re.Match[str]) -> str:
+        kept.append(m.group(0))
+        return f"\x00{len(kept) - 1}\x00"
+
+    text = DATE_TIME.sub(_hold, text)
+    text = PHONE.sub(_phone, text)
+    return re.sub(r"\x00(\d+)\x00", lambda m: kept[int(m.group(1))], text)
 
 
 def contains_pii(text: str) -> bool:

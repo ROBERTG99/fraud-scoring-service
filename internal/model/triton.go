@@ -94,6 +94,8 @@ func ParseKServeResponse(body []byte, rows int) (Prediction, error) {
 
 // Predict scores rows on Triton.
 func (c *Triton) Predict(ctx context.Context, alias string, rows [][]float32) (Prediction, error) {
+	ctx, cancel := withDefaultDeadline(ctx)
+	defer cancel()
 	body, err := BuildKServeRequest(rows)
 	if err != nil {
 		return Prediction{}, fmt.Errorf("%w: %v", ErrUnavailable, err)

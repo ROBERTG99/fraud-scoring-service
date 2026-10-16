@@ -162,8 +162,7 @@ def fallback_summary(facts: dict[str, str]) -> CaseSummaryOutput:
     evidence = []
     for k in keys:
         if k in facts and facts[k] not in ("", "-1"):
-            label = k.split(".", 1)[1].replace("_", " ")
-            evidence.append({"fact_key": k, "statement": f"{label}: {facts[k]}"})
+            evidence.append({"fact_key": k, "statement": f"{k} = {facts[k]}"})
     if not evidence:
         evidence = [
             {"fact_key": "decision.action", "statement": f"action: {facts.get('decision.action', 'REVIEW')}"}

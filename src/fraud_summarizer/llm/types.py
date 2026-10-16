@@ -30,6 +30,7 @@ class ProviderResponse:
     output_tokens: int
     stop_reason: str
     cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
     extra: dict[str, Any] = field(default_factory=dict)
 
 

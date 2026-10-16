@@ -11,8 +11,9 @@ import math
 import re
 from dataclasses import dataclass
 
-# Standalone numbers only: digits inside identifiers (tx_count_10m, mcc_novel_30d, R003) are not numbers.
-NUMBER = re.compile(r"(?<![\w.])-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?![\w])")
+# Digits that continue an identifier (tx_count_10m, mcc_novel_30d, R003) are not numbers; anything else is,
+# including numbers with a unit or suffix attached ("12x", "30min", "940USD") and leading-dot decimals (".5").
+NUMBER = re.compile(r"(?<![A-Za-z_\d.])-?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)")
 
 
 @dataclass(frozen=True)

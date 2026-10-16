@@ -48,3 +48,30 @@ def test_case_summary_schema_mirror_matches_pydantic() -> None:
 def test_model_ids_have_no_date_suffix() -> None:
     text = (ROOT / "config" / "llm_routes.yaml").read_text(encoding="utf-8")
     assert not re.search(r"claude-[a-z]+-\d-\d-\d{8}", text)
+
+
+def test_provider_schema_keeps_every_property() -> None:
+    from fraud_summarizer.schemas import PATTERNS, provider_schema
+
+    full = case_summary_json_schema()
+    ps = provider_schema(full)
+
+    def check(node: object) -> None:
+        if isinstance(node, dict):
+            if node.get("type") == "object":
+                assert set(node.get("required", [])) <= set(node.get("properties", {})), node
+                assert node["additionalProperties"] is False
+            for k in ("minLength", "maxLength", "minimum", "maximum", "minItems", "maxItems"):
+                assert k not in node or not isinstance(node[k], (int, float)), k
+            for v in node.values():
+                check(v)
+        elif isinstance(node, list):
+            for v in node:
+                check(v)
+
+    check(ps)
+    assert set(ps["properties"]) == {"pattern", "evidence", "recommended_checks", "confidence"}
+    assert ps["properties"]["pattern"]["enum"] == list(PATTERNS)
+    assert (
+        "pattern" not in ps["$defs"]["EvidenceItem"]["properties"]["fact_key"]
+    )  # the regex constraint is stripped

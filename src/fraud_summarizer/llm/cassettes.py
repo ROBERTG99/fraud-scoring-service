@@ -53,7 +53,7 @@ class CassetteStore:
             input_tokens=int(usage.get("input_tokens", 0)),
             output_tokens=int(usage.get("output_tokens", 0)),
             stop_reason="end_turn",
-            extra={"cassette": str(p), "recorded": bool(doc.get("recorded", True))},
+            extra={"cassette": str(p), "recorded": bool(doc.get("recorded", False))},
         )
 
     def put(self, req: ProviderRequest, resp: ProviderResponse, *, recorded: bool = True) -> Path:

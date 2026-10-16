@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 )
 
 // BentoML calls POST {base}/predict {"inputs": [[...13 floats]], "alias": "..."}.
@@ -35,17 +34,16 @@ type predictResponse struct {
 	ModelVersion string    `json:"model_version"`
 }
 
-var bufPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
-
 // Predict scores rows with the model behind alias.
 func (b *BentoML) Predict(ctx context.Context, alias string, rows [][]float32) (Prediction, error) {
-	buf := bufPool.Get().(*bytes.Buffer)
-	buf.Reset()
-	defer bufPool.Put(buf)
-	if err := json.NewEncoder(buf).Encode(predictRequest{Inputs: rows, Alias: alias}); err != nil {
+	ctx, cancel := withDefaultDeadline(ctx)
+	defer cancel()
+	// A fresh body per request: the transport may still read it after Predict returns on cancellation.
+	body, err := json.Marshal(predictRequest{Inputs: rows, Alias: alias})
+	if err != nil {
 		return Prediction{}, fmt.Errorf("%w: encode: %v", ErrUnavailable, err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.base+"/predict", buf)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.base+"/predict", bytes.NewReader(body))
 	if err != nil {
 		return Prediction{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
