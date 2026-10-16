@@ -117,7 +117,7 @@ chore: configure commit attribution
 | T-24 | Degradation paths | M3 | done | `go test -race -count=3 ./internal/api` (TestModelTimeoutRulesOnlyWithin35ms: 50 ms BentoML stub → < 35 ms, MODEL_UNAVAILABLE, model_version none; TestRedisDownBiasesToReview: FEATURES_UNAVAILABLE, REVIEW from 5,000 minor) → ok |
 | T-25 | Group commit and spool | M3 | done | `go test -race -tags integration ./internal/store -run "TestCommitBeforeRespond\|TestGroupCommitBatchesConcurrentWrites\|TestSpoolReplayAfterPostgresRecovers"` → ok (500 concurrent commits batched; 20 decisions spooled during a proxy-cut outage replayed once each, outbox and cases included); queue-full → RESOURCE_EXHAUSTED |
 | T-26 | Outbox relay | M3 | done | `go test -race -tags integration ./internal/store -run TestRelayCrashProducesDuplicatesWithSameDecisionID` (kfake) → ok: crash after produce leaves 5 rows unsent, restart re-sends, 10 messages for 5 decision_ids, consumer dedupe processes 5 |
-| T-27 | Shadow mode | M3 | todo | |
+| T-27 | Shadow mode | M3 | done | `go test -race ./internal/api -run TestShadowFailureDoesNotChangeDecisions` (1,000 decisions identical with an always-failing shadow; all three actions covered) → ok; `internal/model/shadow_test.go` (drops counted in fraud_shadow_dropped_total, Submit never blocks) → ok; `TestShadowStoreInsert` → ok |
 | T-28 | CaseService, RBAC, dev-issuer | M3 | todo | |
 | T-29 | Summarizer consumer | M3 | todo | |
 | T-30 | SageMaker launcher | M3 | todo | |

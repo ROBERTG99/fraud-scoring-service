@@ -13,6 +13,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	fraudv1 "github.com/ROBERTG99/fraud-scoring-service/gen/go/fraud/v1"
+	"github.com/ROBERTG99/fraud-scoring-service/internal/model"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/stream"
 )
 
@@ -98,5 +99,36 @@ func TestRelayCrashProducesDuplicatesWithSameDecisionID(t *testing.T) {
 	}
 	if got := count(t, pool, "SELECT count(*) FROM processed_messages WHERE consumer = 'test'"); got != n {
 		t.Fatalf("consumer processed %d unique decisions, want %d", got, n)
+	}
+}
+
+func TestShadowStoreInsert(t *testing.T) {
+	pool := newPool(t, migratedDB(t))
+	w, err := NewGroupWriter(pool, WriterConfig{SpoolDir: t.TempDir()}, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	rec := record(4000, fraudv1.Action_ACTION_REVIEW)
+	if _, err := w.Commit(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+	w.Close()
+	s := NewShadowStore(pool)
+	c := model.Comparison{DecisionID: rec.Decision.DecisionId, PrimaryVersion: "fraud-gbdt/1", ShadowVersion: "fraud-gbdt/2", PrimaryScore: 0.62,
+		ShadowScore: 0.91, PrimaryBand: "REVIEW", ShadowBand: "DECLINE", Agree: false, CreatedAt: time.Now()}
+	if err := s.InsertComparison(ctx, c); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.InsertComparison(ctx, c); err != nil { // idempotent
+		t.Fatal(err)
+	}
+	if got := count(t, pool, "SELECT count(*) FROM shadow_comparisons WHERE NOT agree"); got != 1 {
+		t.Fatalf("rows %d", got)
+	}
+	c.DecisionID = "0192f000-0000-7000-9000-000000099999" // not committed (still spooled): FK rejects, caller drops it
+	if err := s.InsertComparison(ctx, c); err == nil {
+		t.Fatal("comparison for an unknown decision must fail")
 	}
 }
