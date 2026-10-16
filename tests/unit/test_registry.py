@@ -45,7 +45,10 @@ def test_set_alias_production(tracking: str, trained: tuple[Path, dict[str, obje
     assert registry.version_for_alias("shadow") == reg2["version"]
     dest = registry.download_alias("shadow", out.parent / "dl")
     assert (dest / "model.onnx").read_bytes() == (out / "model.onnx").read_bytes()
-    assert json.loads((dest / "model_meta.json").read_text(encoding="utf-8"))["model_version"] == meta["model_version"]
+    assert (
+        json.loads((dest / "model_meta.json").read_text(encoding="utf-8"))["model_version"]
+        == meta["model_version"]
+    )
 
 
 def test_cli_sets_alias(tracking: str, trained: tuple[Path, dict[str, object]]) -> None:

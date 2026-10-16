@@ -1,0 +1,11 @@
+{
+  "id": "msg_fixture_02",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-5-5",
+  "content": [],
+  "stop_reason": "refusal",
+  "stop_details": {"type": "refusal", "category": null, "explanation": "fixture"},
+  "stop_sequence": null,
+  "usage": {"input_tokens": 1180, "output_tokens": 0}
+}

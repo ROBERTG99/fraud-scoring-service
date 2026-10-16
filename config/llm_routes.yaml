@@ -1,0 +1,38 @@
+# LLM routes (spec §4.6, Appendix B). Model IDs live here and in the environment, never in code.
+# provider/model values are read from the named environment variables, falling back to the defaults.
+schema: fraud.llm_routes.v1
+routes:
+  case_summary:
+    provider_env: FRAUD_SUMMARY_PROVIDER # anthropic (default) | openai | fake
+    default_provider: anthropic
+    fallback_provider_env: FRAUD_SUMMARY_FALLBACK_PROVIDER
+    models:
+      anthropic: { env: FRAUD_SUMMARY_MODEL, default: claude-haiku-5-5 }
+      openai: { env: FRAUD_OPENAI_MODEL, default: gpt-6-luna }
+      fake: { default: fake-case-summary-v1 }
+    effort: low
+    max_tokens: 2048
+    timeout_s: 8
+    attempts: 3
+    prompt: case_summary.v1
+  judge_usefulness: # live evals only
+    provider_env: FRAUD_JUDGE_PROVIDER
+    default_provider: anthropic
+    models:
+      anthropic: { env: FRAUD_JUDGE_MODEL, default: claude-haiku-5-5 }
+      openai: { env: FRAUD_OPENAI_MODEL, default: gpt-6-luna }
+      fake: { default: fake-judge-v1 }
+    effort: low
+    max_tokens: 1024
+    timeout_s: 15
+    attempts: 3
+    prompt: judge_summary_usefulness.v1
+
+# USD per 1M tokens (input, output), used for cost accounting. Update with provider price changes.
+pricing:
+  claude-haiku-5-5: [0.10, 0.50]
+  claude-sonnet-5-5: [2.00, 10.00]
+  claude-opus-5-5: [4.00, 20.00]
+  gpt-6-luna: [0.10, 0.50]
+  fake-case-summary-v1: [0.0, 0.0]
+  fake-judge-v1: [0.0, 0.0]

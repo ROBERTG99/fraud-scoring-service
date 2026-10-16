@@ -33,7 +33,9 @@ def test_temporal_split_has_no_overlap(prepared: T.Prepared) -> None:
         ids[split] = {tx for tx, m in zip(prepared.transaction_id, mask, strict=True) if m}
     assert ranges["train"][1] < ranges["valid"][0]
     assert ranges["valid"][1] < ranges["test"][0]
-    assert not ids["train"] & ids["valid"] and not ids["valid"] & ids["test"] and not ids["train"] & ids["test"]
+    assert (
+        not ids["train"] & ids["valid"] and not ids["valid"] & ids["test"] and not ids["train"] & ids["test"]
+    )
     # Splits are whole days: no calendar day appears in two splits.
     days = {s: {int(t // DAY) for t in prepared.ts[prepared.split == s]} for s in ("train", "valid", "test")}
     assert not days["train"] & days["valid"] and not days["valid"] & days["test"]
@@ -48,7 +50,9 @@ def test_onnx_matches_native_within_1e5(prepared: T.Prepared, tmp_path: Path) ->
     assert scores.shape == (len(x),)
     assert np.all((scores >= 0) & (scores <= 1))
     stored = json.loads((tmp_path / "model_meta.json").read_text(encoding="utf-8"))
-    assert stored["golden"]["probability"] == pytest.approx(float(run_onnx(onnx_bytes, np.asarray([T.golden_vector()], dtype=np.float32))[0]), abs=0)
+    assert stored["golden"]["probability"] == pytest.approx(
+        float(run_onnx(onnx_bytes, np.asarray([T.golden_vector()], dtype=np.float32))[0]), abs=0
+    )
 
 
 @settings(max_examples=200, deadline=None)

@@ -42,7 +42,7 @@ chore: configure commit attribution
 | T-18 | Triton profile and KServe v2 client | M2 | done | `go test ./internal/model -run TestKServeV2RequestShape` (recorded KServe v2 request/response) → ok; Triton profile test skipped: nvcr.io blocked (Forbidden), recorded in docs/KNOWN_LIMITATIONS.md |
 | T-19 | Rules engine | M2 | done | `go test -race ./internal/rules` (TestInvalidExprKeepsPreviousVersion, schema/limits, watch reload) → ok; `go test -bench BenchmarkEval64Rules ./internal/rules` → 14.9 µs per 64-rule evaluation (budget < 50 µs) |
 | T-20 | Combination table | M2 | done | `go test -race ./internal/decide` (TestFinalRuleWins, TestDegradedBandByAmount, TestRuleR003WithLowScoreReviews, rapid TestActionMonotonicInScore) → ok, coverage 96.7% |
-| T-21 | LLM gateway and FakeLLM | M2 | todo | |
+| T-21 | LLM gateway and FakeLLM | M2 | done | `uv run pytest tests/llm` under the socket guard (TCP disabled, no loopback) → 10 passed incl. test_retries_only_retryable_codes and test_adapters_against_cassettes (Anthropic Messages + OpenAI Responses documented-shape fixtures, D-011) |
 | T-22 | Summary pipeline and faithfulness | M2 | todo | |
 | T-23 | Score handler with idempotency | M3 | todo | |
 | T-24 | Degradation paths | M3 | todo | |

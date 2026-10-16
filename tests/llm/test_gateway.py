@@ -1,0 +1,329 @@
+"""LLM gateway, adapters and FakeLLM (spec FR-11, T-21). No network: see conftest.py."""
+
+from __future__ import annotations
+
+import json
+import socket
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import anthropic
+import httpx2
+import openai
+import pytest
+
+from fraud_summarizer import facts as factfmt
+from fraud_summarizer.llm import (
+    GatewayExhaustedError,
+    LLMGateway,
+    ProviderError,
+    ProviderRequest,
+    ProviderResponse,
+)
+from fraud_summarizer.llm.anthropic_adapter import AnthropicProvider
+from fraud_summarizer.llm.cassettes import CassetteStore, cassette_key
+from fraud_summarizer.llm.fake import FakeLLM
+from fraud_summarizer.llm.openai_adapter import OpenAIProvider
+from fraud_summarizer.llm.routes import load
+from fraud_summarizer.schemas import CaseSummaryOutput, case_summary_json_schema
+
+FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "llm" / "adapters"
+FACTS = {
+    "decision.action": "REVIEW",
+    "decision.score": "0.62",
+    "decision.reason_codes": "NEW_DEVICE_AFTER_CREDENTIAL_CHANGE,MODEL_SCORE_ELEVATED",
+    "feature.amount_minor": "94000",
+    "feature.new_device": "1",
+    "feature.minutes_since_email_change": "2",
+    "feature.minutes_since_pwd_change": "43200",
+    "feature.tx_count_10m": "0",
+    "feature.channel": "2",
+}
+
+
+def user_prompt(facts: dict[str, str] = FACTS) -> str:
+    return "Summarize the case.\n" + factfmt.render(facts)
+
+
+@dataclass
+class Scripted:
+    """Provider that raises or answers from a script."""
+
+    script: list[Any]
+    name: str = "scripted"
+    calls: list[ProviderRequest] = field(default_factory=list)
+
+    async def complete(self, req: ProviderRequest) -> ProviderResponse:
+        self.calls.append(req)
+        item = self.script.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return ProviderResponse(
+            text=item, model=req.model, input_tokens=1000, output_tokens=100, stop_reason="end_turn"
+        )
+
+
+def ok_text() -> str:
+    return json.dumps(
+        {
+            "pattern": "unclear",
+            "evidence": [{"fact_key": "decision.action", "statement": "Review."}],
+            "recommended_checks": ["x"],
+            "confidence": 0.5,
+        }
+    )
+
+
+def gateway(
+    primary: Any, fallback: Any = None, env: dict[str, str] | None = None
+) -> tuple[LLMGateway, list[float]]:
+    env = {"FRAUD_SUMMARY_PROVIDER": "anthropic"} | (env or {})
+    if fallback is not None:
+        env["FRAUD_SUMMARY_FALLBACK_PROVIDER"] = "openai"
+    sleeps: list[float] = []
+
+    async def sleep(s: float) -> None:
+        sleeps.append(s)
+
+    providers = {"anthropic": primary, "openai": fallback or Scripted([])}
+    return LLMGateway(load(env=env), providers, sleep=sleep), sleeps
+
+
+async def run(gw: LLMGateway, user: str | None = None) -> Any:
+    return await gw.complete(
+        "case_summary",
+        system="sys",
+        user=user or user_prompt(),
+        schema_name="case_summary_v1",
+        schema=case_summary_json_schema(),
+        prompt_version="case_summary.v1",
+        validate=lambda d: CaseSummaryOutput.model_validate(d) and None,
+    )
+
+
+async def test_retries_only_retryable_codes() -> None:
+    for status in (408, 409, 429, 500, 503, 529):
+        p = Scripted([ProviderError.from_status(status, "x"), ok_text()])
+        gw, sleeps = gateway(p)
+        res = await run(gw)
+        assert len(p.calls) == 2, status
+        assert res.attempts[0].status == "error" and res.attempts[1].status == "ok"
+        assert len(sleeps) == 1
+    for status in (400, 401, 403, 404, 422):
+        p = Scripted([ProviderError.from_status(status, "x"), ok_text()])
+        gw, sleeps = gateway(p)
+        with pytest.raises(GatewayExhaustedError) as exc:
+            await run(gw)
+        assert len(p.calls) == 1, f"{status} must not be retried"
+        assert sleeps == []
+        assert exc.value.attempts[0].error_kind == "http"
+    # Connection errors and timeouts are retryable; refusals are not.
+    p = Scripted(
+        [ProviderError("conn", retryable=True, kind="connection"), ProviderError("refused", kind="refusal")]
+    )
+    gw, _ = gateway(p)
+    with pytest.raises(GatewayExhaustedError):
+        await run(gw)
+    assert len(p.calls) == 2
+
+
+async def test_three_attempts_then_fallback_provider() -> None:
+    primary = Scripted([ProviderError.from_status(529, "overloaded")] * 3)
+    fallback = Scripted([ok_text()])
+    gw, sleeps = gateway(primary, fallback)
+    res = await run(gw)
+    assert len(primary.calls) == 3 and len(fallback.calls) == 1
+    assert res.provider == "openai" and res.model == "gpt-6-luna"
+    assert [a.provider for a in res.attempts] == ["anthropic"] * 3 + ["openai"]
+    assert len(sleeps) == 2  # backoff between the three primary attempts only
+    assert all(0 < s <= 2.0 for s in sleeps) and sleeps[1] > sleeps[0] * 0.9
+
+
+async def test_three_failures_without_fallback_exhausts() -> None:
+    primary = Scripted([ProviderError.from_status(500, "e")] * 3)
+    gw, _ = gateway(primary)
+    with pytest.raises(GatewayExhaustedError) as exc:
+        await run(gw)
+    assert len(exc.value.attempts) == 3
+
+
+async def test_invalid_output_is_retried_and_cost_accounted() -> None:
+    bad_schema = json.dumps(
+        {"pattern": "phishing", "evidence": [], "recommended_checks": [], "confidence": 2}
+    )
+    p = Scripted(["not json", bad_schema, ok_text()])
+    gw, _ = gateway(p)
+    res = await run(gw)
+    assert [a.error_kind for a in res.attempts] == ["invalid_json", "schema", None]
+    # claude-haiku-5-5 at $0.10 / $0.50 per 1M tokens: 1000 in + 100 out = $0.00015
+    assert res.cost_usd == pytest.approx(0.00015)
+    assert res.input_tokens == 1000 and res.output_tokens == 100
+
+
+async def test_timeout_is_retryable() -> None:
+    import asyncio
+
+    class Slow:
+        name = "slow"
+        calls = 0
+
+        async def complete(self, req: ProviderRequest) -> ProviderResponse:
+            Slow.calls += 1
+            if Slow.calls == 1:
+                await asyncio.sleep(10)
+            return ProviderResponse(ok_text(), req.model, 1, 1, "end_turn")
+
+    gw, _ = gateway(Slow())
+    gw.config.routes["case_summary"] = gw.config.routes["case_summary"].__class__(
+        **{**gw.config.routes["case_summary"].__dict__, "timeout_s": 0.05}
+    )
+    res = await run(gw)
+    assert res.attempts[0].error_kind == "timeout" and res.attempts[1].status == "ok"
+
+
+async def test_gateway_redacts_before_provider() -> None:
+    p = Scripted([ok_text()])
+    gw, _ = gateway(p)
+    await run(
+        gw,
+        user=user_prompt(
+            FACTS
+            | {
+                "event.login.0.note": "contact jane.doe@example.com or +1 415 555 0100, card 4111 1111 1111 1111"
+            }
+        ),
+    )
+    sent = p.calls[0].user
+    assert "jane.doe@example.com" not in sent and "4111 1111 1111 1111" not in sent and "555 0100" not in sent
+    assert "[REDACTED_EMAIL]" in sent and "[REDACTED_CARD]" in sent and "[REDACTED_PHONE]" in sent
+
+
+def mock_client(cls: Any, responses: dict[str, tuple[int, str]], seen: list[httpx2.Request]) -> Any:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        status, name = responses[request.url.path]
+        return httpx2.Response(
+            status, content=(FIXTURES / name).read_bytes(), headers={"content-type": "application/json"}
+        )
+
+    http = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+    return cls(api_key="test-key", max_retries=0, http_client=http)
+
+
+def request(model: str) -> ProviderRequest:
+    from fraud_summarizer.schemas import provider_schema
+
+    return ProviderRequest(
+        route="case_summary",
+        model=model,
+        system="system prompt",
+        user=user_prompt(),
+        schema_name="case_summary_v1",
+        schema=provider_schema(case_summary_json_schema()),
+        max_tokens=2048,
+        effort="low",
+        timeout_s=8,
+        prompt_version="case_summary.v1",
+    )
+
+
+async def test_adapters_against_cassettes() -> None:
+    seen: list[httpx2.Request] = []
+    client = mock_client(
+        anthropic.AsyncAnthropic, {"/v1/messages": (200, "anthropic_messages_ok.json")}, seen
+    )
+    resp = await AnthropicProvider(client=client).complete(request("claude-haiku-5-5"))
+    body = json.loads(seen[0].content)
+    assert body["model"] == "claude-haiku-5-5"
+    assert body["output_config"]["effort"] == "low"
+    assert body["output_config"]["format"]["type"] == "json_schema"
+    assert body["system"][0]["cache_control"] == {"type": "ephemeral"}
+    assert "thinking" not in body and "tool_choice" not in body and "temperature" not in body
+    assert body["messages"][-1]["role"] == "user"  # no assistant prefill
+    assert "minLength" not in json.dumps(body["output_config"]["format"]["schema"])
+    CaseSummaryOutput.model_validate_json(resp.text)
+    assert resp.input_tokens == 1180 and resp.output_tokens == 164 and resp.cache_read_tokens == 512
+
+    for path_file, kind, retryable, status in (
+        ("anthropic_messages_refusal.json", "refusal", False, 200),
+        ("anthropic_error_429.json", "http", True, 429),
+        ("anthropic_error_400.json", "http", False, 400),
+    ):
+        client = mock_client(anthropic.AsyncAnthropic, {"/v1/messages": (status, path_file)}, [])
+        with pytest.raises(ProviderError) as exc:
+            await AnthropicProvider(client=client).complete(request("claude-haiku-5-5"))
+        assert exc.value.kind == kind and exc.value.retryable is retryable, path_file
+
+    seen = []
+    oclient = mock_client(openai.AsyncOpenAI, {"/v1/responses": (200, "openai_responses_ok.json")}, seen)
+    oresp = await OpenAIProvider(client=oclient).complete(request("gpt-6-luna"))
+    obody = json.loads(seen[0].content)
+    assert obody["text"]["format"]["type"] == "json_schema" and obody["text"]["format"]["strict"] is True
+    assert obody["instructions"] == "system prompt" and obody["model"] == "gpt-6-luna"
+    assert CaseSummaryOutput.model_validate_json(oresp.text).pattern == "card_testing"
+    oclient = mock_client(openai.AsyncOpenAI, {"/v1/responses": (200, "openai_responses_refusal.json")}, [])
+    with pytest.raises(ProviderError) as oexc:
+        await OpenAIProvider(client=oclient).complete(request("gpt-6-luna"))
+    assert oexc.value.kind == "refusal"
+
+
+async def test_fake_is_deterministic_and_cassettes_win(tmp_path: Path) -> None:
+    fake = FakeLLM()
+    req = request("fake-case-summary-v1")
+    a, b = await fake.complete(req), await fake.complete(req)
+    assert a.text == b.text
+    out = CaseSummaryOutput.model_validate_json(a.text)
+    assert out.pattern == "account_takeover"
+    assert {e.fact_key for e in out.evidence} == {
+        "feature.minutes_since_email_change",
+        "feature.new_device",
+        "feature.amount_minor",
+    }
+    store = CassetteStore(tmp_path)
+    recorded = ProviderResponse(
+        text=json.dumps(
+            {
+                "pattern": "unclear",
+                "evidence": [{"fact_key": "decision.action", "statement": "Recorded."}],
+                "recommended_checks": ["r"],
+                "confidence": 0.1,
+            }
+        ),
+        model="claude-haiku-5-5",
+        input_tokens=10,
+        output_tokens=5,
+        stop_reason="end_turn",
+    )
+    store.put(request("claude-haiku-5-5"), recorded, recorded=True)
+    replay = await FakeLLM(cassettes=store, cassette_model="claude-haiku-5-5").complete(req)
+    assert json.loads(replay.text)["evidence"][0]["statement"] == "Recorded."
+    assert replay.extra["recorded"] is True
+    key = cassette_key(
+        "case_summary", "claude-haiku-5-5", "case_summary.v1", req.system, req.user, "case_summary_v1"
+    )
+    assert (tmp_path / "case_summary" / f"{key}.json").is_file()
+
+
+def test_routes_resolve_models_from_env() -> None:
+    cfg = load(env={})
+    r = cfg.routes["case_summary"]
+    assert (
+        r.provider == "anthropic"
+        and r.model_for("anthropic") == "claude-haiku-5-5"
+        and r.effort == "low"
+        and r.attempts == 3
+    )
+    assert cfg.routes["judge_usefulness"].model_for("anthropic") == "claude-haiku-5-5"
+    cfg = load(env={"FRAUD_SUMMARY_PROVIDER": "fake", "FRAUD_SUMMARY_MODEL": "claude-opus-5-5"})
+    assert (
+        cfg.routes["case_summary"].provider == "fake"
+        and cfg.routes["case_summary"].model_for("anthropic") == "claude-opus-5-5"
+    )
+    with pytest.raises(ValueError, match="unknown provider"):
+        load(env={"FRAUD_SUMMARY_PROVIDER": "llama"})
+
+
+def test_socket_guard_blocks_network() -> None:
+    with pytest.raises(Exception, match=r"(?i)socket"):
+        socket.create_connection(("127.0.0.1", 9), timeout=0.1)

@@ -77,7 +77,11 @@ def log_and_register(model_dir: Path, meta: dict[str, Any]) -> dict[str, Any]:
     source = f"runs:/{run_id}/model"
     mv = client.create_model_version(MODEL_NAME, source=source, run_id=run_id)
     tags = {k: str(meta["test"][k]) for k in HEADLINE if k in meta.get("test", {})}
-    tags |= {"model_version": str(meta["model_version"]), "onnx_sha256": str(meta.get("onnx_sha256", "")), "backend": str(meta.get("backend", ""))}
+    tags |= {
+        "model_version": str(meta["model_version"]),
+        "onnx_sha256": str(meta.get("onnx_sha256", "")),
+        "backend": str(meta.get("backend", "")),
+    }
     for key, value in tags.items():
         client.set_model_version_tag(MODEL_NAME, mv.version, key, value)
     return {"name": MODEL_NAME, "version": str(mv.version), "run_id": run_id, "source": source}
@@ -85,7 +89,12 @@ def log_and_register(model_dir: Path, meta: dict[str, Any]) -> dict[str, Any]:
 
 def describe(version: str) -> dict[str, Any]:
     mv = _client().get_model_version(MODEL_NAME, version)
-    return {"version": str(mv.version), "tags": dict(mv.tags), "run_id": mv.run_id, "aliases": list(getattr(mv, "aliases", []))}
+    return {
+        "version": str(mv.version),
+        "tags": dict(mv.tags),
+        "run_id": mv.run_id,
+        "aliases": list(getattr(mv, "aliases", [])),
+    }
 
 
 def set_alias(alias: str, version: str) -> None:
@@ -123,7 +132,9 @@ def main(argv: list[str] | None = None) -> int:
         meta = json.loads((args.model_dir / "model_meta.json").read_text(encoding="utf-8"))
         if "registered" not in meta:
             meta["registered"] = log_and_register(args.model_dir, meta)
-            (args.model_dir / "model_meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+            (args.model_dir / "model_meta.json").write_text(
+                json.dumps(meta, indent=2) + "\n", encoding="utf-8"
+            )
         version = str(meta["registered"]["version"])
     set_alias(args.alias, version)
     print(f"registry: {MODEL_NAME} v{version} -> @{args.alias}")

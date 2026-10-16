@@ -47,10 +47,24 @@ def main() -> int:
         model_dir = ROOT / "artifacts" / "model"
         if not (model_dir / "model.onnx").is_file():
             subprocess.run(["make", "train"], cwd=ROOT, check=True)
-        env = {**os.environ, "FRAUD_MODEL_DIR": str(model_dir), "FRAUD_MODEL_CACHE": str(ROOT / ".cache" / "model-cache")}
+        env = {
+            **os.environ,
+            "FRAUD_MODEL_DIR": str(model_dir),
+            "FRAUD_MODEL_CACHE": str(ROOT / ".cache" / "model-cache"),
+        }
         env.pop("MLFLOW_TRACKING_URI", None)
         proc = subprocess.Popen(
-            [sys.executable, "-m", "bentoml", "serve", "serving.bentoml.service:FraudModel", "--host", "127.0.0.1", "--port", "8514"],
+            [
+                sys.executable,
+                "-m",
+                "bentoml",
+                "serve",
+                "serving.bentoml.service:FraudModel",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "8514",
+            ],
             cwd=ROOT,
             env=env,
             stdout=subprocess.DEVNULL,
@@ -85,23 +99,42 @@ def main() -> int:
         "suite": "model_latency",
         "run_id": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
         "created_at": datetime.now(UTC).isoformat(),
-        "git_sha": subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=False).stdout.strip(),
+        "git_sha": subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=False
+        ).stdout.strip(),
         "mode": "offline",
         "models": [version],
         "prompt_hashes": {},
         "n_cases": len(latencies),
-        "metrics": {"p95_ms": {"value": p95, "threshold": BUDGET_P95_MS, "direction": "lower", "passed": passed, "ci_low": None, "ci_high": None}},
+        "metrics": {
+            "p95_ms": {
+                "value": p95,
+                "threshold": BUDGET_P95_MS,
+                "direction": "lower",
+                "passed": passed,
+                "ci_low": None,
+                "ci_high": None,
+            }
+        },
         "cost_usd_total": 0.0,
         "cost_usd_per_case": 0.0,
         "latency_p50_ms": p50,
         "latency_p95_ms": p95,
         "cases": [],
-        "extensions": {"p99_ms": p99, "mean_ms": statistics.fmean(latencies), "requests": N, "warmup": WARMUP, "url": url},
+        "extensions": {
+            "p99_ms": p99,
+            "mean_ms": statistics.fmean(latencies),
+            "requests": N,
+            "warmup": WARMUP,
+            "url": url,
+        },
     }
     out = ROOT / "evals" / "reports" / "model_latency.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    print(f"bench-model: {N} single-row requests p50={p50:.2f} ms p95={p95:.2f} ms p99={p99:.2f} ms (budget p95 < {BUDGET_P95_MS} ms) -> {'PASS' if passed else 'FAIL'}")
+    print(
+        f"bench-model: {N} single-row requests p50={p50:.2f} ms p95={p95:.2f} ms p99={p99:.2f} ms (budget p95 < {BUDGET_P95_MS} ms) -> {'PASS' if passed else 'FAIL'}"
+    )
     return 0 if passed else 1
 
 

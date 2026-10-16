@@ -63,7 +63,9 @@ def _version_from_meta(model_dir: Path) -> str:
 
 
 class ModelRuntime:
-    def __init__(self, model_dir: str | None = None, cache_dir: str | None = None, use_mlflow: bool | None = None) -> None:
+    def __init__(
+        self, model_dir: str | None = None, cache_dir: str | None = None, use_mlflow: bool | None = None
+    ) -> None:
         self.model_dir = Path(model_dir) if model_dir else None
         self.cache_dir = Path(cache_dir or os.environ.get("FRAUD_MODEL_CACHE", "/tmp/fraud-model-cache"))  # noqa: S108
         self.use_mlflow = bool(os.environ.get("MLFLOW_TRACKING_URI")) if use_mlflow is None else use_mlflow
@@ -105,7 +107,12 @@ class ModelRuntime:
         raise ModelNotReadyError("; ".join(errors) or "no model source configured")
 
     def _install(self, alias: str, model_dir: Path, source: str) -> LoadedModel:
-        loaded = LoadedModel(alias=alias, version=_version_from_meta(model_dir), source=source, session=_session(model_dir / "model.onnx"))
+        loaded = LoadedModel(
+            alias=alias,
+            version=_version_from_meta(model_dir),
+            source=source,
+            session=_session(model_dir / "model.onnx"),
+        )
         with self._lock:
             self.models[alias] = loaded
         log.info("loaded %s as @%s from %s", loaded.version, alias, source)

@@ -1,0 +1,15 @@
+{
+  "id": "resp_fixture_02",
+  "object": "response",
+  "created_at": 1790000000,
+  "status": "completed",
+  "model": "gpt-6-luna",
+  "output": [
+    {"type": "message", "id": "msg_fixture_02", "status": "completed", "role": "assistant",
+     "content": [{"type": "refusal", "refusal": "I can't help with that."}]}
+  ],
+  "parallel_tool_calls": true,
+  "tool_choice": "auto",
+  "tools": [],
+  "usage": {"input_tokens": 1100, "output_tokens": 8, "total_tokens": 1108, "input_tokens_details": {"cached_tokens": 0}, "output_tokens_details": {"reasoning_tokens": 0}}
+}

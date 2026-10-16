@@ -100,7 +100,9 @@ def _account_features(ev: Events, s: int, e: int, t: I64, amt: I64, tx_pos: I64,
     change = ev.change[s:e]
     # Transactions of this account are strictly increasing in time, so prefix sums give window sums.
     if len(t) > 1 and not bool(np.all(np.diff(t) > 0)):
-        raise ValueError("transaction timestamps must be strictly increasing per account (cmd/gen guarantees it)")
+        raise ValueError(
+            "transaction timestamps must be strictly increasing per account (cmd/gen guarantees it)"
+        )
     csum = np.concatenate(([0], np.cumsum(amt)))
     i_now = np.arange(len(t))  # index of the current tx == number of earlier txs
     i_10m = np.searchsorted(t, t - MS_10M, side="left")

@@ -59,7 +59,16 @@ def main() -> int:
     n = write_offline(offline)
     env = {**os.environ, "FRAUD_PARITY_OFFLINE": str(offline), "FRAUD_PARITY_ONLINE_OUT": str(online)}
     go = subprocess.run(
-        ["go", "test", "-count=1", "-tags", "integration", "-run", "TestOnlineOfflineParity", "./tests/integration/"],
+        [
+            "go",
+            "test",
+            "-count=1",
+            "-tags",
+            "integration",
+            "-run",
+            "TestOnlineOfflineParity",
+            "./tests/integration/",
+        ],
         cwd=ROOT,
         env=env,
         check=False,

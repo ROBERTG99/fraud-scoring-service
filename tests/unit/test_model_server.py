@@ -38,7 +38,9 @@ def test_predict_golden_vector(model_dir: Path, tmp_path: Path) -> None:
     for got, v in zip(out["scores"], vectors, strict=True):
         assert got == pytest.approx(v["probability"], abs=1e-6)
     assert out["model_version"].startswith("gbdt-")
-    assert rt.predict([vectors[2]["features"]], "shadow")["scores"][0] == pytest.approx(vectors[2]["probability"], abs=1e-6)  # type: ignore[index]
+    assert rt.predict([vectors[2]["features"]], "shadow")["scores"][0] == pytest.approx(
+        vectors[2]["probability"], abs=1e-6
+    )  # type: ignore[index]
 
 
 def test_rejects_bad_inputs(model_dir: Path, tmp_path: Path) -> None:
@@ -59,7 +61,9 @@ def test_not_ready_without_model(tmp_path: Path) -> None:
         rt.predict([[0.0] * 13])
 
 
-def test_uses_cached_artifact_when_mlflow_down(model_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_uses_cached_artifact_when_mlflow_down(
+    model_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     cache = tmp_path / "cache"
     (cache / "production").mkdir(parents=True)
     shutil.copyfile(model_dir / "model.onnx", cache / "production" / "model.onnx")

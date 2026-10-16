@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fraud-scoring-service.local/schemas/case_summary.v1.json",
+  "$defs": {
+    "EvidenceItem": {
+      "additionalProperties": false,
+      "properties": {
+        "fact_key": {
+          "maxLength": 120,
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)+$",
+          "title": "Fact Key",
+          "type": "string"
+        },
+        "statement": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Statement",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fact_key",
+        "statement"
+      ],
+      "title": "EvidenceItem",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "What the model must return for route case_summary.",
+  "properties": {
+    "pattern": {
+      "enum": [
+        "account_takeover",
+        "card_testing",
+        "mule_account",
+        "friendly_fraud",
+        "unclear"
+      ],
+      "title": "Pattern",
+      "type": "string"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/EvidenceItem"
+      },
+      "maxItems": 6,
+      "minItems": 1,
+      "title": "Evidence",
+      "type": "array"
+    },
+    "recommended_checks": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 4,
+      "minItems": 1,
+      "title": "Recommended Checks",
+      "type": "array"
+    },
+    "confidence": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Confidence",
+      "type": "number"
+    }
+  },
+  "required": [
+    "pattern",
+    "evidence",
+    "recommended_checks",
+    "confidence"
+  ],
+  "title": "case_summary_v1",
+  "type": "object"
+}

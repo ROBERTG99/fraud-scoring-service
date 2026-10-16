@@ -29,4 +29,7 @@ class FraudModel:
 
     @bentoml.api(route="/models")  # type: ignore[untyped-decorator]
     def models(self) -> dict[str, Any]:
-        return {"loaded": {a: {"version": m.version, "source": m.source} for a, m in self.runtime.models.items()}, "status": self.status}
+        return {
+            "loaded": {a: {"version": m.version, "source": m.source} for a, m in self.runtime.models.items()},
+            "status": self.status,
+        }
