@@ -1,0 +1,50 @@
+# Active rule set. Rules run against the typed feature env (internal/rules/env.go); at most 64 rules.
+# Combination with the model band: internal/decide/combine.go (spec §4.4).
+schema: fraud.rules.v1
+version: "2026.10.1"
+feature_spec: v1
+thresholds: # calibrated model probability bands
+  review: 0.30
+  decline: 0.85
+degraded:
+  model_unavailable: { review_min_amount_minor: 20000 }
+  features_unavailable: { review_min_amount_minor: 5000 }
+model_reason_codes:
+  - { min_score: 0.30, code: MODEL_SCORE_ELEVATED }
+  - { min_score: 0.85, code: MODEL_SCORE_HIGH }
+rules:
+  - id: R001
+    name: new_device_after_credential_change
+    when: "new_device && min(minutes_since_pwd_change, minutes_since_email_change) < 60"
+    action: REVIEW
+    reason_code: NEW_DEVICE_AFTER_CREDENTIAL_CHANGE
+    description: First use of a device within an hour of a password or email change (account takeover).
+  - id: R002
+    name: large_amount_on_new_device
+    when: "new_device && amount_ratio_24h >= 8 && channel == 'ECOMMERCE'"
+    action: REVIEW
+    reason_code: LARGE_AMOUNT_NEW_DEVICE
+    description: Online purchase at 8x the recent average from a device never seen before.
+  - id: R003
+    name: card_testing_burst
+    when: "tx_count_10m >= 8 && amount_minor <= 300"
+    action: REVIEW
+    reason_code: CARD_TESTING_BURST
+    description: Eight or more transactions in ten minutes followed by a tiny amount.
+  - id: R004
+    name: p2p_device_churn
+    when: "channel == 'P2P' && distinct_devices_24h >= 3 && amount_minor >= 50000"
+    action: REVIEW
+    reason_code: P2P_DEVICE_CHURN
+    description: Large transfer from an account that used three or more devices in 24 hours (mule).
+  - id: R005
+    name: velocity_spike
+    when: "tx_count_1h >= 20"
+    action: REVIEW
+    reason_code: VELOCITY_SPIKE
+  - id: R009
+    name: blocked_mcc
+    when: "mcc in ['7995']"
+    action: DECLINE
+    reason_code: BLOCKED_MCC
+    final: true

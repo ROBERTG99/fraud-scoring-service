@@ -5,5 +5,5 @@ import "embed"
 
 // FS holds every schema under schemas/ (events, rules, case summary).
 //
-//go:embed events/*.json
+//go:embed events/*.json rules.v1.json
 var FS embed.FS
