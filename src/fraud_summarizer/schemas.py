@@ -46,6 +46,8 @@ class StoredSummary(BaseModel):
     prompt_version: str
     faithfulness: float
     status: Literal["ok", "fallback", "unfaithful"]
+    # The redacted facts the summary was checked against; the console highlights cited keys in them.
+    facts: dict[str, str] = Field(default_factory=dict)
 
 
 def case_summary_json_schema() -> dict[str, Any]:

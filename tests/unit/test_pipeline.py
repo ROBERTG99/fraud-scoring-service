@@ -102,7 +102,7 @@ class MemoryRepo:
     async def load_case(self, decision_id: str) -> CaseContext | None:
         return self.cases.get(decision_id)
 
-    async def save_summary(self, result: PipelineResult) -> None:
+    async def save_summary(self, result: PipelineResult, *, replace: bool = False) -> None:
         self.saved.append(result)
 
     async def save_steps(self, steps: list[StepRecord]) -> None:

@@ -80,7 +80,7 @@ class PipelineResult:
 class CaseRepository(Protocol):
     async def load_case(self, decision_id: str) -> CaseContext | None: ...
 
-    async def save_summary(self, result: PipelineResult) -> None: ...
+    async def save_summary(self, result: PipelineResult, *, replace: bool = False) -> None: ...
 
     async def save_steps(self, steps: list[StepRecord]) -> None: ...
 
@@ -198,7 +198,10 @@ class SummaryPipeline:
         self.clock = clock or (lambda: datetime.now(UTC))
         self.system = system_prompt or load_prompt()
 
-    async def run(self, decision_id: str, *, run_id: str | None = None) -> PipelineResult | None:
+    async def run(
+        self, decision_id: str, *, run_id: str | None = None, replace: bool = False
+    ) -> PipelineResult | None:
+        """Summarize the case of decision_id; replace=True overwrites an existing summary (regenerate)."""
         run_id = run_id or str(uuid.uuid4())
         steps: list[StepRecord] = []
         case_id: str | None = None
@@ -331,6 +334,7 @@ class SummaryPipeline:
             prompt_version=prompt_version,
             faithfulness=round(checked.score, 4),
             status=status,
+            facts=facts,
         )
         cost = llm_result.cost_usd if llm_result else 0.0
         result = PipelineResult(
@@ -344,7 +348,7 @@ class SummaryPipeline:
         )
 
         async def persist() -> None:
-            await self.repo.save_summary(result)
+            await self.repo.save_summary(result, replace=replace)
 
         await step("persist", "compute", persist)
         await self.repo.save_steps(steps)

@@ -17,6 +17,7 @@ dependencies = [
   "prometheus-client>=0.21",
   "psycopg[binary,pool]>=3.2",
   "pydantic>=2.10",
+  "pyjwt[crypto]>=2.10",
   "pyyaml>=6.0",
   "uvicorn>=0.32",
 ]
