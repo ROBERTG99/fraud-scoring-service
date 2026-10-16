@@ -175,24 +175,6 @@ func minutesSince(changed, t int64) float64 {
 	return float64(min((t-changed)/60_000, MinutesCap))
 }
 
-// Fallback returns conservative defaults (spec fallback_defaults) for a transaction when Redis is down.
-func (s *Store) Fallback(tx Tx) Vector {
-	return FallbackVector(s.spec, tx)
-}
-
-// FallbackVector builds the FEATURES_UNAVAILABLE vector from spec defaults plus request fields.
-func FallbackVector(spec *Spec, tx Tx) Vector {
-	var v Vector
-	for i, name := range expectedNames {
-		v[i] = float64(spec.Fallback[name])
-	}
-	v[IdxAmountMinor] = float64(tx.AmountMinor)
-	v[IdxChannel] = spec.ChannelCode(tx.Channel)
-	v[IdxHourOfDay] = float64((tx.TSMillis / Ms1h) % 24)
-	v[IdxAmountRatio24h] = 1
-	return v
-}
-
 // ApplyEvent applies one event to the account's feature state.
 func (s *Store) ApplyEvent(ctx context.Context, e *events.Event) error {
 	if err := applyEventScript.Run(ctx, s.rdb, s.Keys(e.AccountID), applyArgs(e)...).Err(); err != nil {

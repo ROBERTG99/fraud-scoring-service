@@ -45,7 +45,7 @@ chore: configure commit attribution
 | T-21 | LLM gateway and FakeLLM | M2 | done | `uv run pytest tests/llm` under the socket guard (TCP disabled, no loopback) → 10 passed incl. test_retries_only_retryable_codes and test_adapters_against_cassettes (Anthropic Messages + OpenAI Responses documented-shape fixtures, D-011) |
 | T-22 | Summary pipeline and faithfulness | M2 | done | `uv run pytest tests/unit/test_pipeline.py` (test_number_mismatch_drops_item, test_injection_in_merchant_name_is_ignored, Hypothesis absent-key rejection, fallback after 3 failures) → 10 passed; `tests/unit/test_redact.py` → 14 passed |
 | T-23 | Score handler with idempotency | M3 | done | `go test -race ./internal/api` (TestScoreReplayReturnsSameDecisionID, TestMissingAmountInvalidArgument, concurrent duplicates share one decision, Postgres idempotency fallback, service-token auth) → ok; `TestRedisIdempotencyFirstWriteWins` (integration) → ok |
-| T-24 | Degradation paths | M3 | todo | |
+| T-24 | Degradation paths | M3 | done | `go test -race -count=3 ./internal/api` (TestModelTimeoutRulesOnlyWithin35ms: 50 ms BentoML stub → < 35 ms, MODEL_UNAVAILABLE, model_version none; TestRedisDownBiasesToReview: FEATURES_UNAVAILABLE, REVIEW from 5,000 minor) → ok |
 | T-25 | Group commit and spool | M3 | todo | |
 | T-26 | Outbox relay | M3 | todo | |
 | T-27 | Shadow mode | M3 | todo | |
