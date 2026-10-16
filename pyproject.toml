@@ -30,6 +30,7 @@ training = [
   "onnxmltools>=1.13",
   "onnxruntime>=1.20",
   "orjson>=3.10",
+  "skl2onnx>=1.18",
   "scikit-learn>=1.6",
   "xgboost-cpu>=3.0",
 ]

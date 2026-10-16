@@ -1,0 +1,112 @@
+{
+  "model_version": "gbdt-727ff1fb9f",
+  "onnx_sha256": "2ad13318aabb1904dde2c64a25132eb7ddd09ec9d1083dd82c9dac85f3ca0e40",
+  "feature_names": [
+    "tx_count_10m",
+    "tx_count_1h",
+    "tx_count_24h",
+    "amount_sum_1h_minor",
+    "amount_minor",
+    "distinct_devices_24h",
+    "new_device",
+    "minutes_since_pwd_change",
+    "minutes_since_email_change",
+    "mcc_novel_30d",
+    "channel",
+    "hour_of_day_utc",
+    "amount_ratio_24h"
+  ],
+  "note": "tiny.onnx: 20 trees, depth 3, trained on demo data (seed 7) by python -m training.train --tiny; golden vector is the \u00a73.4 journey transaction",
+  "vectors": [
+    {
+      "features": [
+        0,
+        1,
+        3,
+        4200,
+        94000,
+        2,
+        1,
+        43200,
+        2,
+        1,
+        2,
+        14,
+        9.4
+      ],
+      "probability": 1.0
+    },
+    {
+      "features": [
+        0.0,
+        0.0,
+        3.0,
+        0.0,
+        44923.0,
+        1.0,
+        0.0,
+        43200.0,
+        43200.0,
+        1.0,
+        2.0,
+        6.0,
+        6.770610332489014
+      ],
+      "probability": 0.05105182155966759
+    },
+    {
+      "features": [
+        0.0,
+        0.0,
+        3.0,
+        0.0,
+        29622.0,
+        2.0,
+        0.0,
+        12.0,
+        43200.0,
+        0.0,
+        2.0,
+        17.0,
+        18.964149475097656
+      ],
+      "probability": 0.3333333432674408
+    },
+    {
+      "features": [
+        0.0,
+        1.0,
+        4.0,
+        2638.0,
+        29211.0,
+        2.0,
+        0.0,
+        13.0,
+        43200.0,
+        0.0,
+        2.0,
+        14.0,
+        16.759037017822266
+      ],
+      "probability": 0.5538067817687988
+    },
+    {
+      "features": [
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        201000.0,
+        4.0,
+        0.0,
+        43200.0,
+        43200.0,
+        1.0,
+        3.0,
+        21.0,
+        54.17789840698242
+      ],
+      "probability": 0.8926717042922974
+    }
+  ]
+}

@@ -46,10 +46,10 @@ features:
 # Conservative defaults used when Redis is unavailable (FEATURES_UNAVAILABLE).
 # Written by training/train.py from the training split (p90 of each feature); do not edit by hand.
 fallback_defaults:
-  tx_count_10m: 1
-  tx_count_1h: 2
+  tx_count_10m: 0
+  tx_count_1h: 1
   tx_count_24h: 5
-  amount_sum_1h_minor: 10000
+  amount_sum_1h_minor: 928
   distinct_devices_24h: 2
   new_device: 0
   minutes_since_pwd_change: 43200

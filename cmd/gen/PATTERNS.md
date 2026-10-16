@@ -11,7 +11,7 @@ Results on this data do not transfer to production fraud (see `docs/design-faq.m
 |---|---|---|---|---|---|
 | `demo` | 200,000 | 3,000 | 24 | 4 | train 14 / valid 3 / test 3 |
 | `eval` | 2,000,000 | 30,000 | 24 | 4 | train 14 / valid 3 / test 3 |
-| `parity` | 5,000 | 60 | 6 | 1 | (feature parity fixture only) |
+| `parity` | 5,000 | 45 | 8 | 1 | parity fixture and fast training tests |
 
 Start: 2026-09-01T00:00:00Z. Warm-up transactions carry `split=warmup` and are excluded from training and
 evaluation; they only build feature history (devices, merchant categories, velocity).

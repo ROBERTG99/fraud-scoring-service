@@ -68,7 +68,7 @@ func ConfigFor(size string, seed uint64) (Config, error) {
 	case "eval":
 		cfg.Events, cfg.Accounts = 2_000_000, 30_000
 	case "parity":
-		cfg.Events, cfg.Accounts, cfg.Days, cfg.WarmupDays, cfg.Margin = 5_000, 60, 6, 1, 1.25
+		cfg.Events, cfg.Accounts, cfg.Days, cfg.WarmupDays, cfg.Margin = 5_000, 45, 8, 1, 1.25
 	default:
 		return cfg, fmt.Errorf("unknown size %q (demo|eval|parity)", size)
 	}
