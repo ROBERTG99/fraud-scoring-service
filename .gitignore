@@ -1,0 +1,31 @@
+# secrets
+.env
+.env.local
+.env.*.local
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+# node
+node_modules/
+.next/
+dist/
+coverage/
+playwright-report/
+test-results/
+# go
+/bin/
+# terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+# misc
+.DS_Store
+.idea/
+.vscode/
