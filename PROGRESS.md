@@ -36,7 +36,7 @@ chore: configure commit attribution
 | T-12 | Feature-updater and DLQ | M1 | done | `go test -race ./cmd/feature-updater` (TestUpdaterRoutesInvalidToDLQ, TestRetriedBatchDoesNotDuplicateDLQ, kfake) → ok; `go test -tags integration -bench BenchmarkUpdater -benchtime 3x ./cmd/feature-updater` with the production NewUpdaterRedisClient → 57,359 events/s (budget ≥ 10,000) |
 | T-13 | Train/serve feature parity | M1 | done | `make feature-parity` → 3430 transactions x 13 features, 0 mismatches (Go TestOnlineOfflineParity vs training/features.py) |
 | T-14 | Training, calibration, ONNX export | M2 | done | `uv run pytest tests/unit/test_training.py` (test_temporal_split_has_no_overlap, test_onnx_matches_native_within_1e5) → 4 passed; demo train 4.6 s, test PR-AUC 0.9107, recall@1%FPR 0.9080, ECE 0.0007, ONNX max diff 5.66e-06 |
-| T-15 | MLflow registry | M2 | todo | |
+| T-15 | MLflow registry | M2 | done | `uv run pytest tests/unit/test_registry.py::test_set_alias_production` (SQLite store, D-009) → pass; `make train` → 11.0 s, registered fraud-gbdt v1 with pr_auc and recall_at_1pct_fpr tags; `make register-model ALIAS=production` → v1 @production |
 | T-16 | BentoML model server | M2 | todo | |
 | T-17 | Go model client | M2 | todo | |
 | T-18 | Triton profile and KServe v2 client | M2 | todo | |
