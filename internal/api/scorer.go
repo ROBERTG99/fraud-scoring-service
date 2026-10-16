@@ -70,6 +70,7 @@ type ScorerDeps struct {
 	Decisions   DecisionStore
 	Publisher   Publisher
 	Shadow      ShadowSubmitter
+	Live        *LiveStats
 	Log         *slog.Logger
 	Now         func() time.Time
 }
@@ -201,6 +202,7 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 	// The committed decision is shared with the writer and the idempotency cache: never mutate it.
 	out := cloneResponse(decision, false)
 	out.LatencyMs = float32(time.Since(start).Seconds() * 1000)
+	s.d.Live.Record(out, time.Since(start))
 	if req.Explain {
 		out.Features = featureMap
 	}
