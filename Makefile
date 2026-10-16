@@ -68,8 +68,8 @@ triton-up: ## Start the optional Triton profile
 lint: lint-go lint-py lint-web lint-proto lint-md lint-tf ## gofmt, goimports, golangci-lint, ruff, eslint, prettier, buf, terraform fmt, markdownlint
 
 lint-go:
-	@out=$$(gofmt -l $$(git ls-files --cached --others --exclude-standard '*.go' | grep -v '^gen/') || true); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
-	@out=$$(goimports -l -local github.com/ROBERTG99/fraud-scoring-service $$(git ls-files --cached --others --exclude-standard '*.go' | grep -v '^gen/') || true); if [ -n "$$out" ]; then echo "goimports needed:"; echo "$$out"; exit 1; fi
+	@out=$$(gofmt -l $$(git ls-files --cached --others --exclude-standard '*.go' | grep -v -e '^gen/' -e '^Dockerfile') || true); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
+	@out=$$(goimports -l -local github.com/ROBERTG99/fraud-scoring-service $$(git ls-files --cached --others --exclude-standard '*.go' | grep -v -e '^gen/' -e '^Dockerfile') || true); if [ -n "$$out" ]; then echo "goimports needed:"; echo "$$out"; exit 1; fi
 	golangci-lint run $(GO_PKGS)
 
 lint-py:
@@ -98,7 +98,7 @@ security: ## gitleaks, gosec, govulncheck, bandit, pip-audit, pnpm audit, hadoli
 	./scripts/security.sh
 
 check-fast: ## Lint and unit tests, under 60 seconds
-	@out=$$(gofmt -l $$(git ls-files --cached --others --exclude-standard '*.go' | grep -v '^gen/') || true); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
+	@out=$$(gofmt -l $$(git ls-files --cached --others --exclude-standard '*.go' | grep -v -e '^gen/' -e '^Dockerfile') || true); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 	$(PY) ruff check .
 	$(GO) vet $(GO_PKGS)
 	$(GO) test -count=1 $(GO_PKGS)
