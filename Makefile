@@ -9,6 +9,9 @@ GOBIN ?= $(shell go env GOPATH 2>/dev/null)/bin
 export PATH := $(GOBIN):$(HOME)/.local/bin:$(CURDIR)/.cache/bin:$(PATH)
 
 GO ?= go
+export GOTOOLCHAIN := local
+# Root holds Dockerfile.go (spec §16), so Go package trees are listed explicitly.
+GO_PKGS := ./cmd/... ./internal/... ./gen/... ./tests/... ./scripts/gocover/...
 UV ?= uv
 PNPM ?= pnpm
 COMPOSE ?= docker compose
@@ -67,7 +70,7 @@ lint: lint-go lint-py lint-web lint-proto lint-md lint-tf ## gofmt, goimports, g
 lint-go:
 	@out=$$(gofmt -l $$(git ls-files --cached --others --exclude-standard '*.go' | grep -v '^gen/') || true); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 	@out=$$(goimports -l -local github.com/ROBERTG99/fraud-scoring-service $$(git ls-files --cached --others --exclude-standard '*.go' | grep -v '^gen/') || true); if [ -n "$$out" ]; then echo "goimports needed:"; echo "$$out"; exit 1; fi
-	golangci-lint run ./...
+	golangci-lint run $(GO_PKGS)
 
 lint-py:
 	$(PY) ruff check .
@@ -97,8 +100,8 @@ security: ## gitleaks, gosec, govulncheck, bandit, pip-audit, pnpm audit, hadoli
 check-fast: ## Lint and unit tests, under 60 seconds
 	@out=$$(gofmt -l $$(git ls-files --cached --others --exclude-standard '*.go' | grep -v '^gen/') || true); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 	$(PY) ruff check .
-	$(GO) vet ./...
-	$(GO) test -count=1 ./...
+	$(GO) vet $(GO_PKGS)
+	$(GO) test -count=1 $(GO_PKGS)
 	$(PY) pytest -q -p no:cacheprovider tests/unit tests/llm tests/harness -m "not slow"
 
 # ---------------------------------------------------------------- tests
@@ -113,7 +116,7 @@ test: test-deps-up ## Unit, integration and contract tests on the host
 	$(MAKE) test-go test-py test-web
 
 test-go:
-	$(TEST_ENV) $(GO) test -race -count=1 -tags integration -coverprofile=artifacts/coverage/go.out -coverpkg=./internal/...,./cmd/... ./...
+	$(TEST_ENV) $(GO) test -race -count=1 -tags integration -coverprofile=artifacts/coverage/go.out -coverpkg=./internal/...,./cmd/... $(GO_PKGS)
 	$(GO) run ./scripts/gocover -profile artifacts/coverage/go.out -core internal/features,internal/rules,internal/decide,internal/store -min-core 85 -min-total 70
 
 test-py:

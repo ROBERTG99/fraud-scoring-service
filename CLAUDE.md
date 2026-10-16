@@ -30,6 +30,7 @@ the scoring path. All data is synthetic (`cmd/gen`, seed 7).
 `make bootstrap` · `make up` / `make down` · `make seed` · `make demo` · `make check-fast` (lint + unit, < 60 s) ·
 `make test` (host unit, integration, contract) · `make test-docker` · `make e2e` · `make eval` · `make bench` ·
 `make lint` / `make typecheck` / `make security` · `make verify` (the single gate) · `make verify-clean` ·
+`make logs` · `make eval-live` · `make record-fixtures` · `make triton-up` · `make retention` · `make dlq-peek` ·
 `make proto` · `make gen-data SIZE=demo|eval` · `make train` · `make register-model ALIAS=production|shadow` ·
 `make feature-parity` · `make tf-check` · `make sagemaker-dry-run` · `make audit-verify` · `make clean`.
 

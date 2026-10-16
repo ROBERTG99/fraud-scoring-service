@@ -49,7 +49,11 @@ func newSkeletonMux() *http.ServeMux {
 			http.Error(w, "invalid transaction", http.StatusBadRequest)
 			return
 		}
-		amount, _ := tx.AmountMinor.Int64()
+		amount, err := tx.AmountMinor.Int64()
+		if err != nil || amount <= 0 {
+			http.Error(w, "amount_minor must be a positive integer", http.StatusBadRequest)
+			return
+		}
 		action := "ACTION_APPROVE"
 		reasons := []string{}
 		if tx.MCC == "7995" {
