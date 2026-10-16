@@ -25,7 +25,7 @@ chore: configure commit attribution
 | T-02 | Makefile and toolchains | M0 | done | `make bootstrap` → done in 35 s; `make check-fast` → exit 0 (go test ok, 41 pytest passed); `test_all_block_h_targets_declared` passes |
 | T-03 | Harness docs, rules, subagents, skills | M0 | in-progress | harness docs, rules, subagents, skills written; `test_harness_docs.py` 41 passed |
 | T-04 | Hooks with tests | M0 | done | `uv run pytest tests/harness/test_hooks.py` → 35 passed (force push, test-partition edit, attribution, identity, terraform, rm -rf, .env); session_start.sh run with CLAUDE_CODE_REMOTE=true → rc 0, idempotent |
-| T-05 | Walking skeleton in Docker | M0 | todo | |
+| T-05 | Walking skeleton in Docker | M0 | done | `go test ./cmd/scorer -run TestScoreReturnsRulesOnlyDecision` → ok; `docker compose up -d --build --wait` → scorer + case-summarizer healthy (41 s); `curl localhost:8511/healthz` → 200 |
 | T-06 | Protobuf and codegen | M1 | todo | |
 | T-07 | Event schemas and validators | M1 | todo | |
 | T-08 | Synthetic generator | M1 | todo | |

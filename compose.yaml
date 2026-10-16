@@ -1,0 +1,22 @@
+name: fraud
+
+x-build: &build
+  context: .
+  network: host
+  args:
+    HTTPS_PROXY: "${HTTPS_PROXY:-}"
+
+services:
+  scorer:
+    build: { <<: *build, dockerfile: Dockerfile.go, target: scorer }
+    image: fraud/scorer:dev
+    ports: ["8510:8510", "8511:8511"]
+    restart: unless-stopped
+
+  case-summarizer:
+    build: { <<: *build, dockerfile: Dockerfile.summarizer }
+    image: fraud/case-summarizer:dev
+    environment:
+      FRAUD_SUMMARY_PROVIDER: fake
+    ports: ["8513:8513"]
+    restart: unless-stopped

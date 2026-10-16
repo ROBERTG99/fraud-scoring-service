@@ -1,0 +1,15 @@
+.git
+.venv
+.cache
+artifacts
+mlruns
+spool
+web/node_modules
+web/dist
+**/__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.env
+.env.*
+!.env.example

@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1.7
+FROM python:3.12-slim AS build
+ARG HTTPS_PROXY
+ARG HTTP_PROXY
+ARG NO_PROXY
+ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
+RUN pip install --no-cache-dir uv==0.11.3
+WORKDIR /app
+COPY pyproject.toml uv.lock README.md ./
+COPY third_party/evalgate/pyproject.toml third_party/evalgate/pyproject.toml
+COPY third_party/evalgate/src third_party/evalgate/src
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-default-groups --no-install-project
+COPY src src
+COPY training/__init__.py training/__init__.py
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-default-groups --no-editable
+
+FROM python:3.12-slim AS runtime
+RUN useradd --system --uid 10001 --no-create-home app
+WORKDIR /app
+COPY --from=build /app/.venv /app/.venv
+COPY prompts prompts
+COPY config config
+COPY schemas schemas
+ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1 FRAUD_REPO_ROOT=/app
+USER 10001
+EXPOSE 8513
+HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=10 \
+  CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8513/healthz', timeout=2).status == 200 else 1)"]
+CMD ["uvicorn", "fraud_summarizer.app:app", "--host", "0.0.0.0", "--port", "8513"]
