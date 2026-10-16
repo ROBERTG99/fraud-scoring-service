@@ -28,7 +28,7 @@ chore: configure commit attribution
 | T-05 | Walking skeleton in Docker | M0 | done | `go test ./cmd/scorer -run TestScoreReturnsRulesOnlyDecision` → ok; `docker compose up -d --build --wait` → scorer + case-summarizer healthy (41 s); `curl localhost:8511/healthz` → 200; `make check-fast` → exit 0 after M0 review fixes |
 | T-06 | Protobuf and codegen | M1 | done | `./scripts/proto.sh` twice → identical `gen/` (diff empty); `buf lint` clean; `go test ./tests/contract -run TestDecisionFieldsStable` → ok |
 | T-07 | Event schemas and validators | M1 | done | `go test ./internal/stream` (TestInvalidEventRejected, TestSharedFixtures 40 fixtures) → ok; `uv run pytest tests/unit/test_events.py::test_shared_fixtures_agree` → pass (20 valid, 20 invalid) |
-| T-08 | Synthetic generator | M1 | todo | |
+| T-08 | Synthetic generator | M1 | done | `go test ./cmd/gen` (TestDeterministicSHA, TestFraudRateWithinTolerance, schema/order/split tests) → ok; `make gen-data SIZE=demo` → 200,000 events in 3.1 s, fraud rate 0.0080, sha256 ccd80914a827 |
 | T-09 | Migrations | M1 | todo | |
 | T-10 | Feature spec and offline features | M1 | todo | |
 | T-11 | Redis Lua feature store | M1 | todo | |
