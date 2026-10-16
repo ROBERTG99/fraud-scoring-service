@@ -6,12 +6,17 @@ ARG HTTPS_PROXY
 ARG HTTP_PROXY
 ARG NO_PROXY
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
-RUN pip install --no-cache-dir uv==0.11.3
+# Optional extra CA for TLS-intercepting build networks: --secret id=extra_ca,src=<bundle>. Never stored in a layer.
+RUN --mount=type=secret,id=extra_ca,required=false \
+    if [ -s /run/secrets/extra_ca ]; then export PIP_CERT=/run/secrets/extra_ca; fi; \
+    pip install --no-cache-dir uv==0.11.3
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 COPY third_party/evalgate/pyproject.toml third_party/evalgate/pyproject.toml
 COPY third_party/evalgate/src third_party/evalgate/src
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-default-groups --group serving --no-install-project
+RUN --mount=type=cache,target=/root/.cache/uv --mount=type=secret,id=extra_ca,required=false \
+    if [ -s /run/secrets/extra_ca ]; then export SSL_CERT_FILE=/run/secrets/extra_ca UV_NATIVE_TLS=false; fi; \
+    uv sync --frozen --no-default-groups --group serving --no-install-project
 
 FROM python:3.12-slim AS runtime
 RUN useradd --system --uid 10001 --create-home app && mkdir -p /var/cache/fraud-model && chown 10001 /var/cache/fraud-model

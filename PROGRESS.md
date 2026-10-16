@@ -120,7 +120,7 @@ chore: configure commit attribution
 | T-27 | Shadow mode | M3 | done | `go test -race ./internal/api -run TestShadowFailureDoesNotChangeDecisions` (1,000 decisions identical with an always-failing shadow; all three actions covered) → ok; `internal/model/shadow_test.go` (drops counted in fraud_shadow_dropped_total, Submit never blocks) → ok; `TestShadowStoreInsert` → ok |
 | T-28 | CaseService, RBAC, dev-issuer | M3 | done | internal/api/cases.go (CaseServer), internal/auth (EdDSA JWT, JWKS, RBAC), cmd/dev-issuer; TestAnalystCannotTestRule (internal/api, real interceptors + JWTs over bufconn) and TestLabelWritesAuditRow (internal/store) pass; cmd/scorer serves gRPC :8510 + gateway :8511 (TestScoreReturnsRulesOnlyDecision, TestGatewayAuthAndLimits); tests/contract/test_openapi_contract.py: Schemathesis passes on all 8 non-streaming operations (3 consecutive runs, fresh DB each) |
 | T-29 | Summarizer consumer | M3 | done | src/fraud_summarizer/{consumer,app,repository,auth,metrics}.py; test_duplicate_decision_processed_once, test_provider_failure_writes_fallback pass; tests/integration/test_summarizer_consumer.py writes an ok account_takeover summary for a REVIEW decision from Redpanda into Postgres (duplicate skipped, invalid message to DLQ; 3 consecutive runs); make test-py: 172 passed, src/fraud_summarizer 93.6% (scripts/pycover.py) |
-| T-30 | SageMaker launcher | M3 | todo | |
+| T-30 | SageMaker launcher | M3 | done | training/sagemaker_launch.py (boto3 only, request validated offline against botocore service model), training/sagemaker_entry.py, training/Dockerfile; test_dry_run_request_shape, test_submit_to_moto pass; `make sagemaker-dry-run` exit 0 with AWS_* unset; image built (`docker build --network host --secret id=extra_ca,...`) and trained offline with `docker run --network none` (tiny: model.onnx + model_meta.json written) |
 | T-31 | Seed job and replay | M3 | todo | |
 | T-32 | Console scaffold and data layer | M4 | todo | |
 | T-33 | Queue and case detail | M4 | todo | |
@@ -179,7 +179,7 @@ chore: configure commit attribution
 | FR-9 |  | todo (T-27) |
 | FR-10 |  | todo (T-25, T-26) |
 | FR-11 | `tests/unit/test_pipeline.py::test_happy_path_stores_verified_summary_and_steps`, `tests/unit/test_consumer.py::test_duplicate_decision_processed_once`, `::test_provider_failure_writes_fallback`, `tests/integration/test_summarizer_consumer.py::test_consumer_writes_summary_for_review_event` | pass (pipeline, consumer, Postgres + Redpanda) |
-| FR-12 |  | todo (T-30, T-44) |
+| FR-12 | `tests/unit/test_sagemaker_launch.py::test_dry_run_request_shape`, `::test_submit_to_moto` | launcher pass; Terraform pending T-44 |
 | FR-13 | `internal/api/cases_test.go::TestAnalystCannotTestRule`, `internal/store::TestLabelWritesAuditRow`, `tests/contract/test_openapi_contract.py` | API pass; console pending T-32..T-35 |
 
 ## Milestone reviews
