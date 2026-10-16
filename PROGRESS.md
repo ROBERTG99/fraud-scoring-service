@@ -115,7 +115,7 @@ chore: configure commit attribution
 | T-22 | Summary pipeline and faithfulness | M2 | done | `uv run pytest tests/unit/test_pipeline.py` (test_number_mismatch_drops_item, test_injection_in_merchant_name_is_ignored, Hypothesis absent-key rejection, fallback after 3 failures) → 10 passed; `tests/unit/test_redact.py` → 14 passed |
 | T-23 | Score handler with idempotency | M3 | done | `go test -race ./internal/api` (TestScoreReplayReturnsSameDecisionID, TestMissingAmountInvalidArgument, concurrent duplicates share one decision, Postgres idempotency fallback, service-token auth) → ok; `TestRedisIdempotencyFirstWriteWins` (integration) → ok |
 | T-24 | Degradation paths | M3 | done | `go test -race -count=3 ./internal/api` (TestModelTimeoutRulesOnlyWithin35ms: 50 ms BentoML stub → < 35 ms, MODEL_UNAVAILABLE, model_version none; TestRedisDownBiasesToReview: FEATURES_UNAVAILABLE, REVIEW from 5,000 minor) → ok |
-| T-25 | Group commit and spool | M3 | todo | |
+| T-25 | Group commit and spool | M3 | done | `go test -race -tags integration ./internal/store -run "TestCommitBeforeRespond\|TestGroupCommitBatchesConcurrentWrites\|TestSpoolReplayAfterPostgresRecovers"` → ok (500 concurrent commits batched; 20 decisions spooled during a proxy-cut outage replayed once each, outbox and cases included); queue-full → RESOURCE_EXHAUSTED |
 | T-26 | Outbox relay | M3 | todo | |
 | T-27 | Shadow mode | M3 | todo | |
 | T-28 | CaseService, RBAC, dev-issuer | M3 | todo | |

@@ -167,6 +167,9 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 	pctx, pcancel := context.WithTimeout(ctx, PostgresTimeout)
 	stored, err := s.d.Decisions.Commit(pctx, rec)
 	pcancel()
+	if errors.Is(err, store.ErrOverloaded) {
+		return nil, status.Error(codes.ResourceExhausted, "decision queue full")
+	}
 	if err != nil {
 		// The writer spools to disk when Postgres is down; an error here means even the spool failed.
 		s.d.Log.Error("decision not persisted", "transaction_id", tx.TransactionId, "err", err)

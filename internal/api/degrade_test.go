@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,10 +10,13 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	fraudv1 "github.com/ROBERTG99/fraud-scoring-service/gen/go/fraud/v1"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/features"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/model"
+	"github.com/ROBERTG99/fraud-scoring-service/internal/store"
 )
 
 func hasReason(d *fraudv1.Decision, code string) bool {
@@ -110,5 +114,19 @@ func TestRulesStillApplyWhenModelDown(t *testing.T) {
 	}
 	if d.Action != fraudv1.Action_ACTION_DECLINE || d.ReasonCodes[0] != "BLOCKED_MCC" || !hasReason(d, "MODEL_UNAVAILABLE") {
 		t.Fatalf("%+v", d)
+	}
+}
+
+func TestWriterOverloadIsResourceExhausted(t *testing.T) {
+	h := newHarness(t)
+	h.decisions.err = store.ErrOverloaded
+	_, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: journeyTx("0192f000-0000-7000-8000-0000000000d1")})
+	if status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("want ResourceExhausted, got %v", err)
+	}
+	h.decisions.err = errors.New("disk full")
+	_, err = h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: journeyTx("0192f000-0000-7000-8000-0000000000d2")})
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("want Unavailable when even the spool fails, got %v", err)
 	}
 }
