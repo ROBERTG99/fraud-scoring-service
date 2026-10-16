@@ -41,7 +41,7 @@ chore: configure commit attribution
 | T-17 | Go model client | M2 | done | `go test -race ./internal/model` (TestClientTimeoutReturnsErrUnavailable: 50 ms server, 20 ms deadline → ErrUnavailable < 30 ms) → ok; `go test -tags integration -run TestGoldenVectorScore ./internal/model` (real BentoML, 5 golden vectors, both aliases, within 1e-5) → ok |
 | T-18 | Triton profile and KServe v2 client | M2 | done | `go test ./internal/model -run TestKServeV2RequestShape` (recorded KServe v2 request/response) → ok; Triton profile test skipped: nvcr.io blocked (Forbidden), recorded in docs/KNOWN_LIMITATIONS.md |
 | T-19 | Rules engine | M2 | done | `go test -race ./internal/rules` (TestInvalidExprKeepsPreviousVersion, schema/limits, watch reload) → ok; `go test -bench BenchmarkEval64Rules ./internal/rules` → 14.9 µs per 64-rule evaluation (budget < 50 µs) |
-| T-20 | Combination table | M2 | todo | |
+| T-20 | Combination table | M2 | done | `go test -race ./internal/decide` (TestFinalRuleWins, TestDegradedBandByAmount, TestRuleR003WithLowScoreReviews, rapid TestActionMonotonicInScore) → ok, coverage 96.7% |
 | T-21 | LLM gateway and FakeLLM | M2 | todo | |
 | T-22 | Summary pipeline and faithfulness | M2 | todo | |
 | T-23 | Score handler with idempotency | M3 | todo | |

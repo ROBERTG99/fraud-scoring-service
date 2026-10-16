@@ -4,6 +4,7 @@ package features
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -216,5 +217,67 @@ func checkOnlyEarlier(rt *rapid.T, v Vector, tx events.Event, arrived []events.E
 		if c.got != exact {
 			rt.Fatalf("minutes_since %v, want %v", c.got, exact)
 		}
+	}
+}
+
+func TestApplyEventsPipelinedMatchesSingle(t *testing.T) {
+	s1, _ := newTestStore(t)
+	s2, _ := newTestStore(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var evs []events.Event
+	for i := 0; i < 1200; i++ { // more than MaxPipeline, so several chunks
+		e := events.Event{EventID: fmt.Sprintf("e%d", i), AccountID: fmt.Sprintf("acc_%d", i%7), TSMillis: base + int64(i)*1000, DeviceID: fmt.Sprintf("d%d", i%5)}
+		switch i % 4 {
+		case 0:
+			e.Kind, e.Success = events.KindLogin, true
+		case 1:
+			e.Kind, e.Change = events.KindDevice, []string{events.ChangeDeviceBound, events.ChangePasswordChanged, events.ChangeEmailChanged}[i%3]
+		default:
+			e.Kind, e.AmountMinor, e.MCC, e.Channel = events.KindTransaction, int64(100+i), "5411", "ECOMMERCE"
+		}
+		evs = append(evs, e)
+	}
+	if err := s1.ApplyEvents(ctx, evs); err != nil {
+		t.Fatal(err)
+	}
+	for i := range evs {
+		if err := s2.ApplyEvent(ctx, &evs[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for a := 0; a < 7; a++ {
+		tx := Tx{EventID: "probe", AccountID: fmt.Sprintf("acc_%d", a), TSMillis: base + 1201*1000, AmountMinor: 500, DeviceID: "d1", MCC: "5411", Channel: "ECOMMERCE"}
+		v1, _, err1 := s1.ReadAsOf(ctx, tx)
+		v2, _, err2 := s2.ReadAsOf(ctx, tx)
+		if err1 != nil || err2 != nil || v1 != v2 {
+			t.Fatalf("account %d: pipelined %v vs single %v (%v %v)", a, v1, v2, err1, err2)
+		}
+	}
+	if err := s1.ApplyEvents(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	if v := s1.Fallback(Tx{AmountMinor: 7, Channel: "P2P"}); v[IdxAmountMinor] != 7 {
+		t.Fatal("fallback")
+	}
+	if _, err := LoadSpec(""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadSpec("/nonexistent/spec.yaml"); err == nil {
+		t.Fatal("missing spec must fail")
+	}
+}
+
+func TestScoreTxUnavailable(t *testing.T) {
+	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", MaxRetries: -1})
+	defer rdb.Close()
+	s := NewStore(rdb, "x", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	if _, _, err := s.ScoreTx(ctx, Tx{AccountID: "a", TSMillis: base}); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("want ErrUnavailable, got %v", err)
+	}
+	if err := s.ApplyEvent(ctx, &events.Event{Kind: events.KindLogin, AccountID: "a"}); err == nil {
+		t.Fatal("apply against a dead server must fail")
 	}
 }
