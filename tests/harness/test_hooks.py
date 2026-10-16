@@ -77,6 +77,8 @@ def test_guard_blocks_forbidden_commands(command: str) -> None:
         'git commit -m "feat: add scorer"',
         "cat .env.example",
         "rm -rf artifacts/model",
+        "rm -rf /tmp/claude-0/gen1; grep -c '^  /v1' gen/openapi/fraud.yaml",
+        "rm -rf gen/go && echo /etc",
         "git config --get user.name",
     ],
 )

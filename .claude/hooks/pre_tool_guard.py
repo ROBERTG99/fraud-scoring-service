@@ -50,7 +50,7 @@ BASH_RULES: list[tuple[re.Pattern[str], str]] = [
 ]
 
 RM_RF = re.compile(
-    r"\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*|-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*|-r\s+-f|-f\s+-r)\s+(.+)"
+    r"\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f[a-zA-Z]*|-[a-zA-Z]*f[a-zA-Z]*r[a-zA-Z]*|-r\s+-f|-f\s+-r)\s+([^;&|\n]+)"
 )
 TEST_PARTITION = re.compile(r"(^|/)evals/datasets/.+/test[^/]*\.jsonl$")
 ENV_FILE = re.compile(r"(^|/)\.env(\.[\w.-]+)?$")
@@ -68,8 +68,6 @@ def project_dir(payload: dict[str, object]) -> Path:
 def check_rm(command: str, root: Path) -> None:
     for match in RM_RF.finditer(command):
         for raw in match.group(2).split():
-            if raw.startswith(("&&", "||", ";", "|")):
-                break
             target = raw.strip("'\"")
             if target in {"/", "/*", "~", "~/", "$HOME", "${HOME}", "*", ".", ".."}:
                 block(f"rm -rf {target} is outside the repository")

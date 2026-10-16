@@ -1,0 +1,261 @@
+syntax = "proto3";
+
+package fraud.v1;
+
+import "fraud/v1/scorer.proto";
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/ROBERTG99/fraud-scoring-service/gen/go/fraud/v1;fraudv1";
+
+// CaseStatus of a review case.
+enum CaseStatus {
+  CASE_STATUS_UNSPECIFIED = 0;
+  CASE_STATUS_OPEN = 1;
+  CASE_STATUS_LABELLED = 2;
+}
+
+// Label an analyst assigns to a case.
+enum Label {
+  LABEL_UNSPECIFIED = 0;
+  LABEL_FRAUD = 1;
+  LABEL_LEGIT = 2;
+}
+
+// Fact is one flat key/value the summary may cite (decision.*, feature.*, event.*).
+message Fact {
+  string key = 1;
+  string value = 2;
+}
+
+// Evidence item of an AI summary; verified=true when the code-level faithfulness check passed.
+message Evidence {
+  string fact_key = 1;
+  string statement = 2;
+  bool verified = 3;
+}
+
+// CaseSummary is the asynchronous AI summary. It never affects decisions.
+message CaseSummary {
+  string status = 1; // ok | fallback | unfaithful
+  string pattern = 2; // account_takeover | card_testing | mule_account | friendly_fraud | unclear
+  repeated Evidence evidence = 3;
+  repeated string recommended_checks = 4;
+  double confidence = 5;
+  string model = 6;
+  string prompt_version = 7;
+  double faithfulness = 8;
+  google.protobuf.Timestamp created_at = 9;
+}
+
+// CaseLabel written by an analyst.
+message CaseLabel {
+  Label label = 1;
+  string note = 2;
+  string analyst_sub = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+// Case is a REVIEW decision awaiting or carrying an analyst label.
+message Case {
+  string case_id = 1;
+  Decision decision = 2;
+  CaseStatus status = 3;
+  float priority = 4;
+  repeated Fact facts = 5;
+  CaseSummary summary = 6;
+  CaseLabel label = 7;
+  string account_id = 8;
+  int64 amount_minor = 9;
+  string currency = 10;
+  string summary_status = 11; // pending | ok | fallback | unfaithful
+  google.protobuf.Timestamp created_at = 12;
+}
+
+// ListCasesRequest pages through cases, highest priority first.
+message ListCasesRequest {
+  int32 page_size = 1; // 1..100, default 50
+  string page_token = 2;
+  CaseStatus status = 3; // default OPEN
+  string reason_code = 4; // optional filter
+  string summary_status = 5; // optional filter
+}
+
+// ListCasesResponse is one page of cases (without facts).
+message ListCasesResponse {
+  repeated Case cases = 1;
+  string next_page_token = 2;
+  int32 total_open = 3;
+}
+
+// GetCaseRequest identifies a case.
+message GetCaseRequest {
+  string case_id = 1;
+}
+
+// LabelCaseRequest labels a case; idempotency_key makes retries safe.
+message LabelCaseRequest {
+  string case_id = 1;
+  Label label = 2;
+  string note = 3; // at most 2000 characters
+  string idempotency_key = 4;
+}
+
+// GetTimelineRequest asks for an account's recent activity.
+message GetTimelineRequest {
+  string account_id = 1;
+  int32 limit = 2; // 1..200, default 100
+}
+
+// TimelineItem is one event, decision or label.
+message TimelineItem {
+  string kind = 1; // event.login | event.device | event.transaction | decision | label
+  string id = 2;
+  google.protobuf.Timestamp ts = 3;
+  string title = 4;
+  map<string, string> details = 5;
+}
+
+// Timeline for one account, newest first.
+message Timeline {
+  string account_id = 1;
+  repeated TimelineItem items = 2;
+}
+
+// GetShadowSummaryRequest selects the comparison window.
+message GetShadowSummaryRequest {
+  int32 window_hours = 1; // default 24
+  int32 disagreement_limit = 2; // default 50, max 100
+}
+
+// BandCell counts decisions per (primary band, shadow band).
+message BandCell {
+  string primary_band = 1;
+  string shadow_band = 2;
+  int64 count = 3;
+}
+
+// ShadowComparison is one decision scored by both versions.
+message ShadowComparison {
+  string decision_id = 1;
+  float primary_score = 2;
+  float shadow_score = 3;
+  string primary_band = 4;
+  string shadow_band = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+// ShadowSummary aggregates shadow comparisons.
+message ShadowSummary {
+  string primary_version = 1;
+  string shadow_version = 2;
+  int64 total = 3;
+  double agreement_rate = 4;
+  repeated BandCell band_matrix = 5;
+  repeated ShadowComparison disagreements = 6;
+  int64 dropped = 7;
+}
+
+// GetActiveRuleSetRequest has no parameters.
+message GetActiveRuleSetRequest {}
+
+// Thresholds are the calibrated model probability bands.
+message Thresholds {
+  double review = 1;
+  double decline = 2;
+}
+
+// Rule is one versioned rule.
+message Rule {
+  string id = 1;
+  string name = 2;
+  string when = 3;
+  Action action = 4;
+  string reason_code = 5;
+  bool final = 6;
+}
+
+// RuleSet is the active rule set.
+message RuleSet {
+  string version = 1;
+  string sha256 = 2;
+  string feature_spec = 3;
+  Thresholds thresholds = 4;
+  repeated Rule rules = 5;
+  google.protobuf.Timestamp loaded_at = 6;
+}
+
+// TestRuleRequest evaluates a candidate expression against recent decisions' features.
+message TestRuleRequest {
+  string when = 1;
+  int32 sample_size = 2; // default 1000, max 5000
+}
+
+// TestRuleResponse reports compile errors or the match rate.
+message TestRuleResponse {
+  bool valid = 1;
+  string error = 2;
+  int64 evaluated = 3;
+  int64 matched = 4;
+  double match_rate = 5;
+  repeated string sample_decision_ids = 6;
+}
+
+// StreamLiveMetricsRequest has no parameters.
+message StreamLiveMetricsRequest {}
+
+// LiveMetrics is pushed every 2 seconds.
+message LiveMetrics {
+  google.protobuf.Timestamp ts = 1;
+  double rps = 2;
+  double p95_ms = 3;
+  int64 approve = 4;
+  int64 review = 5;
+  int64 decline = 6;
+  double degraded_rate = 7;
+  double updater_lag_seconds = 8;
+  int64 model_unavailable = 9;
+  int64 features_unavailable = 10;
+}
+
+// CaseService backs the analyst console. Requires a dev-issuer JWT; RBAC in internal/auth/rbac.go.
+service CaseService {
+  // ListCases returns open cases by priority.
+  rpc ListCases(ListCasesRequest) returns (ListCasesResponse) {
+    option (google.api.http) = {get: "/v1/cases"};
+  }
+  // GetCase returns one case with facts and summary.
+  rpc GetCase(GetCaseRequest) returns (Case) {
+    option (google.api.http) = {get: "/v1/cases/{case_id}"};
+  }
+  // LabelCase writes one label and one audit row (analyst only).
+  rpc LabelCase(LabelCaseRequest) returns (Case) {
+    option (google.api.http) = {
+      post: "/v1/cases/{case_id}:label"
+      body: "*"
+    };
+  }
+  // GetTimeline returns an account's events, decisions and labels.
+  rpc GetTimeline(GetTimelineRequest) returns (Timeline) {
+    option (google.api.http) = {get: "/v1/accounts/{account_id}/timeline"};
+  }
+  // GetShadowSummary compares primary and shadow models (risk_engineer or ml_engineer).
+  rpc GetShadowSummary(GetShadowSummaryRequest) returns (ShadowSummary) {
+    option (google.api.http) = {get: "/v1/shadow/summary"};
+  }
+  // GetActiveRuleSet returns the active rules.
+  rpc GetActiveRuleSet(GetActiveRuleSetRequest) returns (RuleSet) {
+    option (google.api.http) = {get: "/v1/rules/active"};
+  }
+  // TestRule evaluates an expression without activating it (risk_engineer only).
+  rpc TestRule(TestRuleRequest) returns (TestRuleResponse) {
+    option (google.api.http) = {
+      post: "/v1/rules:test"
+      body: "*"
+    };
+  }
+  // StreamLiveMetrics pushes metrics every 2 s.
+  rpc StreamLiveMetrics(StreamLiveMetricsRequest) returns (stream LiveMetrics) {
+    option (google.api.http) = {get: "/v1/metrics/live"};
+  }
+}
