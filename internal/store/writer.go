@@ -221,8 +221,8 @@ func (w *GroupWriter) flush(batch []*pending) {
 const insertDecisionSQL = `
 WITH ins AS (
   INSERT INTO decisions (decision_id, transaction_id, account_id, action, score, reason_codes, model_version, rules_version,
-                         degraded, features, latency_ms, decided_at)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                         degraded, features, latency_ms, decided_at, tx)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $16)
   ON CONFLICT DO NOTHING
   RETURNING decision_id
 ), ob AS (
@@ -257,8 +257,13 @@ func (w *GroupWriter) insertBatch(ctx context.Context, recs []DecisionRecord) ([
 		if codes == nil {
 			codes = []string{}
 		}
+		attrs, err := json.Marshal(r.Tx)
+		if err != nil {
+			return nil, err
+		}
 		b.Queue(insertDecisionSQL, d.DecisionId, d.TransactionId, r.AccountID, ActionName(d.Action), score, codes, d.ModelVersion,
-			d.RulesVersion, d.Degraded, string(feats), d.LatencyMs, d.DecidedAt.AsTime(), string(r.OutboxPayload()), uuid.NewString(), r.Priority())
+			d.RulesVersion, d.Degraded, string(feats), d.LatencyMs, d.DecidedAt.AsTime(), string(r.OutboxPayload()), uuid.NewString(), r.Priority(),
+			string(attrs))
 	}
 	br := tx.SendBatch(ctx, b)
 	inserted := make([]bool, len(recs))

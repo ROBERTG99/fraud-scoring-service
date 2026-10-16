@@ -54,6 +54,7 @@ func record(i int, action fraudv1.Action) DecisionRecord {
 		ReasonCodes: []string{"NEW_DEVICE_AFTER_CREDENTIAL_CHANGE", "MODEL_SCORE_ELEVATED"}, ModelVersion: "fraud-gbdt/1", RulesVersion: "2026.10.1",
 		LatencyMs: 4.2, DecidedAt: timestamppb.New(time.Date(2026, 9, 20, 10, 3, 0, 0, time.UTC))}
 	return DecisionRecord{Decision: d, AccountID: "acc_00000042", Features: map[string]float64{"amount_minor": 94000, "new_device": 1}, AmountMinor: 94000, Currency: "USD",
+		Tx:    TxAttrs{AmountMinor: 94000, Currency: "USD", MerchantID: "m_00042", MCC: "5732", Channel: "ECOMMERCE", Country: "US"},
 		Event: &events.Event{Kind: events.KindTransaction, EventID: tx, AccountID: "acc_00000042", TSMillis: d.DecidedAt.AsTime().UnixMilli()}}
 }
 

@@ -21,7 +21,7 @@ func TestUpDownUp(t *testing.T) {
 		t.Fatal(err)
 	}
 	v1, err := MigrationVersion(ctx, dsn)
-	if err != nil || v1 < 3 {
+	if err != nil || v1 < 4 {
 		t.Fatalf("version after up = %d, %v", v1, err)
 	}
 	if err := MigrateDownAll(ctx, dsn); err != nil {
@@ -104,7 +104,7 @@ func TestDecisionConstraints(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.Close(ctx)
-	_, err = conn.Exec(ctx, `INSERT INTO decisions VALUES (gen_random_uuid(), 'tx', 'acc', 'BLOCK', NULL, '{}', 'none', 'v', true, '{}', 1, now())`)
+	_, err = conn.Exec(ctx, `INSERT INTO decisions VALUES (gen_random_uuid(), 'tx', 'acc', 'BLOCK', NULL, '{}', 'none', 'v', true, '{}', 1, now(), '{}')`)
 	if err == nil {
 		t.Fatal("action outside APPROVE|REVIEW|DECLINE must be rejected")
 	}

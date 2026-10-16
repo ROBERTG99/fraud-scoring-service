@@ -33,6 +33,7 @@ type spoolLine struct {
 	Features    map[string]float64 `json:"features"`
 	AmountMinor int64              `json:"amount_minor"`
 	Currency    string             `json:"currency"`
+	Tx          TxAttrs            `json:"tx"`
 	Event       json.RawMessage    `json:"event,omitempty"`
 }
 
@@ -182,7 +183,7 @@ func encodeSpoolLine(r *DecisionRecord) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	line := spoolLine{Decision: d, AccountID: r.AccountID, Features: r.Features, AmountMinor: r.AmountMinor, Currency: r.Currency}
+	line := spoolLine{Decision: d, AccountID: r.AccountID, Features: r.Features, AmountMinor: r.AmountMinor, Currency: r.Currency, Tx: r.Tx}
 	if r.Event != nil {
 		line.Event = r.Event.AppendJSON(nil)
 	}
@@ -214,7 +215,7 @@ func readSpoolFile(path string) ([]DecisionRecord, error) {
 		if err := protojson.Unmarshal(line.Decision, &d); err != nil {
 			continue
 		}
-		rec := DecisionRecord{Decision: &d, AccountID: line.AccountID, Features: line.Features, AmountMinor: line.AmountMinor, Currency: line.Currency}
+		rec := DecisionRecord{Decision: &d, AccountID: line.AccountID, Features: line.Features, AmountMinor: line.AmountMinor, Currency: line.Currency, Tx: line.Tx}
 		if len(line.Event) > 0 {
 			var ev events.Event
 			if err := json.Unmarshal(line.Event, &ev); err == nil {

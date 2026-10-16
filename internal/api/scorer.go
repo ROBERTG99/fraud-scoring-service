@@ -161,7 +161,9 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 		DecidedAt:     timestamppb.New(s.d.Now().UTC()),
 	}
 	rec := store.DecisionRecord{Decision: decision, AccountID: tx.AccountId, Features: featureMap, AmountMinor: tx.AmountMinor,
-		Currency: tx.Currency, Event: transactionEvent(tx, channel, asOf)}
+		Currency: tx.Currency, Event: transactionEvent(tx, channel, asOf),
+		Tx: store.TxAttrs{AmountMinor: tx.AmountMinor, Currency: tx.Currency, MerchantID: defaultMerchant(tx.MerchantId), MerchantName: tx.MerchantName,
+			MCC: tx.Mcc, Channel: channel, Country: tx.Country, IPPrefix: tx.IpPrefix, DeviceID: tx.DeviceId, EventTS: asOf.UTC().Format(time.RFC3339Nano)}}
 	decision.LatencyMs = float32(time.Since(start).Seconds() * 1000)
 
 	pctx, pcancel := context.WithTimeout(ctx, PostgresTimeout)

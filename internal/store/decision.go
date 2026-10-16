@@ -17,7 +17,22 @@ type DecisionRecord struct {
 	Features    map[string]float64
 	AmountMinor int64
 	Currency    string
+	Tx          TxAttrs       // decisions.tx: attributes the rule environment and case detail need
 	Event       *events.Event // the transaction event published to events.transaction
+}
+
+// TxAttrs are the request attributes stored in decisions.tx (no PII: synthetic tokens, /24 prefixes).
+type TxAttrs struct {
+	AmountMinor  int64  `json:"amount_minor"`
+	Currency     string `json:"currency"`
+	MerchantID   string `json:"merchant_id"`
+	MerchantName string `json:"merchant_name,omitempty"`
+	MCC          string `json:"mcc"`
+	Channel      string `json:"channel"`
+	Country      string `json:"country"`
+	IPPrefix     string `json:"ip_prefix"`
+	DeviceID     string `json:"device_id"`
+	EventTS      string `json:"event_ts"`
 }
 
 // ActionName returns APPROVE|REVIEW|DECLINE for the decisions.action column.
