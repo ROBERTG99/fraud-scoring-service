@@ -138,7 +138,7 @@ func (e *Engine) Watch(ctx context.Context, interval time.Duration, sub *redis.C
 	var msgs <-chan *redis.Message
 	if sub != nil {
 		ps := sub.Subscribe(ctx, ChangedChannel)
-		defer ps.Close()
+		defer func() { _ = ps.Close() }()
 		msgs = ps.Channel()
 	}
 	t := time.NewTicker(interval)

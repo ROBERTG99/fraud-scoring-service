@@ -58,8 +58,8 @@ func run(ctx context.Context, log *slog.Logger) error {
 		return err
 	}
 	rdb := features.NewUpdaterRedisClient(envOr("FRAUD_REDIS_ADDR", "127.0.0.1:8530"))
-	defer rdb.Close()
-	fs := features.NewStore(rdb, "", spec)
+	defer func() { _ = rdb.Close() }()
+	fs := features.NewStore(rdb, os.Getenv("FRAUD_REDIS_PREFIX"), spec) // shared with the scorer; default "fr"
 
 	var sinks multiSink
 	if dsn := os.Getenv("FRAUD_PG_DSN"); dsn != "" {

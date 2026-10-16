@@ -52,7 +52,7 @@ func (b *BentoML) Predict(ctx context.Context, alias string, rows [][]float32) (
 	if err != nil {
 		return Prediction{}, fmt.Errorf("%w: %v", ErrUnavailable, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 		return Prediction{}, fmt.Errorf("%w: status %d", ErrUnavailable, resp.StatusCode)

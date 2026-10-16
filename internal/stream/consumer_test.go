@@ -55,7 +55,10 @@ func TestRunReturnsWhileHandlerKeepsFailing(t *testing.T) {
 	}
 	stop()
 	select {
-	case <-done:
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("Run returned %v, want context.Canceled", err)
+		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("Run did not return after cancel while the handler kept failing")
 	}

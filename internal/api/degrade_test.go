@@ -73,7 +73,7 @@ func TestModelTimeoutRulesOnlyWithin35ms(t *testing.T) {
 // FR-8: Redis down → conservative defaults biased to REVIEW with FEATURES_UNAVAILABLE.
 func TestRedisDownBiasesToReview(t *testing.T) {
 	dead := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", MaxRetries: -1, DialTimeout: 5 * time.Millisecond})
-	defer dead.Close()
+	defer func() { _ = dead.Close() }()
 	h := newHarness(t)
 	h.srv.d.Features = features.NewStore(dead, "t", nil)
 	h.srv.d.Idempotency = &memIdem{}

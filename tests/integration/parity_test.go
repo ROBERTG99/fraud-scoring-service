@@ -31,7 +31,7 @@ func readOffline(t *testing.T, path string) (map[string][]float64, []string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	rows, err := csv.NewReader(f).ReadAll()
 	if err != nil {
 		t.Fatal(err)
@@ -68,13 +68,13 @@ func TestOnlineOfflineParity(t *testing.T) {
 	}
 
 	rdb := redis.NewClient(&redis.Options{Addr: testutil.RedisAddr(t)})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 	store := features.NewStore(rdb, testutil.UniqueName("parity"), nil)
 	f, err := os.Open(repoPath("tests", "fixtures", "parity", "events.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
@@ -138,7 +138,7 @@ func writeOnline(t *testing.T, path string, names, order []string, online map[st
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	w := csv.NewWriter(f)
 	_ = w.Write(append([]string{"transaction_id"}, names...))
 	for _, id := range order {

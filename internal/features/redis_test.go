@@ -270,7 +270,7 @@ func TestApplyEventsPipelinedMatchesSingle(t *testing.T) {
 
 func TestScoreTxUnavailable(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", MaxRetries: -1})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 	s := NewStore(rdb, "x", nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()

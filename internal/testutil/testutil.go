@@ -75,7 +75,7 @@ func NewDatabase(t testing.TB) string {
 	if err != nil {
 		t.Fatalf("connect admin: %v", err)
 	}
-	defer conn.Close(ctx)
+	defer func() { _ = conn.Close(ctx) }()
 	if _, err := conn.Exec(ctx, "CREATE DATABASE "+name); err != nil {
 		t.Fatalf("create database: %v", err)
 	}
@@ -86,7 +86,7 @@ func NewDatabase(t testing.TB) string {
 		if err != nil {
 			return
 		}
-		defer c.Close(ctx)
+		defer func() { _ = c.Close(ctx) }()
 		_, _ = c.Exec(ctx, "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
 	})
 	u, err := url.Parse(admin)

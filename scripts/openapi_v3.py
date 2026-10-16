@@ -26,6 +26,115 @@ STATUS_DESCRIPTIONS = {
 }
 
 
+# Request constraints the server enforces (internal/api/validate.go, internal/api/cases.go). Swagger output from
+# protoc-gen-openapiv2 carries none of them; tests/contract keeps the two in agreement. Character classes use
+# [0-9] rather than \\d so generated data matches Go's RE2 semantics (no Unicode digits).
+UUID = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+OCTET = "(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])"
+CURRENCIES = [
+    "AUD",
+    "BRL",
+    "CAD",
+    "CHF",
+    "DKK",
+    "EUR",
+    "GBP",
+    "JPY",
+    "MXN",
+    "NOK",
+    "NZD",
+    "PLN",
+    "SEK",
+    "SGD",
+    "USD",
+]
+
+SCHEMA_CONSTRAINTS: dict[str, dict[str, Any]] = {
+    "v1ScoreRequest": {"required": ["transaction"], "additionalProperties": False},
+    "v1Transaction": {
+        "required": [
+            "transaction_id",
+            "account_id",
+            "amount_minor",
+            "currency",
+            "mcc",
+            "channel",
+            "device_id",
+            "ip_prefix",
+            "country",
+        ],
+        "additionalProperties": False,
+        "properties": {
+            "transaction_id": {"pattern": UUID},
+            "account_id": {"pattern": "^acc_[0-9a-z]{6,32}$"},
+            "amount_minor": {"type": "integer", "format": "int64", "minimum": 1, "maximum": 10_000_000},
+            "currency": {"enum": CURRENCIES},
+            "merchant_id": {"pattern": "^(m_[0-9a-z]{4,32})?$"},  # optional: "" means absent in proto3
+            "merchant_name": {"maxLength": 120, "pattern": "^[^\\x00-\\x1f\\x7f]*$"},
+            "mcc": {"pattern": "^[0-9]{4}$"},
+            "channel": {
+                "replace": {
+                    "type": "string",
+                    "enum": ["CHANNEL_CARD_PRESENT", "CHANNEL_ECOMMERCE", "CHANNEL_P2P"],
+                }
+            },
+            "device_id": {"pattern": "^[0-9a-f]{64}$"},
+            "ip_prefix": {"pattern": f"^{OCTET}\\.{OCTET}\\.{OCTET}\\.0/24$"},
+            "country": {"pattern": "^[A-Z]{2}$"},
+        },
+    },
+    "CaseServiceLabelCaseBody": {
+        "required": ["label", "idempotency_key"],
+        "additionalProperties": False,
+        "properties": {
+            "label": {"replace": {"type": "string", "enum": ["LABEL_FRAUD", "LABEL_LEGIT"]}},
+            "note": {"maxLength": 2000, "pattern": "^[^\\x00]*$"},
+            "idempotency_key": {"pattern": "^[A-Za-z0-9_-]{8,128}$"},
+        },
+    },
+    "v1TestRuleRequest": {
+        "required": ["when"],
+        "additionalProperties": False,
+        "properties": {
+            "when": {"minLength": 1, "maxLength": 500},
+            "sample_size": {"minimum": 0, "maximum": 5000},
+        },
+    },
+}
+
+# operationId -> parameter -> schema additions. 0 selects the documented default.
+PARAM_CONSTRAINTS: dict[str, dict[str, dict[str, Any]]] = {
+    "CaseService_ListCases": {
+        "page_size": {"minimum": 0, "maximum": 100},
+        "reason_code": {"pattern": "^[A-Z0-9_]{0,64}$"},
+        "summary_status": {"enum": ["", "pending", "ok", "fallback", "unfaithful"]},
+    },
+    "CaseService_GetCase": {"case_id": {"pattern": UUID}},
+    "CaseService_LabelCase": {"case_id": {"pattern": UUID}},
+    "CaseService_GetTimeline": {
+        "account_id": {"pattern": "^acc_[0-9a-z]{6,32}$"},
+        "limit": {"minimum": 0, "maximum": 200},
+    },
+    "CaseService_GetShadowSummary": {
+        "window_hours": {"minimum": 0, "maximum": 720},
+        "disagreement_limit": {"minimum": 0, "maximum": 100},
+    },
+}
+
+
+def apply_schema_constraints(schemas: dict[str, Any]) -> None:
+    for name, extra in SCHEMA_CONSTRAINTS.items():
+        schema = schemas[name]
+        for key in ("required", "additionalProperties"):
+            if key in extra:
+                schema[key] = extra[key]
+        for prop, add in extra.get("properties", {}).items():
+            if "replace" in add:
+                schema["properties"][prop] = add["replace"]
+            else:
+                schema["properties"][prop].update(add)
+
+
 def rewrite_refs(node: Any) -> Any:
     if isinstance(node, dict):
         out = {}
@@ -54,6 +163,7 @@ def convert_operation(op: dict[str, Any], scorer: bool) -> dict[str, Any]:
             continue
         schema = {k: param[k] for k in ("type", "format", "enum", "items", "default") if k in param}
         p = {k: param[k] for k in ("name", "in", "required", "description") if k in param}
+        schema.update(PARAM_CONSTRAINTS.get(op.get("operationId", ""), {}).get(param["name"], {}))
         p["schema"] = rewrite_refs(schema)
         if param.get("type") == "array":
             p["style"] = "form"
@@ -86,6 +196,7 @@ def convert(swagger: dict[str, Any]) -> dict[str, Any]:
     schemas = rewrite_refs(swagger.get("definitions", {}))
     for name, defn in swagger.get("x-stream-definitions", {}).items():
         schemas[name] = rewrite_refs(defn)
+    apply_schema_constraints(schemas)
     return {
         "openapi": "3.0.3",
         "info": {

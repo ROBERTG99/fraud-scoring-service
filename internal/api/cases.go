@@ -5,10 +5,10 @@ import (
 	"errors"
 	"log/slog"
 	"regexp"
+	"strings"
 	"time"
 	"unicode/utf8"
 
-	"github.com/google/uuid"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -74,10 +74,8 @@ func (s *CaseServer) mapErr(err error) error {
 	return status.Error(codes.Internal, "internal error")
 }
 
-func validUUID(s string) bool {
-	_, err := uuid.Parse(s)
-	return err == nil && len(s) == 36
-}
+// validUUID accepts the canonical lowercase form (the OpenAPI pattern).
+func validUUID(s string) bool { return reUUID.MatchString(s) }
 
 // ListCases returns open (or labelled) cases by priority.
 func (s *CaseServer) ListCases(ctx context.Context, req *fraudv1.ListCasesRequest) (*fraudv1.ListCasesResponse, error) {
@@ -142,8 +140,8 @@ func (s *CaseServer) LabelCase(ctx context.Context, req *fraudv1.LabelCaseReques
 	default:
 		v = append(v, &errdetails.BadRequest_FieldViolation{Field: "label", Description: "must be LABEL_FRAUD or LABEL_LEGIT"})
 	}
-	if utf8.RuneCountInString(req.Note) > 2000 || !utf8.ValidString(req.Note) {
-		v = append(v, &errdetails.BadRequest_FieldViolation{Field: "note", Description: "at most 2000 characters"})
+	if utf8.RuneCountInString(req.Note) > 2000 || !utf8.ValidString(req.Note) || strings.ContainsRune(req.Note, 0) {
+		v = append(v, &errdetails.BadRequest_FieldViolation{Field: "note", Description: "at most 2000 characters, no NUL"})
 	}
 	if !reIdemKey.MatchString(req.IdempotencyKey) {
 		v = append(v, &errdetails.BadRequest_FieldViolation{Field: "idempotency_key", Description: "8-128 characters of [A-Za-z0-9_-]"})
@@ -224,7 +222,7 @@ func (s *CaseServer) GetActiveRuleSet(context.Context, *fraudv1.GetActiveRuleSet
 
 // TestRule evaluates a candidate expression against recent decisions without activating it.
 func (s *CaseServer) TestRule(ctx context.Context, req *fraudv1.TestRuleRequest) (*fraudv1.TestRuleResponse, error) {
-	if req.When == "" || len(req.When) > 500 {
+	if req.When == "" || utf8.RuneCountInString(req.When) > 500 {
 		return nil, fieldErr("when", "must be 1 to 500 characters")
 	}
 	n := int(req.SampleSize)

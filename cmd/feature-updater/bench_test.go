@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -49,7 +50,7 @@ func BenchmarkUpdater(b *testing.B) {
 	const n = 60_000
 	recs := syntheticRecords(n)
 	rdb := features.NewUpdaterRedisClient(testutil.RedisAddr(b)) // the production constructor
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 	var best float64
 	for i := 0; i < b.N; i++ {
 		cluster, err := kfake.NewCluster(kfake.NumBrokers(1), kfake.SeedTopics(stream.Partitions, stream.AllTopics...))
@@ -84,7 +85,9 @@ func BenchmarkUpdater(b *testing.B) {
 		elapsed := time.Since(start)
 		b.StopTimer()
 		cancel()
-		<-done
+		if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+			b.Fatalf("run: %v", err)
+		}
 		cluster.Close()
 		if u.Applied() < n {
 			b.Fatalf("applied %d of %d events", u.Applied(), n)

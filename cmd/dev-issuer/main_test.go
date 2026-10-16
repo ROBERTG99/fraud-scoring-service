@@ -28,7 +28,7 @@ func TestTokenVerifiesAgainstPublishedJWKS(t *testing.T) {
 			AccessToken string `json:"access_token"`
 		}
 		_ = json.NewDecoder(resp.Body).Decode(&body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		id, err := v.Verify(context.Background(), body.AccessToken)
 		if err != nil || id.Subject != p.ID || id.Role != p.Role {
 			t.Fatalf("%s: %+v %v", p.ID, id, err)
@@ -39,7 +39,7 @@ func TestTokenVerifiesAgainstPublishedJWKS(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != want {
 			t.Fatalf("%s: status %d want %d", body, resp.StatusCode, want)
 		}
@@ -49,7 +49,7 @@ func TestTokenVerifiesAgainstPublishedJWKS(t *testing.T) {
 		Personas []Persona `json:"personas"`
 	}
 	_ = json.NewDecoder(resp.Body).Decode(&ps)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if len(ps.Personas) != 3 {
 		t.Fatalf("personas %v", ps)
 	}

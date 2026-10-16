@@ -15,7 +15,7 @@ import (
 
 func TestWatchReloadsOnPubSub(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: testutil.RedisAddr(t)})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 	dir := t.TempDir()
 	writeRules(t, dir, "2026.10.1", validYAML)
 	eng, err := NewEngine(dir, nil)

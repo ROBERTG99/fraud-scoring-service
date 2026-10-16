@@ -31,7 +31,7 @@ func MigrateUp(ctx context.Context, dsn string) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := p.Up(ctx); err != nil {
 		return fmt.Errorf("migrate up: %w", err)
 	}
@@ -44,7 +44,7 @@ func MigrateDownAll(ctx context.Context, dsn string) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if _, err := p.DownTo(ctx, 0); err != nil {
 		return fmt.Errorf("migrate down: %w", err)
 	}
@@ -57,6 +57,6 @@ func MigrationVersion(ctx context.Context, dsn string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	return p.GetDBVersion(ctx)
 }

@@ -143,7 +143,9 @@ func TestUpdaterRoutesInvalidToDLQ(t *testing.T) {
 		t.Fatal("offset was not committed past the invalid messages")
 	}
 	stop()
-	<-done
+	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("run: %v", err)
+	}
 }
 
 type flakyApplier struct {
@@ -195,7 +197,9 @@ func TestRetriedBatchDoesNotDuplicateDLQ(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	stop()
-	<-done
+	if err := <-done; err != nil && !errors.Is(err, context.Canceled) {
+		t.Fatalf("run: %v", err)
+	}
 	if applier.count() != 1 {
 		t.Fatalf("applied %d events after retries, want 1", applier.count())
 	}

@@ -118,7 +118,7 @@ chore: configure commit attribution
 | T-25 | Group commit and spool | M3 | done | `go test -race -tags integration ./internal/store -run "TestCommitBeforeRespond\|TestGroupCommitBatchesConcurrentWrites\|TestSpoolReplayAfterPostgresRecovers"` → ok (500 concurrent commits batched; 20 decisions spooled during a proxy-cut outage replayed once each, outbox and cases included); queue-full → RESOURCE_EXHAUSTED |
 | T-26 | Outbox relay | M3 | done | `go test -race -tags integration ./internal/store -run TestRelayCrashProducesDuplicatesWithSameDecisionID` (kfake) → ok: crash after produce leaves 5 rows unsent, restart re-sends, 10 messages for 5 decision_ids, consumer dedupe processes 5 |
 | T-27 | Shadow mode | M3 | done | `go test -race ./internal/api -run TestShadowFailureDoesNotChangeDecisions` (1,000 decisions identical with an always-failing shadow; all three actions covered) → ok; `internal/model/shadow_test.go` (drops counted in fraud_shadow_dropped_total, Submit never blocks) → ok; `TestShadowStoreInsert` → ok |
-| T-28 | CaseService, RBAC, dev-issuer | M3 | todo | |
+| T-28 | CaseService, RBAC, dev-issuer | M3 | done | internal/api/cases.go (CaseServer), internal/auth (EdDSA JWT, JWKS, RBAC), cmd/dev-issuer; TestAnalystCannotTestRule (internal/api, real interceptors + JWTs over bufconn) and TestLabelWritesAuditRow (internal/store) pass; cmd/scorer serves gRPC :8510 + gateway :8511 (TestScoreReturnsRulesOnlyDecision, TestGatewayAuthAndLimits); tests/contract/test_openapi_contract.py: Schemathesis passes on all 8 non-streaming operations (3 consecutive runs, fresh DB each) |
 | T-29 | Summarizer consumer | M3 | todo | |
 | T-30 | SageMaker launcher | M3 | todo | |
 | T-31 | Seed job and replay | M3 | todo | |
@@ -168,7 +168,7 @@ chore: configure commit attribution
 
 | FR | Named test | Status |
 |---|---|---|
-| FR-1 | `internal/api/scorer_test.go::TestScoreReplayReturnsSameDecisionID` (+ `TestDecisionFieldsStable`) | pass (unit); end-to-end gRPC/gateway pending T-28 |
+| FR-1 | `internal/api/scorer_test.go::TestScoreReplayReturnsSameDecisionID` (+ `TestDecisionFieldsStable`) | pass (unit + gateway `cmd/scorer` + Schemathesis) |
 | FR-2 | `internal/stream/validate_test.go::TestInvalidEventRejected`, `cmd/feature-updater/updater_test.go::TestUpdaterRoutesInvalidToDLQ` | pass |
 | FR-3 | `tests/integration/parity_test.go::TestOnlineOfflineParity` (0 mismatches), `internal/features/redis_test.go::TestOutOfOrderWithinFiveMinutes` | pass |
 | FR-4 | `cmd/gen/gen_test.go::TestDeterministicSHA` | pass |
@@ -180,7 +180,7 @@ chore: configure commit attribution
 | FR-10 |  | todo (T-25, T-26) |
 | FR-11 | `tests/unit/test_pipeline.py::test_happy_path_stores_verified_summary_and_steps`, `::test_provider_failures_write_fallback_summary` | pass (pipeline); consumer + DB pending T-29 |
 | FR-12 |  | todo (T-30, T-44) |
-| FR-13 |  | todo (T-28, T-32..T-35) |
+| FR-13 | `internal/api/cases_test.go::TestAnalystCannotTestRule`, `internal/store::TestLabelWritesAuditRow`, `tests/contract/test_openapi_contract.py` | API pass; console pending T-32..T-35 |
 
 ## Milestone reviews
 

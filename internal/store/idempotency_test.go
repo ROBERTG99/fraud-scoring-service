@@ -15,7 +15,7 @@ import (
 
 func TestRedisIdempotencyFirstWriteWins(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: testutil.RedisAddr(t)})
-	defer rdb.Close()
+	defer func() { _ = rdb.Close() }()
 	idem := NewRedisIdempotency(rdb, testutil.UniqueName("t"))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

@@ -2,15 +2,25 @@
 components:
   schemas:
     CaseServiceLabelCaseBody:
+      additionalProperties: false
       description: LabelCaseRequest labels a case; idempotency_key makes retries safe.
       properties:
         idempotency_key:
+          pattern: ^[A-Za-z0-9_-]{8,128}$
           type: string
         label:
-          $ref: '#/components/schemas/fraudV1Label'
+          enum:
+          - LABEL_FRAUD
+          - LABEL_LEGIT
+          type: string
         note:
+          maxLength: 2000
+          pattern: ^[^\x00]*$
           title: at most 2000 characters
           type: string
+      required:
+      - label
+      - idempotency_key
       type: object
     fraudV1Label:
       default: LABEL_UNSPECIFIED
@@ -296,12 +306,15 @@ components:
           type: string
       type: object
     v1ScoreRequest:
+      additionalProperties: false
       description: ScoreRequest wraps the transaction; explain=true returns the feature vector.
       properties:
         explain:
           type: boolean
         transaction:
           $ref: '#/components/schemas/v1Transaction'
+      required:
+      - transaction
       type: object
     v1ShadowComparison:
       description: ShadowComparison is one decision scored by both versions.
@@ -350,14 +363,21 @@ components:
           type: string
       type: object
     v1TestRuleRequest:
+      additionalProperties: false
       description: TestRuleRequest evaluates a candidate expression against recent decisions' features.
       properties:
         sample_size:
           format: int32
+          maximum: 5000
+          minimum: 0
           title: default 1000, max 5000
           type: integer
         when:
+          maxLength: 500
+          minLength: 1
           type: string
+      required:
+      - when
       type: object
     v1TestRuleResponse:
       description: TestRuleResponse reports compile errors or the match rate.
@@ -420,43 +440,85 @@ components:
           type: string
       type: object
     v1Transaction:
+      additionalProperties: false
       description: Transaction to score. All identifiers are synthetic tokens.
       properties:
         account_id:
+          pattern: ^acc_[0-9a-z]{6,32}$
           title: synthetic token
           type: string
         amount_minor:
           format: int64
+          maximum: 10000000
+          minimum: 1
           title: 1 to 10_000_000
-          type: string
+          type: integer
         channel:
-          $ref: '#/components/schemas/v1Channel'
+          enum:
+          - CHANNEL_CARD_PRESENT
+          - CHANNEL_ECOMMERCE
+          - CHANNEL_P2P
+          type: string
         country:
+          pattern: ^[A-Z]{2}$
           title: ISO 3166-1 alpha-2
           type: string
         currency:
+          enum:
+          - AUD
+          - BRL
+          - CAD
+          - CHF
+          - DKK
+          - EUR
+          - GBP
+          - JPY
+          - MXN
+          - NOK
+          - NZD
+          - PLN
+          - SEK
+          - SGD
+          - USD
           title: ISO 4217 allowlist
           type: string
         device_id:
+          pattern: ^[0-9a-f]{64}$
           title: salted SHA-256
           type: string
         event_ts:
           format: date-time
           type: string
         ip_prefix:
+          pattern: ^(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\.(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\.0/24$
           title: /24 only
           type: string
         mcc:
+          pattern: ^[0-9]{4}$
           title: 4 digits
           type: string
         merchant_id:
+          pattern: ^(m_[0-9a-z]{4,32})?$
           type: string
         merchant_name:
+          maxLength: 120
+          pattern: ^[^\x00-\x1f\x7f]*$
           title: synthetic display name; untrusted text, never a model or rule input
           type: string
         transaction_id:
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
           title: UUIDv7, idempotency key
           type: string
+      required:
+      - transaction_id
+      - account_id
+      - amount_minor
+      - currency
+      - mcc
+      - channel
+      - device_id
+      - ip_prefix
+      - country
       type: object
   securitySchemes:
     bearerJWT:
@@ -483,6 +545,7 @@ paths:
         name: account_id
         required: true
         schema:
+          pattern: ^acc_[0-9a-z]{6,32}$
           type: string
       - description: 1..200, default 100
         in: query
@@ -490,6 +553,8 @@ paths:
         required: false
         schema:
           format: int32
+          maximum: 200
+          minimum: 0
           type: integer
       responses:
         '200':
@@ -555,6 +620,8 @@ paths:
         required: false
         schema:
           format: int32
+          maximum: 100
+          minimum: 0
           type: integer
       - in: query
         name: page_token
@@ -577,12 +644,19 @@ paths:
         name: reason_code
         required: false
         schema:
+          pattern: ^[A-Z0-9_]{0,64}$
           type: string
       - description: optional filter
         in: query
         name: summary_status
         required: false
         schema:
+          enum:
+          - ''
+          - pending
+          - ok
+          - fallback
+          - unfaithful
           type: string
       responses:
         '200':
@@ -646,6 +720,7 @@ paths:
         name: case_id
         required: true
         schema:
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
           type: string
       responses:
         '200':
@@ -709,6 +784,7 @@ paths:
         name: case_id
         required: true
         schema:
+          pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
           type: string
       requestBody:
         content:
@@ -1026,6 +1102,8 @@ paths:
         required: false
         schema:
           format: int32
+          maximum: 720
+          minimum: 0
           type: integer
       - description: default 50, max 100
         in: query
@@ -1033,6 +1111,8 @@ paths:
         required: false
         schema:
           format: int32
+          maximum: 100
+          minimum: 0
           type: integer
       responses:
         '200':

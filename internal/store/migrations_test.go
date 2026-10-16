@@ -37,7 +37,7 @@ func TestUpDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close(ctx)
+	defer func() { _ = conn.Close(ctx) }()
 	for _, table := range []string{"decisions", "decision_outbox", "review_cases", "case_summaries", "analyst_labels",
 		"shadow_comparisons", "rule_sets", "model_versions", "step_records", "processed_messages", "audit_log", "account_events"} {
 		var n int
@@ -58,7 +58,7 @@ func TestAuditLogRejectsUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer owner.Close(ctx)
+	defer func() { _ = owner.Close(ctx) }()
 	if _, err := owner.Exec(ctx, `INSERT INTO audit_log (actor_sub, role, action, target, details, prev_hash, hash)
 		VALUES ('analyst-1', 'analyst', 'case.label', 'case/1', '{}', '', 'h1')`); err != nil {
 		t.Fatal(err)
@@ -75,7 +75,7 @@ func TestAuditLogRejectsUpdate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer app.Close(ctx)
+	defer func() { _ = app.Close(ctx) }()
 	if _, err := app.Exec(ctx, `INSERT INTO audit_log (actor_sub, role, action, target, details, prev_hash, hash)
 		VALUES ('analyst-1', 'analyst', 'case.label', 'case/2', '{}', 'h1', 'h2')`); err != nil {
 		t.Fatalf("fraud_app insert: %v", err)
@@ -103,7 +103,7 @@ func TestDecisionConstraints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close(ctx)
+	defer func() { _ = conn.Close(ctx) }()
 	_, err = conn.Exec(ctx, `INSERT INTO decisions VALUES (gen_random_uuid(), 'tx', 'acc', 'BLOCK', NULL, '{}', 'none', 'v', true, '{}', 1, now(), '{}')`)
 	if err == nil {
 		t.Fatal("action outside APPROVE|REVIEW|DECLINE must be rejected")

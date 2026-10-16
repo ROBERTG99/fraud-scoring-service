@@ -9,7 +9,6 @@ import (
 )
 
 type stubClient struct {
-	mu      sync.Mutex
 	block   chan struct{}
 	err     error
 	shadow  float32

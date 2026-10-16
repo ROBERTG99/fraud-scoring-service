@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -326,7 +327,9 @@ func TestValidationRules(t *testing.T) {
 		{"transaction.device_id", func(tx *fraudv1.Transaction) { tx.DeviceId = "iphone-of-alice" }},
 		{"transaction.ip_prefix", func(tx *fraudv1.Transaction) { tx.IpPrefix = "203.0.113.7" }},
 		{"transaction.country", func(tx *fraudv1.Transaction) { tx.Country = "usa" }},
-		{"transaction.merchant_name", func(tx *fraudv1.Transaction) { tx.MerchantName = string(make([]byte, 121)) }},
+		{"transaction.merchant_name", func(tx *fraudv1.Transaction) { tx.MerchantName = strings.Repeat("é", 121) }},
+		{"transaction.merchant_name", func(tx *fraudv1.Transaction) { tx.MerchantName = "Shop\x00" }},
+		{"transaction.merchant_name", func(tx *fraudv1.Transaction) { tx.MerchantName = "Shop\x0f" }},
 	}
 	for _, m := range mut {
 		tx := journeyTx("0192f000-0000-7000-8000-000000000006")
@@ -336,7 +339,9 @@ func TestValidationRules(t *testing.T) {
 			t.Errorf("%s: violations %v", m.field, v)
 		}
 	}
-	if v := ValidateTransaction(journeyTx("0192f000-0000-7000-8000-000000000007")); len(v) != 0 {
+	ok := journeyTx("0192f000-0000-7000-8000-000000000007")
+	ok.MerchantName = strings.Repeat("é", 120) // 120 characters, 240 bytes
+	if v := ValidateTransaction(ok); len(v) != 0 {
 		t.Fatalf("valid transaction rejected: %v", v)
 	}
 	if _, err := newHarness(t).srv.Score(context.Background(), &fraudv1.ScoreRequest{}); status.Code(err) != codes.InvalidArgument {

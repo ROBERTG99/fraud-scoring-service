@@ -3,6 +3,8 @@ package api
 
 import (
 	"regexp"
+	"strings"
+	"unicode/utf8"
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
@@ -69,14 +71,17 @@ func ValidateTransaction(tx *fraudv1.Transaction) []*errdetails.BadRequest_Field
 	if !reCountry.MatchString(tx.Country) {
 		add("country", "must be ISO 3166-1 alpha-2")
 	}
-	if len(tx.MerchantName) > 120 {
-		add("merchant_name", "at most 120 bytes")
+	if utf8.RuneCountInString(tx.MerchantName) > 120 || strings.ContainsFunc(tx.MerchantName, isControl) {
+		add("merchant_name", "at most 120 characters, no control characters")
 	}
 	if tx.EventTs != nil && !tx.EventTs.IsValid() {
 		add("event_ts", "invalid timestamp")
 	}
 	return v
 }
+
+// isControl matches C0 controls and DEL; Postgres text and jsonb reject NUL, and none belong in a display name.
+func isControl(r rune) bool { return r < 0x20 || r == 0x7f }
 
 func invalidArgument(v []*errdetails.BadRequest_FieldViolation) error {
 	st := status.New(codes.InvalidArgument, "invalid request")

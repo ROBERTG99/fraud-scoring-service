@@ -37,7 +37,7 @@ func parse(path string) (map[string]*counts, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	// Blocks can appear several times (one per test binary); keep the max hit count per block.
 	seen := map[string]int64{}
 	stmts := map[string]int64{}
