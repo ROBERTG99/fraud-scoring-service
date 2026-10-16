@@ -36,6 +36,7 @@ training = [
 ]
 serving = [
   "bentoml>=1.4",
+  "mlflow-skinny>=3.0",
   "numpy>=2.0",
   "onnxruntime>=1.20",
 ]
@@ -106,7 +107,7 @@ markers = [
   "enable_socket: allow network for this test (local services only)",
 ]
 addopts = "--disable-socket --allow-unix-socket --allow-hosts=127.0.0.1,localhost,::1"
-filterwarnings = ["ignore::DeprecationWarning:mlflow.*", "ignore::DeprecationWarning:bentoml.*"]
+filterwarnings = ["ignore::DeprecationWarning:mlflow.*", "ignore::DeprecationWarning:bentoml.*", "ignore::DeprecationWarning:_bentoml_sdk.*", "ignore::DeprecationWarning:_bentoml_impl.*"]
 
 [tool.coverage.run]
 branch = false

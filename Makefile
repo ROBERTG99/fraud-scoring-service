@@ -91,7 +91,7 @@ lint-tf:
 	./scripts/terraform.sh fmt -check -recursive infra/terraform
 
 typecheck: ## mypy --strict on src/ and training/, tsc --noEmit
-	$(PY) mypy --strict src training
+	$(PY) mypy --strict src training serving
 	$(PNPM) -C web typecheck
 
 security: ## gitleaks, gosec, govulncheck, bandit, pip-audit, pnpm audit, hadolint, trivy, checkov, tflint, actionlint, licences

@@ -919,6 +919,7 @@ dev = [
 ]
 serving = [
     { name = "bentoml" },
+    { name = "mlflow-skinny" },
     { name = "numpy" },
     { name = "onnxruntime" },
 ]
@@ -971,6 +972,7 @@ dev = [
 ]
 serving = [
     { name = "bentoml", specifier = ">=1.4" },
+    { name = "mlflow-skinny", specifier = ">=3.0" },
     { name = "numpy", specifier = ">=2.0" },
     { name = "onnxruntime", specifier = ">=1.20" },
 ]
