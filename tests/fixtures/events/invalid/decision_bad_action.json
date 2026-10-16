@@ -1,0 +1,16 @@
+{
+  "schema": "fraud.decision.v1",
+  "decision_id": "0192f000-0000-7000-8000-000000000401",
+  "transaction_id": "0192f000-0000-7000-8000-000000000301",
+  "account_id": "acc_000123",
+  "action": "BLOCK",
+  "score": 0.62,
+  "reason_codes": [
+    "NEW_DEVICE_AFTER_CREDENTIAL_CHANGE",
+    "MODEL_SCORE_ELEVATED"
+  ],
+  "model_version": "fraud-gbdt/3",
+  "rules_version": "2026.10.1",
+  "degraded": false,
+  "decided_at": "2026-10-01T10:03:00.041Z"
+}

@@ -11,7 +11,7 @@ export PATH := $(GOBIN):$(HOME)/.local/bin:$(CURDIR)/.cache/bin:$(PATH)
 GO ?= go
 export GOTOOLCHAIN := local
 # Root holds Dockerfile.go (spec §16), so Go package trees are listed explicitly.
-GO_PKGS := ./cmd/... ./internal/... ./gen/... ./tests/... ./scripts/gocover/...
+GO_PKGS := ./cmd/... ./internal/... ./gen/... ./schemas/... ./tests/... ./scripts/gocover/...
 UV ?= uv
 PNPM ?= pnpm
 COMPOSE ?= docker compose

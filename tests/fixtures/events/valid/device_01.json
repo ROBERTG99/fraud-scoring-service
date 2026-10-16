@@ -1,0 +1,8 @@
+{
+  "schema": "fraud.event.device.v1",
+  "event_id": "0192f000-0000-7000-8000-000000000201",
+  "account_id": "acc_000123",
+  "event_ts": "2026-10-01T10:01:00.123Z",
+  "device_id": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "change": "device_bound"
+}

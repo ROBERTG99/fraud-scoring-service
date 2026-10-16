@@ -47,7 +47,7 @@ func TestDecisionFieldsStable(t *testing.T) {
 }
 
 func TestTransactionFieldsStable(t *testing.T) {
-	want := []string{"transaction_id", "account_id", "amount_minor", "currency", "merchant_id", "mcc", "channel", "device_id", "ip_prefix", "country", "event_ts"}
+	want := []string{"transaction_id", "account_id", "amount_minor", "currency", "merchant_id", "mcc", "channel", "device_id", "ip_prefix", "country", "event_ts", "merchant_name"}
 	fields := (&fraudv1.Transaction{}).ProtoReflect().Descriptor().Fields()
 	for i, name := range want {
 		f := fields.ByNumber(protoreflect.FieldNumber(i + 1))

@@ -36,6 +36,7 @@ message Transaction {
   string ip_prefix = 9; // /24 only
   string country = 10; // ISO 3166-1 alpha-2
   google.protobuf.Timestamp event_ts = 11;
+  string merchant_name = 12; // synthetic display name; untrusted text, never a model or rule input
 }
 
 // ScoreRequest wraps the transaction; explain=true returns the feature vector.

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fraud-scoring-service.local/schemas/events/login.json",
+  "title": "fraud.event.login.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "event_id",
+    "account_id",
+    "event_ts",
+    "device_id",
+    "ip_prefix",
+    "country",
+    "success",
+    "method"
+  ],
+  "properties": {
+    "schema": {
+      "const": "fraud.event.login.v1"
+    },
+    "event_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "account_id": {
+      "type": "string",
+      "pattern": "^acc_[0-9a-z]{6,32}$"
+    },
+    "event_ts": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "device_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "salted SHA-256 of the device identifier"
+    },
+    "ip_prefix": {
+      "type": "string",
+      "pattern": "^(25[0-5]|2[0-4]\\d|1?\\d?\\d)\\.(25[0-5]|2[0-4]\\d|1?\\d?\\d)\\.(25[0-5]|2[0-4]\\d|1?\\d?\\d)\\.0/24$",
+      "description": "IPv4 /24 prefix only"
+    },
+    "country": {
+      "type": "string",
+      "pattern": "^[A-Z]{2}$"
+    },
+    "success": {
+      "type": "boolean"
+    },
+    "method": {
+      "enum": [
+        "password",
+        "otp",
+        "biometric"
+      ]
+    }
+  }
+}

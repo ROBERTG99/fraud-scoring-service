@@ -1,0 +1,15 @@
+{
+  "schema": "fraud.event.transaction.v1",
+  "event_id": "0192f000-0000-7000-8000-000000000301",
+  "transaction_id": "0192f000-0000-7000-8000-000000000301",
+  "account_id": "acc_000123",
+  "amount_minor": 94000,
+  "currency": "USD",
+  "merchant_id": "m_00042",
+  "mcc": "7995",
+  "channel": "ECOMMERCE",
+  "device_id": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "ip_prefix": "198.51.100.0/24",
+  "country": "US",
+  "event_ts": "2026-10-01T10:03:00Z"
+}

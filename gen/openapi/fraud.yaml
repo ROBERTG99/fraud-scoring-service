@@ -451,6 +451,9 @@ components:
           type: string
         merchant_id:
           type: string
+        merchant_name:
+          title: synthetic display name; untrusted text, never a model or rule input
+          type: string
         transaction_id:
           title: UUIDv7, idempotency key
           type: string

@@ -143,6 +143,7 @@ type Transaction struct {
 	IpPrefix      string                 `protobuf:"bytes,9,opt,name=ip_prefix,json=ipPrefix,proto3" json:"ip_prefix,omitempty"` // /24 only
 	Country       string                 `protobuf:"bytes,10,opt,name=country,proto3" json:"country,omitempty"`                  // ISO 3166-1 alpha-2
 	EventTs       *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=event_ts,json=eventTs,proto3" json:"event_ts,omitempty"`
+	MerchantName  string                 `protobuf:"bytes,12,opt,name=merchant_name,json=merchantName,proto3" json:"merchant_name,omitempty"` // synthetic display name; untrusted text, never a model or rule input
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -252,6 +253,13 @@ func (x *Transaction) GetEventTs() *timestamppb.Timestamp {
 		return x.EventTs
 	}
 	return nil
+}
+
+func (x *Transaction) GetMerchantName() string {
+	if x != nil {
+		return x.MerchantName
+	}
+	return ""
 }
 
 // ScoreRequest wraps the transaction; explain=true returns the feature vector.
@@ -436,7 +444,7 @@ var File_fraud_v1_scorer_proto protoreflect.FileDescriptor
 
 const file_fraud_v1_scorer_proto_rawDesc = "" +
 	"\n" +
-	"\x15fraud/v1/scorer.proto\x12\bfraud.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfd\x02\n" +
+	"\x15fraud/v1/scorer.proto\x12\bfraud.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa2\x03\n" +
 	"\vTransaction\x12%\n" +
 	"\x0etransaction_id\x18\x01 \x01(\tR\rtransactionId\x12\x1d\n" +
 	"\n" +
@@ -451,7 +459,8 @@ const file_fraud_v1_scorer_proto_rawDesc = "" +
 	"\tip_prefix\x18\t \x01(\tR\bipPrefix\x12\x18\n" +
 	"\acountry\x18\n" +
 	" \x01(\tR\acountry\x125\n" +
-	"\bevent_ts\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\aeventTs\"a\n" +
+	"\bevent_ts\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\aeventTs\x12#\n" +
+	"\rmerchant_name\x18\f \x01(\tR\fmerchantName\"a\n" +
 	"\fScoreRequest\x127\n" +
 	"\vtransaction\x18\x01 \x01(\v2\x15.fraud.v1.TransactionR\vtransaction\x12\x18\n" +
 	"\aexplain\x18\x02 \x01(\bR\aexplain\"\xf0\x03\n" +

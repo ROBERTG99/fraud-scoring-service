@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fraud-scoring-service.local/schemas/events/decision.json",
+  "title": "fraud.decision.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "decision_id",
+    "transaction_id",
+    "account_id",
+    "action",
+    "score",
+    "reason_codes",
+    "model_version",
+    "rules_version",
+    "degraded",
+    "decided_at"
+  ],
+  "properties": {
+    "schema": {
+      "const": "fraud.decision.v1"
+    },
+    "decision_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "transaction_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    },
+    "account_id": {
+      "type": "string",
+      "pattern": "^acc_[0-9a-z]{6,32}$"
+    },
+    "action": {
+      "enum": [
+        "APPROVE",
+        "REVIEW",
+        "DECLINE"
+      ]
+    },
+    "score": {
+      "type": "number",
+      "minimum": -1,
+      "maximum": 1
+    },
+    "reason_codes": {
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]{1,63}$"
+      }
+    },
+    "model_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "rules_version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "degraded": {
+      "type": "boolean"
+    },
+    "decided_at": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,9})?(Z|[+-]\\d{2}:\\d{2})$"
+    }
+  }
+}
