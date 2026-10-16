@@ -5,6 +5,74 @@ Build progress for `fraud-scoring-service`, driven by `docs/specs/000-build-spec
 ## Needs the maintainer
 
 - **evalgate tag missing.** `git ls-remote https://github.com/ROBERTG99/evalgate` on 2026-10-16 shows only `refs/heads/main` (no `v0.1.0` tag, no code yet). Per §11 the consumer dependency rule applies: a minimal report.v1-compatible implementation lives in `third_party/evalgate/`. When `v0.1.0` is published, switch `pyproject.toml` to `evalgate @ git+https://github.com/ROBERTG99/evalgate@v0.1.0`, point `.github/workflows/evals.yml` at `ROBERTG99/evalgate/action@v0.1.0`, and delete `third_party/evalgate/`.
+- **No LLM provider key in the build environment.** `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` are unset, so
+  LLM adapter fixtures are hand-authored in the documented shapes (D-011) and `make eval-live` /
+  `make record-fixtures` cannot run here. Set the key in the cloud environment's variables to record real
+  cassettes and run live evals.
+- **Confirm the OpenAI default model.** `FRAUD_OPENAI_MODEL` defaults to `gpt-6-luna` (D-010); the OpenAI docs
+  host was unreachable for a full read. Override the variable if your account uses a different model.
+- **Maintainer review of 30 judge labels** (spec §11) — pending until the judge calibration set exists (T-38).
+
+## Session handoff (read this first)
+
+Last updated 2026-10-16 at the end of session 1. Status: **M0, M1, M2 done and reviewed; M3 in progress
+(T-23, T-24 done; next is T-25).** Branch `feat/friendly-johnson-15rki1`, everything committed and pushed.
+
+### Resume checklist
+
+1. Re-read `docs/specs/000-build-spec.md` (identical to `BUILD.md`), this file, `docs/DECISIONS.md`,
+   `git log --oneline -30`.
+2. Environment (Claude Code on the web; `.claude/hooks/session_start.sh` does most of this):
+   - Docker: `mkdir -p /etc/docker && echo '{"registry-mirrors":["https://mirror.gcr.io"]}' > /etc/docker/daemon.json && (nohup dockerd > /tmp/dockerd.log 2>&1 &)`.
+   - Tools: `make bootstrap` (idempotent). Shells in this environment do not source `~/.bashrc`, so prefix
+     commands with `export PATH=$PATH:/root/go/bin:$PWD/.cache/bin:/root/.local/bin GOTOOLCHAIN=local`.
+   - Test infrastructure: `docker compose -f compose.test.yaml -p fraudtest up -d --wait` (Postgres 8521,
+     Redis 8531, Redpanda 8543). Go integration tests also fall back to testcontainers / a local
+     `redis-server`; set `FRAUD_TEST_PG_DSN=postgres://fraud:fraud@127.0.0.1:8521/fraud?sslmode=disable` to
+     use compose.
+   - Use `set -o pipefail` when piping `make check-fast | tail`: an earlier commit slipped through a red run
+     because `tail` masked the exit code (fixed by amending before push).
+   - The PreToolUse guard (`.claude/hooks/pre_tool_guard.py`) is active in-session: never put
+     `rm -rf <path>` text and unrelated paths in one command, and never `pkill -f` a pattern that matches the
+     running shell (it kills the shell).
+3. Data/model artifacts are git-ignored; regenerate with `make gen-data SIZE=demo` (3 s), `make train` (11 s,
+   registers `fraud-gbdt` in `mlruns/` SQLite), `make register-model ALIAS=production` and `ALIAS=shadow`,
+   `make gen-data SIZE=eval` (34 s, 838 MB) when evals need it.
+
+### Next steps (in order)
+
+- **T-25 group commit + spool** (`internal/store/{writer,spool}.go`): implement `api.DecisionStore`
+  (`Commit` returns the stored decision; `INSERT … ON CONFLICT (transaction_id) DO NOTHING` then fetch the
+  existing row — D-017), one transaction for `decisions` + `decision_outbox` + `review_cases` (REVIEW only),
+  batches every 2 ms or 256 rows from a 10,000-slot queue (full for 5 ms → `RESOURCE_EXHAUSTED`), Postgres
+  error or > 30 ms → append to the spool in `FRAUD_SPOOL_DIR`, replay on recovery, `fraud_spool_depth`.
+  Tests: `TestCommitBeforeRespond`, `TestSpoolReplayAfterPostgresRecovers`; also `GetByTransaction`.
+- T-26 outbox relay (`SELECT … FOR UPDATE SKIP LOCKED`, produce, mark `sent_at`; kfake crash test), T-27
+  shadow (`internal/model/shadow.go` 16 workers / 2,000 queue / drop counter; `model.ShadowJob` already
+  exists; `internal/store/shadow.go`), T-28 CaseService + RBAC + dev-issuer (the auth interceptor in
+  `internal/api/interceptors.go` already takes a `TokenVerifier` and an `Authorizer`), T-29 summarizer
+  consumer + Postgres repository (implements `CaseRepository` in `src/fraud_summarizer/pipeline.py`:
+  `load_case`, `save_summary`, `save_steps`), T-30 SageMaker launcher (boto3 only, D-003), T-31 seed/replay.
+- `cmd/scorer/main.go` still runs the T-05 HTTP skeleton (`cmd/scorer/skeleton.go`); wire the real gRPC
+  server + grpc-gateway (use `runtime.WithMarshalerOption` with `UseProtoNames: true`, matching
+  `json_names_for_fields=false` in `buf.gen.yaml`) when T-25..T-28 land, and keep
+  `TestScoreReturnsRulesOnlyDecision` meaningful or replace it with an equivalent end-to-end test.
+- Dockerfile targets for `feature-updater`, `dev-issuer`, `webserve`, `seed`, `retention` and compose
+  services are still to be added (T-43); `Dockerfile.go` currently builds only `scorer`.
+
+### Deferred review items (not blockers; pick up in T-42 / T-49)
+
+- Redaction misses unseparated 10-digit phone numbers, dot-separated card numbers and IBANs
+  (`src/fraud_summarizer/redact.py`; document or extend in T-42).
+- The case-summary system prompt is shorter than the minimum cacheable prefix, so `cache_control` is a no-op
+  today; harmless, note it in `docs/evaluation.md` cost section.
+- `training/evaluate.py` (T-37) must also report test recall at the threshold chosen on valid, not only the
+  test-optimal operating point.
+- The injection test is partly tautological with FakeLLM (it does prove the fencing); add a live/cassette
+  variant in `make eval-live` when a key exists.
+- Dev database roles keep `LOGIN` with dev passwords (`migrations/00001_roles.sql`); document in
+  `docs/security.md` (T-42).
+- `internal/rules/watch_test.go` polls with short sleeps inside a deadline loop (acceptable per §10, keep).
 
 ## Attribution evidence (§1.1)
 
@@ -23,6 +91,7 @@ chore: configure commit attribution
 |---|---|---|---|---|
 | T-01 | Bootstrap and attribution evidence | M0 | done | `uv run pytest tests/harness/test_repo_files.py` → 2 passed; §1.1 evidence above |
 | M1 | fix first → fixed | Blockers fixed: consumer `Run` could hang on shutdown while a handler kept failing (select on send; regression `TestRunReturnsWhileHandlerKeepsFailing` fails without the fix); updater Redis client timed out pipelines (dedicated `NewUpdaterRedisClient`, 500-command chunks, benchmark rerun with it: 57,359 events/s); credential reads made exact (16-entry history per HASH field, exact `minutes_since` assertion) and `docs/KNOWN_LIMITATIONS.md` added. Non-blocking fixed: DLQ no longer duplicated on retries (`TestRetriedBatchDoesNotDuplicateDLQ`), insert-failure metric, `audit_log.prev_hash` UNIQUE, per-account timestamp assertion in offline features. Deferred: dev roles keep LOGIN with dev passwords (documented in `docs/security.md`, T-42). |
+| M2 | fix first → fixed | Blockers fixed: `provider_schema` dropped the `pattern` property from provider schemas (now strips only constraint keywords; `test_provider_schema_keeps_every_property`); faithfulness regex missed numbers with units such as `12x`, `30min`, `.5` (`test_numbers_with_units_are_checked`); gateway retried invalid JSON/schema output against Appendix B (now non-retryable, moves to the fallback provider — D-014). Non-blocking fixed: BentoML request-buffer pool race removed, default 20 ms deadline in model clients, expr builtins restricted + rule runtime-error metric + file/YAML version check + OnLoad lock (D-016), cache-aware cost (D-015), facts fence escaping, cassette `recorded` defaults to false, SSN and date/time redaction false positives, both-down floor recorded (D-012). ML review: split, calibration, ONNX parity and D-008 judged sound. Deferred items listed under Session handoff. |
 | T-02 | Makefile and toolchains | M0 | done | `make bootstrap` → done in 35 s; `make check-fast` → exit 0 (go test ok, 41 pytest passed); `test_all_block_h_targets_declared` passes |
 | T-03 | Harness docs, rules, subagents, skills | M0 | done | harness files exist; `uv run pytest tests/harness/test_harness_docs.py` passes; reviewer ran on M0 (see Milestone reviews) |
 | T-04 | Hooks with tests | M0 | done | `uv run pytest tests/harness/test_hooks.py` → 35 passed (force push, test-partition edit, attribution, identity, terraform, rm -rf, .env); session_start.sh run with CLAUDE_CODE_REMOTE=true → rc 0, idempotent |
@@ -99,19 +168,19 @@ chore: configure commit attribution
 
 | FR | Named test | Status |
 |---|---|---|
-| FR-1 | | todo |
-| FR-2 | | todo |
-| FR-3 | | todo |
-| FR-4 | | todo |
-| FR-5 | | todo |
-| FR-6 | | todo |
-| FR-7 | | todo |
-| FR-8 | | todo |
-| FR-9 | | todo |
-| FR-10 | | todo |
-| FR-11 | | todo |
-| FR-12 | | todo |
-| FR-13 | | todo |
+| FR-1 | `internal/api/scorer_test.go::TestScoreReplayReturnsSameDecisionID` (+ `TestDecisionFieldsStable`) | pass (unit); end-to-end gRPC/gateway pending T-28 |
+| FR-2 | `internal/stream/validate_test.go::TestInvalidEventRejected`, `cmd/feature-updater/updater_test.go::TestUpdaterRoutesInvalidToDLQ` | pass |
+| FR-3 | `tests/integration/parity_test.go::TestOnlineOfflineParity` (0 mismatches), `internal/features/redis_test.go::TestOutOfOrderWithinFiveMinutes` | pass |
+| FR-4 | `cmd/gen/gen_test.go::TestDeterministicSHA` | pass |
+| FR-5 | `make train` (11.0 s, registers fraud-gbdt with pr_auc and recall_at_1pct_fpr), `tests/unit/test_registry.py::test_set_alias_production` | pass |
+| FR-6 | `internal/model/golden_test.go::TestGoldenVectorScore` (BentoML, within 1e-5); Triton skipped — `docs/KNOWN_LIMITATIONS.md` | pass / Triton skip recorded |
+| FR-7 | `internal/decide/combine_test.go::TestRuleR003WithLowScoreReviews` | pass |
+| FR-8 | `internal/api/degrade_test.go::TestModelTimeoutRulesOnlyWithin35ms`, `::TestRedisDownBiasesToReview` | pass; Postgres-down spool pending T-25 |
+| FR-9 |  | todo (T-27) |
+| FR-10 |  | todo (T-25, T-26) |
+| FR-11 | `tests/unit/test_pipeline.py::test_happy_path_stores_verified_summary_and_steps`, `::test_provider_failures_write_fallback_summary` | pass (pipeline); consumer + DB pending T-29 |
+| FR-12 |  | todo (T-30, T-44) |
+| FR-13 |  | todo (T-28, T-32..T-35) |
 
 ## Milestone reviews
 
