@@ -7,6 +7,8 @@ interface Props {
   session: Session | null;
   highlighted: string | null;
   onEvidence: (factKey: string) => void;
+  /** Called after the summarizer accepted a regeneration, which then runs in the background. */
+  onRegenerated: () => void;
 }
 
 const STATUS_TEXT: Record<string, string> = {
@@ -16,7 +18,7 @@ const STATUS_TEXT: Record<string, string> = {
 };
 
 /** The asynchronous LLM summary, clearly separated from the decision (spec §13 screen 3). */
-export function AiSummary({ c, session, highlighted, onEvidence }: Props) {
+export function AiSummary({ c, session, highlighted, onEvidence, onRegenerated }: Props) {
   const regenerate = useRegenerateSummary();
   const s = c.summary;
   const status = c.summary_status ?? "pending";
@@ -31,7 +33,10 @@ export function AiSummary({ c, session, highlighted, onEvidence }: Props) {
             type="button"
             disabled={regenerate.isPending}
             onClick={() =>
-              regenerate.mutate({ caseId: c.case_id ?? "", idempotencyKey: newIdempotencyKey() })
+              regenerate.mutate(
+                { caseId: c.case_id ?? "", idempotencyKey: newIdempotencyKey() },
+                { onSuccess: onRegenerated },
+              )
             }
             className="rounded border border-border px-2 py-0.5 text-sm"
           >
@@ -39,6 +44,9 @@ export function AiSummary({ c, session, highlighted, onEvidence }: Props) {
           </button>
         )}
       </div>
+      <p role="status" className="text-sm text-muted">
+        {regenerate.isSuccess && "Regeneration requested: this summary updates when the worker finishes."}
+      </p>
       {regenerate.isError && (
         <p role="alert" className="text-sm text-decline-text">
           Regenerate failed: {(regenerate.error as Error).message}

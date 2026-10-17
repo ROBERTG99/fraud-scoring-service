@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { ApiError } from "../api/client";
 import { type LabelValue, newIdempotencyKey, useLabelCase } from "../api/queries";
 import type { Session } from "../auth/session";
+import { shortId } from "../format";
 
 const MAX_NOTE = 2000;
 
@@ -36,12 +37,18 @@ export function LabelDialog({ caseId, session, onClose }: Props) {
   const titleId = useId();
   const noteId = useId();
   const dialog = useRef<HTMLDivElement>(null);
+  // The parent re-renders (and recreates onClose) on every case refetch; read the latest through a ref
+  // so the effect below runs once per dialog and never pulls focus back to the first control.
+  const close = useRef(onClose);
+  useEffect(() => {
+    close.current = onClose;
+  });
 
   useEffect(() => {
     const el = dialog.current;
     el?.querySelector<HTMLElement>("input,button,textarea")?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") close.current();
       if (e.key !== "Tab" || !el) return;
       const items = tabStops(el);
       const first = items[0];
@@ -56,7 +63,7 @@ export function LabelDialog({ caseId, session, onClose }: Props) {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, []);
 
   const tooLong = [...note].length > MAX_NOTE;
   const row = {
@@ -78,7 +85,7 @@ export function LabelDialog({ caseId, session, onClose }: Props) {
         className="w-full max-w-lg rounded border border-border bg-panel p-4"
       >
         <h2 id={titleId} className="text-lg font-semibold">
-          Label case <span className="num">{caseId.slice(0, 8)}</span>
+          Label case <span className="num">{shortId(caseId)}</span>
         </h2>
         <fieldset className="mt-3">
           <legend className="text-sm text-muted">Outcome</legend>
@@ -111,7 +118,7 @@ export function LabelDialog({ caseId, session, onClose }: Props) {
           onChange={(e) => setNote(e.target.value)}
           rows={3}
           aria-invalid={tooLong}
-          className="mt-1 w-full rounded border border-border bg-bg p-2"
+          className="mt-1 w-full rounded border border-field-border bg-bg p-2"
         />
         {tooLong && (
           <p className="text-sm text-decline-text">The note is longer than {MAX_NOTE} characters.</p>
@@ -139,7 +146,8 @@ export function LabelDialog({ caseId, session, onClose }: Props) {
             type="button"
             disabled={!label || tooLong || mutation.isPending}
             onClick={() =>
-              label && mutation.mutate({ caseId, label, note, idempotencyKey }, { onSuccess: onClose })
+              label &&
+              mutation.mutate({ caseId, label, note, idempotencyKey }, { onSuccess: () => close.current() })
             }
             className="rounded bg-accent px-3 py-1 font-semibold text-on-accent disabled:opacity-50"
           >

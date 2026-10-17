@@ -1,4 +1,4 @@
-import { type Page, expect } from "@playwright/test";
+import { type Locator, type Page, expect } from "@playwright/test";
 
 export const PERSONAS = {
   analyst: "Analyst One",
@@ -27,4 +27,17 @@ export async function firstOpenCase(page: Page): Promise<string> {
   const href = await link.getAttribute("href");
   expect(href).toMatch(/^\/cases\/[0-9a-f-]{36}$/);
   return href!.slice("/cases/".length);
+}
+
+/** Presses Tab until the target has focus, the way a keyboard user reaches it (at most `limit` presses). */
+export async function tabUntilFocused(
+  page: Page,
+  target: Locator,
+  limit = 30,
+): Promise<void> {
+  for (let i = 0; i < limit; i++) {
+    if (await target.evaluate((el) => el === document.activeElement)) return;
+    await page.keyboard.press("Tab");
+  }
+  await expect(target).toBeFocused();
 }

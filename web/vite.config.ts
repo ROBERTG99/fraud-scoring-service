@@ -14,7 +14,12 @@ export default defineConfig({
       "/summarizer": { target: "http://127.0.0.1:8513", rewrite: (p) => p.replace(/^\/summarizer/, "") },
     },
   },
-  build: { sourcemap: true, outDir: "dist" },
+  build: {
+    sourcemap: true,
+    outDir: "dist",
+    // The CSP is font-src 'self' (cmd/webserve): fonts must stay files, never data: URIs.
+    assetsInlineLimit: (file) => (/\.(woff2?|ttf|otf)$/.test(file) ? false : undefined),
+  },
   test: {
     environment: "jsdom",
     globals: true,

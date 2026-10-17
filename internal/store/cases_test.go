@@ -188,7 +188,8 @@ func TestListGetTimelineShadowAndRules(t *testing.T) {
 		t.Fatalf("unknown case: %v", err)
 	}
 	// Timeline: account events + decisions + labels, newest first.
-	if err := InsertAccountEvents(ctx, pool, []events.Event{{Kind: events.KindLogin, EventID: "ev-1", AccountID: "acc_00000042", TSMillis: time.Date(2026, 9, 20, 10, 2, 0, 0, time.UTC).UnixMilli(), DeviceID: "d", Success: true, Method: "password"}}); err != nil {
+	if err := InsertAccountEvents(ctx, pool, []events.Event{{Kind: events.KindLogin, EventID: "ev-1", AccountID: "acc_00000042", TSMillis: time.Date(2026, 9, 20, 10, 2, 0, 0, time.UTC).UnixMilli(), DeviceID: "d", Success: true, Method: "password"},
+		{Kind: events.KindTransaction, EventID: "tx-tl-1", AccountID: "acc_00000042", TSMillis: time.Date(2026, 9, 20, 10, 2, 30, 0, time.UTC).UnixMilli(), DeviceID: "d", AmountMinor: 2640, Currency: "USD", MerchantID: "m_1", MCC: "5411", Channel: events.ChannelEcommerce}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.LabelCase(ctx, LabelInput{CaseID: c.CaseId, Label: "fraud", IdempotencyKey: "tl-key-1", ActorSub: "analyst-1", Role: "analyst"}); err != nil {
@@ -203,15 +204,21 @@ func TestListGetTimelineShadowAndRules(t *testing.T) {
 	}
 	approveW.Close()
 	items, err := s.Timeline(ctx, "acc_00000042", 100)
-	if err != nil || len(items) != 8 || items[0].Kind != "label" {
+	if err != nil || len(items) != 9 || items[0].Kind != "label" {
 		t.Fatalf("timeline %d %v first=%v", len(items), err, items)
 	}
 	kinds := map[string]int{}
 	for _, it := range items {
 		kinds[it.Kind]++
 	}
-	if kinds["decision"] != 6 || kinds["event.login"] != 1 || kinds["label"] != 1 {
+	if kinds["decision"] != 6 || kinds["event.login"] != 1 || kinds["event.transaction"] != 1 || kinds["label"] != 1 {
 		t.Fatalf("kinds %v", kinds)
+	}
+	// Amounts stay in minor units in details; the title must not present them as major units ("2640 USD").
+	for _, it := range items {
+		if it.Kind == "event.transaction" && (it.Title != "Transaction" || it.Details["amount_minor"] != "2640" || it.Details["currency"] != "USD") {
+			t.Fatalf("transaction item title %q details %v", it.Title, it.Details)
+		}
 	}
 	// REVIEW decisions link to their case; other decisions carry no case_id (not "<nil>").
 	for _, it := range items {

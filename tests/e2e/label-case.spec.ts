@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { firstOpenCase, signIn } from "./helpers";
+import { firstOpenCase, signIn, tabUntilFocused } from "./helpers";
 
 test("an analyst labels an open case and it leaves the open queue", async ({
   page,
@@ -15,7 +15,7 @@ test("an analyst labels an open case and it leaves the open queue", async ({
   await expect(page).toHaveURL(`/cases/${caseId}`);
   await expect(
     page.getByRole("heading", {
-      name: new RegExp(`Case ${caseId.slice(0, 8)}`),
+      name: new RegExp(`Case ${caseId.slice(-8)}`),
     }),
   ).toBeVisible();
   await expect(
@@ -51,9 +51,19 @@ test("an analyst labels an open case and it leaves the open queue", async ({
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Label case" })).toHaveCount(0);
 
-  // The labelled case is listed under the Labelled filter and no longer under Open.
-  await page.goto("/queue?status=labelled");
-  await expect(page.locator(`a[href="/cases/${caseId}"]`)).toBeVisible();
+  // The server stored the label (the Labelled list can page it off page 1, so ask for the case itself).
+  const token = await page.evaluate(
+    () => JSON.parse(sessionStorage.getItem("fraud.session") ?? "{}").token,
+  );
+  const stored = await page.request.get(`/api/v1/cases/${caseId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(stored.status()).toBe(200);
+  expect(await stored.json()).toMatchObject({
+    status: "CASE_STATUS_LABELLED",
+    label: { label: "LABEL_FRAUD", analyst_sub: "analyst-1" },
+  });
+  // It was the first open case, so if it were still open it would be on page 1 of the Open queue.
   await page.goto("/queue");
   await expect(page.getByRole("table").getByRole("link").first()).toBeVisible();
   await expect(page.locator(`a[href="/cases/${caseId}"]`)).toHaveCount(0);
@@ -62,12 +72,22 @@ test("an analyst labels an open case and it leaves the open queue", async ({
 test("the label flow works from the keyboard alone", async ({ page }) => {
   await signIn(page, "analyst");
   const caseId = await firstOpenCase(page);
-  // Queue: focus the rows, Enter opens the selected (first) case.
-  await page.getByRole("rowgroup", { name: "Cases" }).focus();
+  // Queue: the first Tab stop is the skip link, then Tab reaches the case list (one stop, roving tabindex).
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("link", { name: "Skip to content" }),
+  ).toBeFocused();
+  const first = page.locator(`a[href="/cases/${caseId}"]`);
+  await tabUntilFocused(page, first);
+  await page.keyboard.press("j");
+  await expect(first).not.toBeFocused();
+  await page.keyboard.press("k");
+  await expect(first).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(`/cases/${caseId}`);
 
-  await page.getByRole("button", { name: "Label case" }).focus();
+  const labelButton = page.getByRole("button", { name: "Label case" });
+  await tabUntilFocused(page, labelButton);
   await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", { name: /Label case/ });
   await expect(dialog.getByRole("radio", { name: "Fraud" })).toBeFocused();
@@ -89,9 +109,22 @@ test("the label flow works from the keyboard alone", async ({ page }) => {
   ).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(dialog).toBeHidden();
-  await expect(
-    page.getByText(/Labelled\s+legitimate\s+by\s+analyst-1/),
-  ).toBeVisible();
+  // Focus returns to the page (the label text that replaced the button), not to <body>.
+  const labelled = page.getByText(/Labelled\s+legitimate\s+by\s+analyst-1/);
+  await expect(labelled).toBeVisible();
+  await expect(labelled).toBeFocused();
+});
+
+test("closing the label dialog returns focus to Label case", async ({
+  page,
+}) => {
+  await signIn(page, "analyst");
+  await page.goto(`/cases/${await firstOpenCase(page)}`);
+  const labelButton = page.getByRole("button", { name: "Label case" });
+  await labelButton.click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect(labelButton).toBeFocused();
 });
 
 test("an ML engineer can read a case but not label it", async ({ page }) => {
@@ -100,7 +133,7 @@ test("an ML engineer can read a case but not label it", async ({ page }) => {
   await page.goto(`/cases/${caseId}`);
   await expect(
     page.getByRole("heading", {
-      name: new RegExp(`Case ${caseId.slice(0, 8)}`),
+      name: new RegExp(`Case ${caseId.slice(-8)}`),
     }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Label case" })).toHaveCount(0);

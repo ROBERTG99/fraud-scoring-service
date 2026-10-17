@@ -4,7 +4,7 @@ import { type Page, expect, test } from "@playwright/test";
 import { PERSONAS, firstOpenCase, signIn } from "./helpers";
 
 // WCAG 2.0/2.1/2.2 A and AA rules. The gate is spec §9: no serious (or critical) violation on any screen,
-// in both themes, at the 375 px and 1280 px breakpoints. Lesser findings are attached to the report.
+// in both themes, at the 375 px, 768 px and 1280 px breakpoints. Lesser findings are attached to the report.
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
 async function audit(page: Page, name: string): Promise<void> {
@@ -61,7 +61,7 @@ const SCREENS: Screen[] = [
   { name: "rules", persona: "risk", path: () => "/rules", ready: /Rules/ },
 ];
 
-for (const width of [1280, 375]) {
+for (const width of [1280, 768, 375]) {
   for (const theme of ["dark", "light"] as const) {
     test.describe(`${width}px ${theme}`, () => {
       test.use({ viewport: { width, height: 800 } });

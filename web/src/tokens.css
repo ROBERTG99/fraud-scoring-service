@@ -11,6 +11,8 @@
   --panel: #111a2e;
   --panel-raised: #18233b;
   --border: #26324d;
+  /* Edges of inputs, selects and textareas: ≥ 3:1 on every surface (WCAG 1.4.11); --border is decorative. */
+  --field-border: #64748b;
   --text: #e6edf7;
   --text-muted: #9fb0c8;
   --accent: #22d3ee;
@@ -34,6 +36,7 @@
   --panel: #ffffff;
   --panel-raised: #eef2f7;
   --border: #c9d3e0;
+  --field-border: #7b8798;
   --text: #0b1220;
   --text-muted: #46566e;
   --accent: #0e7490;
@@ -54,6 +57,7 @@
   --color-panel: var(--panel);
   --color-panel-raised: var(--panel-raised);
   --color-border: var(--border);
+  --color-field-border: var(--field-border);
   --color-text: var(--text);
   --color-muted: var(--text-muted);
   --color-accent: var(--accent);

@@ -55,6 +55,11 @@ describe("sign-in", () => {
     expect(safeNext("//evil.example")).toBe("/queue");
     expect(safeNext("https://evil.example")).toBe("/queue");
     expect(safeNext("/sign-in")).toBe("/queue");
+    // Browsers treat "\\" as "/" and drop tabs/newlines, so "/\\evil" and "/\t/evil" are other origins.
+    expect(safeNext("/\\evil.example")).toBe("/queue");
+    expect(safeNext("/\t/evil.example")).toBe("/queue");
+    expect(safeNext("/\n/evil.example")).toBe("/queue");
+    expect(safeNext("/cases/1\u0000")).toBe("/queue");
     expect(safeNext(null)).toBe("/queue");
   });
 });

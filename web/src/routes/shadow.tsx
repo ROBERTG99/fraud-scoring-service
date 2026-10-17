@@ -28,7 +28,7 @@ export default function Shadow() {
           <select
             value={hours}
             onChange={(e) => setHours(Number(e.target.value))}
-            className="rounded border border-border bg-panel px-2 py-1"
+            className="rounded border border-field-border bg-panel px-2 py-1"
           >
             <option value={24}>24 hours</option>
             <option value={168}>7 days</option>

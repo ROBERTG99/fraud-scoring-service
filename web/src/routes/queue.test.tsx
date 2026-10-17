@@ -26,14 +26,33 @@ describe("review queue", () => {
     const { router } = renderRoutes(routes, "/queue");
     expect(await screen.findByText("USD 940.00")).toBeInTheDocument();
     expect(screen.getByText("(2 open)")).toBeInTheDocument();
-    const body = screen.getByRole("rowgroup", { name: "Cases" });
-    body.focus();
+    // Roving tabindex: one Tab stop for the whole list, on the current row's case link.
+    const links = screen.getAllByRole("link", { name: /^Open case / });
+    expect(links.map((l) => l.getAttribute("tabindex"))).toEqual(["0", "-1"]);
+    links[0]!.focus();
     await userEvent.keyboard("j");
-    expect(screen.getAllByRole("row")[2]).toHaveAttribute("aria-selected", "true");
-    await userEvent.keyboard("{Enter}");
+    expect(links[1]).toHaveFocus();
+    expect(links.map((l) => l.getAttribute("tabindex"))).toEqual(["-1", "0"]);
+    // The current row is marked with an accent outline (≥ 3:1), not only a faint background.
+    expect(links[1]!.closest("tr")).toHaveClass("outline-accent");
+    expect(links[0]!.closest("tr")).not.toHaveClass("outline-accent");
+    await userEvent.keyboard("k");
+    expect(links[0]).toHaveFocus();
+    await userEvent.keyboard("{ArrowDown}{Enter}");
     await waitFor(() =>
       expect(router.state.location.pathname).toBe("/cases/0192f000-0000-7000-8000-0000000000bb"),
     );
+  });
+
+  it("shows the distinct end of UUIDv7 ids, not their shared timestamp prefix", async () => {
+    signedIn("analyst");
+    vi.stubGlobal(
+      "fetch",
+      stubApi({ "GET /api/v1/cases": () => json({ cases: two, total_open: 2 }) }).fetchMock,
+    );
+    renderRoutes(routes, "/queue");
+    expect(await screen.findByText("000000aa")).toBeInTheDocument();
+    expect(screen.getByText("000000bb")).toBeInTheDocument();
   });
 
   it("sends filters to the API and shows the empty state", async () => {

@@ -2,6 +2,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { useTimeline } from "../api/queries";
 import { StateView } from "../components/StateView";
+import { formatAmount, shortId } from "../format";
 
 const KIND_TEXT: Record<string, string> = {
   "event.login": "Login",
@@ -38,14 +39,21 @@ export default function Timeline() {
                   </time>
                   <span className="w-24 text-sm font-semibold">{KIND_TEXT[it.kind ?? ""] ?? it.kind}</span>
                   <span className="text-sm">{it.title}</span>
+                  {/* amount_minor is in minor units: format it, never show it as major units. */}
+                  {it.details?.amount_minor !== undefined && (
+                    <span className="num whitespace-nowrap text-sm">
+                      {formatAmount(it.details.amount_minor, it.details.currency)}
+                    </span>
+                  )}
                   <span className="num min-w-0 break-all text-xs text-muted">
                     {Object.entries(it.details ?? {})
+                      .filter(([k]) => k !== "amount_minor" && k !== "currency")
                       .map(([k, v]) => `${k}=${v}`)
                       .join(" ")}
                   </span>
                   {it.details?.case_id && (
                     <Link to={`/cases/${it.details.case_id}`} className="text-sm text-accent underline">
-                      case
+                      Open case <span className="num">{shortId(it.details.case_id)}</span>
                     </Link>
                   )}
                 </li>

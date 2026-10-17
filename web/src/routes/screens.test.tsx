@@ -116,7 +116,7 @@ describe("model and shadow", () => {
         .getAllByRole("cell")
         .map((c) => c.textContent),
     ).toEqual(["180", "10", "0"]);
-    expect(screen.getByText("0192f000")).toBeInTheDocument();
+    expect(screen.getByText("000000aa")).toBeInTheDocument(); // UUIDv7: the end is random, the start is time
   });
 });
 
@@ -138,6 +138,13 @@ describe("account timeline", () => {
                 details: { action: "REVIEW", case_id: CASE_ID },
               },
               {
+                kind: "event.transaction",
+                id: "t1",
+                ts: "2026-09-20T10:02:30Z",
+                title: "Transaction",
+                details: { amount_minor: "2640", currency: "USD", merchant_id: "m_1" },
+              },
+              {
                 kind: "event.login",
                 id: "e1",
                 ts: "2026-09-20T10:02:00Z",
@@ -151,8 +158,28 @@ describe("account timeline", () => {
     );
     renderRoutes(routes, "/accounts/acc_00000042");
     expect(await screen.findByText("Decision REVIEW")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "case" })).toHaveAttribute("href", `/cases/${CASE_ID}`);
+    // Amounts are minor units on the wire: USD 26.40, never "2640 USD".
+    expect(screen.getByText("USD 26.40")).toHaveClass("num");
+    expect(screen.queryByText(/2640 USD/)).toBeNull();
+    expect(screen.getByRole("link", { name: "Open case 000000aa" })).toHaveAttribute(
+      "href",
+      `/cases/${CASE_ID}`,
+    );
     renderRoutes(routes, "/accounts/acc_00000099");
     expect(await screen.findByText("No events, decisions or labels for this account.")).toBeInTheDocument();
+  });
+});
+
+describe("layout", () => {
+  it("makes the skip link readable when it receives focus", async () => {
+    signedIn("analyst");
+    vi.stubGlobal(
+      "fetch",
+      stubApi({ "GET /api/v1/cases": () => json({ cases: [], total_open: 0 }) }).fetchMock,
+    );
+    renderRoutes(routes, "/queue");
+    const skip = await screen.findByRole("link", { name: "Skip to content" });
+    for (const c of ["focus:bg-panel-raised", "focus:text-text", "focus:z-20", "focus:rounded"])
+      expect(skip).toHaveClass(c);
   });
 });

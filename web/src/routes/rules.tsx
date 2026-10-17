@@ -35,7 +35,7 @@ function TestRule() {
           maxLength={500}
           onChange={(e) => setWhen(e.target.value)}
           rows={2}
-          className="num mt-1 w-full rounded border border-border bg-bg p-2 text-sm"
+          className="num mt-1 w-full rounded border border-field-border bg-bg p-2 text-sm"
           placeholder="new_device && minutes_since_email_change < 60"
         />
         <button

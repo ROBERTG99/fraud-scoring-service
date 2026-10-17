@@ -11,6 +11,11 @@ import { LabelDialog } from "./LabelDialog";
 afterEach(() => vi.unstubAllGlobals());
 
 function setup(status = 200) {
+  const { calls, onClose } = mount(status);
+  return { calls, onClose };
+}
+
+function mount(status = 200) {
   signedIn("analyst");
   const { fetchMock, calls } = stubApi({
     [`POST /api/v1/cases/{id}:label`]: () =>
@@ -20,12 +25,14 @@ function setup(status = 200) {
   });
   vi.stubGlobal("fetch", fetchMock);
   const onClose = vi.fn();
-  render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}>
-      <LabelDialog caseId={CASE_ID} session={getSession()!} onClose={onClose} />
-    </QueryClientProvider>,
+  const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const ui = (close: () => void) => (
+    <QueryClientProvider client={qc}>
+      <LabelDialog caseId={CASE_ID} session={getSession()!} onClose={close} />
+    </QueryClientProvider>
   );
-  return { calls, onClose };
+  const { rerender } = render(ui(onClose));
+  return { calls, onClose, rerender: (close: () => void) => rerender(ui(close)) };
 }
 
 describe("LabelDialog", () => {
@@ -97,5 +104,21 @@ describe("LabelDialog", () => {
     expect(screen.getByRole("radio", { name: "Legitimate" })).toHaveFocus();
     await user.tab({ shift: true });
     expect(screen.getByRole("button", { name: "Confirm label" })).toHaveFocus();
+  });
+
+  it("keeps focus where the analyst is typing when the parent re-renders with a new onClose", async () => {
+    // case.tsx re-renders every 3 s while the summary is pending, with a fresh onClose each time.
+    const { rerender } = mount();
+    const user = userEvent.setup();
+    expect(screen.getByRole("radio", { name: "Fraud" })).toHaveFocus();
+    const note = screen.getByLabelText(/Note/);
+    await user.click(note);
+    await user.keyboard("half a note");
+    const latest = vi.fn();
+    rerender(() => latest());
+    rerender(() => latest());
+    expect(note).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(latest).toHaveBeenCalledTimes(1); // the newest onClose, not the one from the first render
   });
 });

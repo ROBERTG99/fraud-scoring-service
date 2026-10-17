@@ -1,5 +1,5 @@
-import { type KeyboardEvent, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { type KeyboardEvent, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { type CaseFilters, useCases } from "../api/queries";
 import { StateView } from "../components/StateView";
@@ -11,7 +11,7 @@ export default function Queue() {
   const [params, setParams] = useSearchParams();
   const [tokens, setTokens] = useState<string[]>([]); // page tokens of the pages before the current one
   const [cursor, setCursor] = useState(0);
-  const navigate = useNavigate();
+  const links = useRef<(HTMLAnchorElement | null)[]>([]);
   const filters: CaseFilters = {
     status: params.get("status") === "labelled" ? "CASE_STATUS_LABELLED" : "CASE_STATUS_OPEN",
     reason_code: params.get("reason") ?? "",
@@ -30,12 +30,20 @@ export default function Queue() {
     setCursor(0);
   };
 
-  const onKey = (e: KeyboardEvent<HTMLTableSectionElement>, n: number, ids: string[]) => {
-    if (e.key === "ArrowDown" || e.key === "j") setCursor((c) => Math.min(n - 1, c + 1));
-    else if (e.key === "ArrowUp" || e.key === "k") setCursor((c) => Math.max(0, c - 1));
-    else if (e.key === "Enter" && ids[cursor]) navigate(`/cases/${ids[cursor]}`);
+  // Roving tabindex: the list is one Tab stop (the current row's case link); arrows or j/k move it and
+  // focus follows, so screen readers announce the row. Enter is the link's own activation.
+  const onKey = (e: KeyboardEvent<HTMLTableSectionElement>, n: number) => {
+    let next: number;
+    if (e.key === "ArrowDown" || e.key === "j") next = Math.min(n - 1, cursor + 1);
+    else if (e.key === "ArrowUp" || e.key === "k") next = Math.max(0, cursor - 1);
     else return;
     e.preventDefault();
+    setCursor(next);
+    links.current[next]?.focus();
+  };
+  const page = (t: string[]) => {
+    setTokens(t);
+    setCursor(0);
   };
 
   return (
@@ -57,7 +65,7 @@ export default function Queue() {
             <select
               value={params.get("status") ?? "open"}
               onChange={(e) => setFilter("status", e.target.value === "open" ? "" : e.target.value)}
-              className="rounded border border-border bg-panel px-2 py-1"
+              className="rounded border border-field-border bg-panel px-2 py-1"
             >
               <option value="open">Open</option>
               <option value="labelled">Labelled</option>
@@ -69,7 +77,7 @@ export default function Queue() {
               value={params.get("reason") ?? ""}
               onChange={(e) => setFilter("reason", e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ""))}
               placeholder="e.g. MODEL_SCORE_ELEVATED"
-              className="num rounded border border-border bg-panel px-2 py-1"
+              className="num rounded border border-field-border bg-panel px-2 py-1"
             />
           </label>
           <label className="flex flex-col">
@@ -77,7 +85,7 @@ export default function Queue() {
             <select
               value={params.get("summary") ?? ""}
               onChange={(e) => setFilter("summary", e.target.value)}
-              className="rounded border border-border bg-panel px-2 py-1"
+              className="rounded border border-field-border bg-panel px-2 py-1"
             >
               {SUMMARY_STATES.map((s) => (
                 <option key={s} value={s}>
@@ -97,7 +105,7 @@ export default function Queue() {
         >
           {(d) => {
             const list = d.cases ?? [];
-            const ids = list.map((c) => c.case_id ?? "");
+            const current = Math.min(cursor, list.length - 1);
             return (
               <table className="w-full text-sm">
                 <caption className="sr-only">Cases by priority. Arrow keys or j/k move, Enter opens.</caption>
@@ -111,20 +119,23 @@ export default function Queue() {
                     <th className="px-3 py-2">Summary</th>
                   </tr>
                 </thead>
-                <tbody
-                  tabIndex={0}
-                  onKeyDown={(e) => onKey(e, list.length, ids)}
-                  aria-label="Cases"
-                  className="focus-visible:outline-2"
-                >
+                <tbody onKeyDown={(e) => onKey(e, list.length)} aria-label="Cases">
                   {list.map((c, i) => (
                     <tr
                       key={c.case_id}
-                      aria-selected={i === cursor}
-                      className={`row border-t border-border ${i === cursor ? "bg-panel-raised" : ""}`}
+                      className={`row border-t border-border ${i === current ? "bg-panel-raised outline-2 -outline-offset-2 outline-accent" : ""}`}
                     >
                       <td className="px-3 py-1">
-                        <Link to={`/cases/${c.case_id}`} className="num text-accent underline">
+                        <Link
+                          ref={(el) => {
+                            links.current[i] = el;
+                          }}
+                          to={`/cases/${c.case_id}`}
+                          tabIndex={i === current ? 0 : -1}
+                          onFocus={() => setCursor(i)}
+                          aria-label={`Open case ${shortId(c.case_id)}`}
+                          className="num text-accent underline"
+                        >
                           {shortId(c.case_id)}
                         </Link>
                       </td>
@@ -145,7 +156,7 @@ export default function Queue() {
         <button
           type="button"
           disabled={tokens.length === 0}
-          onClick={() => setTokens((t) => t.slice(0, -1))}
+          onClick={() => page(tokens.slice(0, -1))}
           className="rounded border border-border px-3 py-1 disabled:opacity-50"
         >
           Previous page
@@ -153,9 +164,7 @@ export default function Queue() {
         <button
           type="button"
           disabled={!cases.data?.next_page_token}
-          onClick={() =>
-            cases.data?.next_page_token && setTokens((t) => [...t, cases.data!.next_page_token!])
-          }
+          onClick={() => cases.data?.next_page_token && page([...tokens, cases.data.next_page_token])}
           className="rounded border border-border px-3 py-1 disabled:opacity-50"
         >
           Next page

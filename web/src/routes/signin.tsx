@@ -11,8 +11,14 @@ const ROLE_TEXT: Record<string, string> = {
 };
 
 export function safeNext(next: string | null): string {
-  // Only same-origin paths: never redirect to another site after sign-in.
-  return next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/sign-in")
+  // Only same-origin paths: never redirect to another site after sign-in. Browsers read "\\" as "/" and
+  // strip tabs and newlines from URLs, so either could turn "/x" into "//host"; reject them outright.
+  return next &&
+    next.startsWith("/") &&
+    !next.startsWith("//") &&
+    !next.startsWith("/sign-in") &&
+    // eslint-disable-next-line no-control-regex
+    !/[\\\u0000-\u001f\u007f]/.test(next)
     ? next
     : "/queue";
 }

@@ -45,6 +45,7 @@ export function actionLabel(a: string | undefined): "APPROVE" | "REVIEW" | "DECL
   return "UNKNOWN";
 }
 
+/** The last 8 characters: IDs are UUIDv7, whose first 8 characters are a timestamp shared by neighbours. */
 export function shortId(id: string | undefined): string {
-  return id ? id.slice(0, 8) : "";
+  return id ? id.slice(-8) : "";
 }

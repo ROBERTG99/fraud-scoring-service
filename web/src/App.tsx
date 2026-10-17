@@ -48,7 +48,10 @@ export function Layout() {
   const [theme, toggleTheme] = useTheme();
   return (
     <div className="min-h-screen">
-      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:p-2">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-20 focus:rounded focus:bg-panel-raised focus:p-2 focus:text-text"
+      >
         Skip to content
       </a>
       <header className="flex flex-wrap items-center gap-2 border-b border-border bg-panel px-4 py-2">

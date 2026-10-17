@@ -53,6 +53,15 @@ describe.each([
     for (const bg of ["bg", "panel", "panel-raised"])
       expect(contrast(t["chart-series"]!, t[bg]!)).toBeGreaterThanOrEqual(3);
   });
+  it("form-field edges meet 3:1 on every surface (WCAG 1.4.11)", () => {
+    for (const bg of ["bg", "panel", "panel-raised"])
+      expect(contrast(t["field-border"]!, t[bg]!)).toBeGreaterThanOrEqual(3);
+  });
+  it("the selected-row outline and focus ring meet 3:1 on every surface", () => {
+    for (const fg of ["accent", "focus"])
+      for (const bg of ["bg", "panel", "panel-raised"])
+        expect(contrast(t[fg]!, t[bg]!)).toBeGreaterThanOrEqual(3);
+  });
   it("button text meets 4.5:1 on the accent", () => {
     expect(contrast(t["on-accent"]!, t["accent"]!)).toBeGreaterThanOrEqual(4.5);
   });

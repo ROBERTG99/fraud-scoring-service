@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { useCase } from "../api/queries";
@@ -8,14 +8,47 @@ import { AiSummary } from "../components/AiSummary";
 import { LabelDialog } from "../components/LabelDialog";
 import { ReasonChips } from "../components/ReasonChips";
 import { StateView } from "../components/StateView";
-import { formatAmount, formatScore } from "../format";
+import { formatAmount, formatScore, shortId } from "../format";
 
 export default function CaseDetail() {
   const { caseId = "" } = useParams();
-  const query = useCase(caseId);
+  // After a regenerate request, poll until the summary changes (or for at most a minute).
+  const [watching, setWatching] = useState<{ from: string | undefined; until: number } | null>(null);
+  const query = useCase(caseId, watching !== null);
+  const summaryAt = query.data?.summary?.created_at;
+  useEffect(() => {
+    if (watching && (summaryAt !== watching.from || query.dataUpdatedAt > watching.until)) setWatching(null);
+  }, [watching, summaryAt, query.dataUpdatedAt]);
   const session = getSession();
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [labelling, setLabelling] = useState(false);
+  const [returnFocus, setReturnFocus] = useState(false);
+  const labelButton = useRef<HTMLButtonElement>(null);
+  const labelText = useRef<HTMLSpanElement>(null);
+  const factPanel = useRef<HTMLElement>(null);
+
+  // After the dialog closes, focus goes back to "Label case", or to the label text once saved
+  // (the mutation stores the labelled case before it closes the dialog).
+  useEffect(() => {
+    const target = labelText.current ?? labelButton.current;
+    if (!returnFocus || !target) return;
+    target.focus();
+    setReturnFocus(false);
+  }, [returnFocus, query.data?.status]);
+
+  const closeDialog = () => {
+    setLabelling(false);
+    setReturnFocus(true);
+  };
+
+  // An evidence item cites a fact that may be off-screen (the panels stack on narrow screens).
+  const showEvidence = (key: string) => {
+    setHighlighted(key);
+    const rows = factPanel.current?.querySelectorAll<HTMLElement>("[data-fact]") ?? [];
+    const row = [...rows].find((r) => r.dataset.fact === key);
+    row?.scrollIntoView({ block: "center" });
+    row?.focus({ preventScroll: true });
+  };
   return (
     <section className="p-4">
       <p className="text-sm">
@@ -33,7 +66,7 @@ export default function CaseDetail() {
             <>
               <header className="mt-2 flex flex-wrap items-center gap-3">
                 <h1 className="text-xl font-semibold">
-                  Case <span className="num">{c.case_id?.slice(0, 8)}</span>
+                  Case <span className="num">{shortId(c.case_id)}</span>
                 </h1>
                 <ActionBadge action={c.decision?.action} />
                 <span className="num">score {formatScore(c.decision?.score)}</span>
@@ -48,7 +81,7 @@ export default function CaseDetail() {
                 )}
                 <div className="ml-auto">
                   {labelled ? (
-                    <span className="text-sm">
+                    <span ref={labelText} tabIndex={-1} className="text-sm">
                       Labelled <strong>{c.label?.label === "LABEL_FRAUD" ? "fraud" : "legitimate"}</strong> by{" "}
                       <span className="num">{c.label?.analyst_sub}</span>
                     </span>
@@ -56,6 +89,7 @@ export default function CaseDetail() {
                     can("label", session) &&
                     session && (
                       <button
+                        ref={labelButton}
                         type="button"
                         onClick={() => setLabelling(true)}
                         className="rounded bg-accent px-3 py-1 font-semibold text-on-accent"
@@ -74,8 +108,15 @@ export default function CaseDetail() {
                 {c.decision?.decided_at}
               </p>
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                <AiSummary c={c} session={session} highlighted={highlighted} onEvidence={setHighlighted} />
+                <AiSummary
+                  c={c}
+                  session={session}
+                  highlighted={highlighted}
+                  onEvidence={showEvidence}
+                  onRegenerated={() => setWatching({ from: summaryAt, until: Date.now() + 60_000 })}
+                />
                 <section
+                  ref={factPanel}
                   aria-labelledby="facts"
                   className="min-w-0 rounded border border-border bg-panel p-4"
                 >
@@ -94,6 +135,7 @@ export default function CaseDetail() {
                             <tr
                               key={f.key}
                               data-fact={f.key}
+                              tabIndex={-1}
                               aria-current={highlighted === f.key ? "true" : undefined}
                               className={`row border-t border-border ${highlighted === f.key ? "bg-panel-raised outline outline-1 outline-accent" : ""}`}
                             >
@@ -113,7 +155,7 @@ export default function CaseDetail() {
                 </section>
               </div>
               {labelling && session && (
-                <LabelDialog caseId={c.case_id ?? ""} session={session} onClose={() => setLabelling(false)} />
+                <LabelDialog caseId={c.case_id ?? ""} session={session} onClose={closeDialog} />
               )}
             </>
           );

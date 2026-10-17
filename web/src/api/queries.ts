@@ -45,13 +45,14 @@ export function useCases(f: CaseFilters) {
   });
 }
 
-export function useCase(caseId: string) {
+/** One case. `watch` keeps polling (e.g. while a requested regeneration runs in the background). */
+export function useCase(caseId: string, watch = false) {
   return useQuery({
     queryKey: keys.case(caseId),
     queryFn: async ({ signal }) =>
       unwrap(await api.GET("/v1/cases/{case_id}", { params: { path: { case_id: caseId } }, signal })),
     // Poll while the AI summary is still pending.
-    refetchInterval: (q) => (q.state.data?.summary_status === "pending" ? 3_000 : false),
+    refetchInterval: (q) => (watch || q.state.data?.summary_status === "pending" ? 3_000 : false),
   });
 }
 

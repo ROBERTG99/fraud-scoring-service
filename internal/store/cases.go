@@ -401,9 +401,7 @@ func (s *CaseStore) Timeline(ctx context.Context, accountID string, limit int) (
 			if c, ok := details["change"]; ok {
 				title += ": " + c
 			}
-			if a, ok := details["amount_minor"]; ok {
-				title += " " + a + " " + details["currency"]
-			}
+			// The amount stays in details as minor units; clients format it with the currency's exponent.
 		case kind == "decision":
 			title = "Decision " + details["action"]
 		case kind == "label":
