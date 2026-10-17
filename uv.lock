@@ -835,12 +835,14 @@ name = "evalgate"
 version = "0.1.0.dev0"
 source = { editable = "third_party/evalgate" }
 dependencies = [
+    { name = "numpy" },
     { name = "pydantic" },
     { name = "pyyaml" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "numpy", specifier = ">=2.0" },
     { name = "pydantic", specifier = ">=2.10" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]

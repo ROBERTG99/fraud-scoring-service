@@ -15,8 +15,8 @@ Build progress for `fraud-scoring-service`, driven by `docs/specs/000-build-spec
 
 ## Session handoff (read this first)
 
-Last updated 2026-10-17. Status: **M0–M3 done and reviewed (M3: ship on 2cec37e); M4 code complete
-(T-32..T-35 done); M4 ux-review "fix first" with 7 accessibility/UX blockers to fix next (listed below).**
+Last updated 2026-10-17. Status: **M0–M4 done and reviewed (M4: code reviewer ship, ux-reviewer ship on
+60cf07d). M5 started: vendored evalgate run/check implemented (D-030); T-36 eval datasets next.**
 Data is generator v2 with feature spec v2 (D-026). Branch `feat/friendly-johnson-15rki1`, pushed.
 
 ### Resume checklist
@@ -43,63 +43,27 @@ Data is generator v2 with feature spec v2 (D-026). Branch `feat/friendly-johnson
 
 ### Next steps (in order)
 
-- **M4 ux-reviewer verdict: fix first** (2026-10-17, on 2ef1a63; probes in `/tmp/claude-0/review-ux/`, gone in a
-  new container). Fix test-first, then re-run `ux-reviewer` and record the M4 row. Blockers:
-  1. Queue keyboard cursor invisible and silent (`web/src/routes/queue.tsx:91,114-124`): the tbody focus
-     outline is clipped by the `overflow-x-auto` wrapper, the current row differs only by `bg-panel-raised`
-     (1.11:1), `aria-selected` on plain table rows announces nothing. Use a roving tabindex on rows/links
-     (or `role="grid"` + `aria-activedescendant`) and mark the row with ≥ 3:1 (inset accent outline/border).
-  2. Label dialog focus (`web/src/components/LabelDialog.tsx:40-59`, `web/src/routes/case.tsx:116`): the
-     focus effect depends on `onClose`, which case.tsx recreates each render; the case refetches every 3 s
-     while the summary is pending (`web/src/api/queries.ts:54`), so focus jumps back to the first radio
-     mid-typing. And focus lands on `<body>` after close. Mount-only initial focus, `onClose` via a ref,
-     return focus to "Label case" (or the "Labelled … by" text after save).
-  3. Evidence click highlights an off-screen fact (`web/src/components/AiSummary.tsx:69`, `case.tsx:94-99`):
-     add `scrollIntoView({block: "center"})`, `tabIndex=-1` + focus on the row (or a live announcement).
-     Follow-up (non-blocking): collapse event facts per event in `<details>`, auto-open when cited.
-  4. Timeline amounts 100x too large: `web/src/routes/timeline.tsx:40` shows the server title built in
-     `internal/store/cases.go:404-406` from `amount_minor` ("Transaction 2640 USD" for USD 26.40). Render
-     `formatAmount(details.amount_minor, details.currency)` in a `.num` span or fix the server title.
-  5. Form-field edges nearly invisible (`--border` #26324d 1.36:1; light #c9d3e0 1.51:1): add a field-border
-     token (#64748b dark, #7b8798 light, ≥ 3:1 on bg/panel/panel-raised) for inputs/selects/textareas in
-     queue.tsx:60,72,80, shadow.tsx:31, rules.tsx:38, LabelDialog.tsx:114; assert it in `tokens.test.ts`.
-  6. Skip link unreadable on focus (`web/src/App.tsx:51`): add `focus:bg-panel-raised focus:text-text
-     focus:z-20 focus:rounded`.
-  7. Short IDs collide: decision IDs are UUIDv7, so the first 8 chars are a timestamp (`rules.tsx:64`,
-     `shadow.tsx:106`); show the last 8 chars or the full ID.
-  Also strengthen tests: the keyboard e2e should Tab to the tbody and "Label case" instead of focusing them;
-  add an axe run at 768 px; test evidence scrolling and dialog focus under refetch; token pairs for borders,
-  selected row and focus ring. Non-blocking suggestions (do with or after the blockers): Live "Retry now" and
-  p95-over-budget flag; 404 shows "not found" + link instead of Retry, keep stale data on failed refetch;
-  queue loading cue on filter change, reset cursor on page change, `whitespace-nowrap` amounts at 375 px;
-  header wraps at 375 px; active nav needs a non-colour cue; theme toggle `aria-pressed`; per-route page
-  title; shadow matrix cell padding and thousands separators; rules result live region always present;
-  light placeholder contrast (`placeholder:text-muted`); timeline "Open case <id>" link text, `score=0` on
-  approvals; raw nanosecond `decided_at`; label preview should say `label_id`/`created_at` are server-set;
-  regenerate success message.
-- M4 code `reviewer`: fix first, 1 blocker (rate-limited regenerate consumed its Idempotency-Key) fixed in
-  3d8c331 with `test_a_rate_limited_regenerate_does_not_consume_its_key`. Its non-blocking items, to do with
-  the UX fixes: CSP `font-src 'self'` blocks two Vite-inlined JetBrains Mono subsets (set
-  `build.assetsInlineLimit` so fonts are never inlined); `safeNext` should also reject `\` and control
-  characters (`web/src/routes/signin.tsx`, add cases to `signin.test.tsx`); apply the gateway's broad
-  `except Exception` only around `provider.complete(...)`, not `_parse`/validate
-  (`src/fraud_summarizer/llm/gateway.py`); poll the case after a successful regenerate; the labelled-queue
-  e2e check reads page 1 only (assert via `GET /v1/cases/{id}` instead); `TestCompletedComparisonsAreNotCountedAsDropped`
-  does not cover the `cmd/scorer/main.go` wiring (test the wiring); Live "Waiting for first sample" doubles as
-  loading and empty; per-screen Vitest error/loading tests for timeline/shadow/rules; webserve proxies have no
-  upstream timeout/body limit and production source maps are served; `crypto.randomUUID` needs a secure
-  context (fallback for plain-HTTP non-localhost); `screenshots.spec.ts` uses `waitForTimeout(3_000)` (poll
-  for sparkline samples); `shadow.png` compares v3 with v3 (register a distinct shadow version before
-  recapturing); `docs/security.md` does not exist yet (T-42).
-- Re-run both reviewers after the fixes; record the M4 verdicts in Milestone reviews.
-- Then M5 (T-36 eval datasets).
-- M5 starting facts (analysed, nothing written yet):
-  - `third_party/evalgate/src/evalgate/__init__.py` is **empty**: `evalgate run|check|calibrate` (CLI entry
-    `evalgate.cli:main`) must be implemented first (D-002 scope). The report shape already in use is
-    `evals/reports/model_latency.json` (`scripts/bench_model.py`): schema, suite, run_id, created_at, git_sha,
-    mode, models, prompt_hashes, n_cases, metrics{name: value, threshold, direction, passed, ci_low, ci_high},
-    cost_usd_total, cost_usd_per_case, latency_p50_ms, latency_p95_ms, cases[], extensions. Makefile targets
-    `eval-model`, `eval-decisions`, `eval-summary` already call `evalgate run/check` with these paths.
+- M4 is closed (see Milestone reviews). Open, non-blocking console items from the M4 reviews: focus drops to
+  `<body>` when the focused queue row is labelled elsewhere (move it to the row that takes its place); keep the
+  last case in the URL so returning from a case restores the queue row; Home/End in the queue; "Back to
+  evidence" after an evidence jump; Live "Retry now" and p95-over-budget flag; 404 "not found" + link instead of
+  Retry; header wrap and `whitespace-nowrap` amounts at 375 px; active nav non-colour cue; per-route page title;
+  shadow matrix padding and thousands separators; light placeholder contrast; `score=0` on approvals and raw
+  `decided_at` in the timeline; label preview should say `label_id`/`created_at` are server-set; buttons could
+  use `border-field-border`. Code: summarizer consumer retries a deterministic pipeline bug forever on one
+  partition (`src/fraud_summarizer/consumer.py:164`; add a retry cap → DLQ in T-42/T-48 or document);
+  `TestCompletedComparisonsAreNotCountedAsDropped` does not cover the `cmd/scorer/main.go` wiring;
+  `shadow.png` compares v3 with v3 (register a distinct shadow version before recapturing, T-46);
+  `docs/security.md` (T-42).
+- M5 (next: T-36 eval datasets).
+- M5 facts:
+  - `third_party/evalgate/` now implements `evalgate run` and `evalgate check` with upstream's contracts
+    (D-030; `tests/unit/test_evalgate.py`). Still missing: `evalgate calibrate` (judge agreement, T-38). Suites
+    are `evalgate.suite.v1` YAML with `target: {python: module:fn}`, `metrics` (`exact` with
+    `params: {actual: output.x, expected: expected.x}` or `custom` registered with `@evalgate.metric`, modules
+    listed under `plugins`), dataset path relative to the suite file. `check` fails closed on reports without
+    per-case scores (`cases: []`) and on < 10 paired cases against a baseline, so `training/evaluate.py` and
+    `cmd/benchreport` must emit per-case scores too. `evals/reports/model_latency.json` has `cases: []`.
   - T-36 plan (`scripts/gen_eval_sets.py`, seed 7, `random.Random(f"7/<set>")`, sorted-key JSONL; test first
     `tests/unit/test_eval_sets.py::test_splits_disjoint_and_counts` plus a byte-identical regeneration test):
     - `evals/datasets/decisions/{dev,test}.jsonl`, 60/90: 15 templates x (4 dev, 6 test), labels by
@@ -110,8 +74,9 @@ Data is generator v2 with feature spec v2 (D-026). Branch `feat/friendly-johnson
       APPROVE; model unavailable (floor 20,000; with rules); features unavailable (floor 5,000, R009 still
       fires on the fallback vector: `internal/features/fallback.go` keeps amount/channel/hour, ratio 1,
       new_device 0, distinct 2, so no other rule can fire). Background features must stay below every rule.
-      Case = {id, split, template, transaction, features (13 names, consistent with the transaction) | null,
-      model {score} | {unavailable}, expected {action, reason_codes (set), degraded}}.
+      Row (upstream Case shape, D-030) = {id, split, tags: [template], input: {transaction, features (13 names,
+      consistent with the transaction) | null, model: {score} | {unavailable}}, expected: {action,
+      reason_codes (sorted), degraded}}.
     - Target for the decisions suite: a small Go command (e.g. `cmd/evaldecide`) that runs the real
       `api.ScorerServer` with a stub feature store (case features or error), stub model (case score or
       error), the real rules engine and in-memory decisions; JSONL in, JSONL out; graders in `evals/graders/`
@@ -267,4 +232,4 @@ chore: configure commit attribution
 | M1 | fix first → fixed | Blockers fixed: consumer `Run` could hang on shutdown while a handler kept failing (select on send; regression `TestRunReturnsWhileHandlerKeepsFailing` fails without the fix); updater Redis client timed out pipelines (dedicated `NewUpdaterRedisClient`, 500-command chunks, benchmark rerun with it: 57,359 events/s); credential reads made exact (16-entry history per HASH field, exact `minutes_since` assertion) and `docs/KNOWN_LIMITATIONS.md` added. Non-blocking fixed: DLQ no longer duplicated on retries (`TestRetriedBatchDoesNotDuplicateDLQ`), insert-failure metric, `audit_log.prev_hash` UNIQUE, per-account timestamp assertion in offline features. Deferred: dev roles keep LOGIN with dev passwords (documented in `docs/security.md`, T-42). |
 | M2 | fix first → fixed | Blockers fixed: `provider_schema` dropped the `pattern` property from provider schemas (now strips only constraint keywords; `test_provider_schema_keeps_every_property`); faithfulness regex missed numbers with units such as `12x`, `30min`, `.5` (`test_numbers_with_units_are_checked`); gateway retried invalid JSON/schema output against Appendix B (now non-retryable, moves to the fallback provider — D-014). Non-blocking fixed: BentoML request-buffer pool race removed, default 20 ms deadline in model clients, expr builtins restricted + rule runtime-error metric + file/YAML version check + OnLoad lock (D-016), cache-aware cost (D-015), facts fence escaping, cassette `recorded` defaults to false, SSN and date/time redaction false positives, both-down floor recorded (D-012). ML review: split, calibration, ONNX parity and D-008 judged sound. Deferred items listed under Session handoff. |
 | M3 | fix first → fix first → ship | Round 1 blockers: replay leaked later device sightings into features (fixed with per-account apply-then-score, `TestReplayDoesNotLeakLaterEventsIntoFeatures`; the leak-inflated 144/148 open-case evidence was withdrawn and T-31 rerun on gen v2, D-026); a hung Postgres overloaded the writer (breaker + spool, D-027, `TestHungPostgresSpoolsInsteadOfOverloading`). Round 2 blockers: the breaker never closed under continuous traffic (closes on a successful ping, `TestBreakerClosesUnderContinuousTraffic`); the leak test flaked on a cold Redis (warm-up, degraded decisions fail the test). Round 3 (2cec37e): ship — reviewer reran its breaker probe (closes in 21–530 ms), `-count=30 -run Leak` under load 30/30, full `-race -tags integration` suite exit 0, `seed_report.py` reproduced the T-31 numbers. Non-blocking (open): leak test still bound to the 8 ms Redis budget on an overloaded host; half-hung Postgres reopens the breaker once per replay interval; Commit/Close race can reopen a spool file; BentoML expected feature spec is an env default, not read from `features/spec.yaml`. |
-| M4 | fix first (code) + fix first (UX) → in progress | Code reviewer on 2ef1a63: 1 blocker, a 429 on regenerate consumed its Idempotency-Key — fixed in 3d8c331 (`test_a_rate_limited_regenerate_does_not_consume_its_key`); verified 51 Vitest, 35 e2e, RBAC through webserve, attribution clean. UX reviewer on 2ef1a63: 7 blockers open (queue cursor visibility/announcement, label-dialog focus jumps and return, evidence scroll-into-view, timeline amounts 100x, form-field border contrast, skip link, colliding short UUIDv7 IDs); details and non-blocking items under Session handoff → Next steps. Re-review pending after fixes. |
+| M4 | fix first (code) + fix first (UX) → ship (code) + fix first (UX) → ship | Round 1 on 2ef1a63: code reviewer 1 blocker (a 429 on regenerate consumed its Idempotency-Key, fixed in 3d8c331, `test_a_rate_limited_regenerate_does_not_consume_its_key`); UX reviewer 7 blockers (queue cursor, label-dialog focus, evidence scroll, timeline amounts 100x, field-border contrast, skip link, colliding UUIDv7 short IDs), fixed in 3b48a6e with failing-first Vitest tests, `TestListGetTimelineShadowAndRules` (server title) and Tab-only e2e. Round 2: code reviewer ship (7790ca3); UX reviewer 1 regression (row-index cursor drifted on refetch), fixed in 60cf07d (`keeps the cursor on the same case when a refetch reorders the list`) → ship. Evidence: `cd web && npx vitest run` → 67 passed; `make check-fast` → exit 0; `FULL=1 scripts/seed_host.sh` + `E2E_BASE_URL=http://127.0.0.1:18500 make e2e` → 49 passed, with `E2E_SCREENSHOTS=1` → 51 passed (axe 1280/768/375 px, both themes, 0 serious); `go test -race ./cmd/webserve` → ok. |
