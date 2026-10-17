@@ -58,6 +58,9 @@ class Store(MemoryRepo):
     async def decision_for_case(self, case_id: str) -> str | None:
         return next((d for d, c in self.cases.items() if c.case_id == case_id), None)
 
+    async def is_processed(self, consumer: str, key: str) -> bool:
+        return (consumer, key) in self.processed
+
     async def mark_processed(self, consumer: str, key: str) -> bool:
         if (consumer, key) in self.processed:
             return False
@@ -248,3 +251,17 @@ def test_a_crashed_background_consumer_is_logged_and_fails_readiness(
         assert c.get("/readyz").status_code == 503
     crashed = [r for r in caplog.records if "decisions-consumer" in r.getMessage()]
     assert crashed and crashed[0].exc_info is not None, "the crash must be logged with its traceback"
+
+
+def test_a_rate_limited_regenerate_does_not_consume_its_key(client: TestClient) -> None:
+    svc = client.app.state.services  # type: ignore[attr-defined]
+    svc.regenerate_limit.limit = 0
+    headers = {**auth("analyst"), "Idempotency-Key": "retry-after-429"}
+    assert client.post(f"/v1/summaries/{CASE_ID}:regenerate", headers=headers).status_code == 429
+    # The refused request never ran: a retry with the same key once the limit allows is a new request.
+    svc.regenerate_limit.limit = 20
+    retry = client.post(f"/v1/summaries/{CASE_ID}:regenerate", headers=headers)
+    assert retry.status_code == 202
+    assert retry.json()["duplicate"] is False and retry.json()["run_id"]
+    again = client.post(f"/v1/summaries/{CASE_ID}:regenerate", headers=headers)
+    assert again.json()["duplicate"] is True

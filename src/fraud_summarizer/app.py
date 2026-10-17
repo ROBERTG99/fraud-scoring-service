@@ -46,6 +46,8 @@ class SummaryStore(Protocol):
 
     async def decision_for_case(self, case_id: str) -> str | None: ...
 
+    async def is_processed(self, consumer: str, key: str) -> bool: ...
+
     async def mark_processed(self, consumer: str, key: str) -> bool: ...
 
 
@@ -215,11 +217,15 @@ def create_app(factory: Factory | None = None) -> FastAPI:
         if decision_id is None:
             raise HTTPException(404, "case not found")
         # Keys are scoped to the case: the same key on another case is a different request.
-        if not await svc.store.mark_processed(REGENERATE_CONSUMER, f"{case_id}:{idempotency_key}"):
+        key = f"{case_id}:{idempotency_key}"
+        if await svc.store.is_processed(REGENERATE_CONSUMER, key):
             return RegenerateAccepted(case_id=case_id, status="accepted", duplicate=True)
-        # Each regeneration is a paid model call: bound it per user (NFR-9).
+        # Each regeneration is a paid model call: bound it per user (NFR-9). Checked before the key is
+        # recorded, so a refused request can be retried with the same key.
         if not svc.regenerate_limit.allow(who.subject):
             raise HTTPException(429, "regeneration rate limit: try again later")
+        if not await svc.store.mark_processed(REGENERATE_CONSUMER, key):
+            return RegenerateAccepted(case_id=case_id, status="accepted", duplicate=True)  # concurrent twin
         run_id = str(uuid.uuid4())
 
         async def run() -> None:
