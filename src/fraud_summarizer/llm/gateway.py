@@ -123,18 +123,10 @@ class LLMGateway:
                 for n in range(1, route.attempts + 1):
                     t0 = time.perf_counter()
                     try:
-                        resp = await asyncio.wait_for(provider.complete(req), timeout=route.timeout_s)
+                        resp = await self._call(provider, provider_name, req, route.timeout_s)
                         data = self._parse(resp, validate)
-                    except TimeoutError:
-                        err = ProviderError(
-                            f"{provider_name} timed out after {route.timeout_s}s",
-                            retryable=True,
-                            kind="timeout",
-                        )
                     except ProviderError as exc:
                         err = exc
-                    except Exception as exc:  # a provider bug (e.g. SDK TypeError) must not stall the caller
-                        err = ProviderError(f"{type(exc).__name__}: {exc}"[:300], kind="provider_error")
                     else:
                         cost = self.config.cost_usd(
                             resp.model,
@@ -192,6 +184,22 @@ class LLMGateway:
             span.set_attribute("app.attempts", len(attempts))
             span.set_attribute("app.status", "exhausted")
         raise GatewayExhaustedError(f"route {route_name}: {len(attempts)} failed attempts", attempts)
+
+    @staticmethod
+    async def _call(
+        provider: Provider, provider_name: str, req: ProviderRequest, timeout_s: float
+    ) -> ProviderResponse:
+        """Calls the provider; every failure of the call itself becomes a ProviderError."""
+        try:
+            return await asyncio.wait_for(provider.complete(req), timeout=timeout_s)
+        except TimeoutError:
+            raise ProviderError(
+                f"{provider_name} timed out after {timeout_s}s", retryable=True, kind="timeout"
+            ) from None
+        except ProviderError:
+            raise
+        except Exception as exc:  # a provider bug (e.g. SDK TypeError) must not stall the caller
+            raise ProviderError(f"{type(exc).__name__}: {exc}"[:300], kind="provider_error") from exc
 
     @staticmethod
     def _parse(resp: ProviderResponse, validate: Callable[[dict[str, Any]], None] | None) -> dict[str, Any]:

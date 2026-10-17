@@ -154,6 +154,27 @@ async def test_an_unexpected_provider_exception_falls_back_instead_of_escaping()
         await run(gateway(Scripted([RuntimeError("boom")]))[0])
 
 
+async def test_a_bug_in_our_validator_is_not_disguised_as_a_provider_failure() -> None:
+    # Only the provider call is guarded broadly; a bug in our own parse/validate code must surface, not
+    # silently burn the fallback provider and end as a templated summary.
+    def broken(_: dict[str, Any]) -> None:
+        raise KeyError("pattern")
+
+    primary, fallback = Scripted([ok_text()]), Scripted([ok_text()])
+    gw, _ = gateway(primary, fallback)
+    with pytest.raises(KeyError):
+        await gw.complete(
+            "case_summary",
+            system="sys",
+            user=user_prompt(),
+            schema_name="case_summary_v1",
+            schema=case_summary_json_schema(),
+            prompt_version="case_summary.v1",
+            validate=broken,
+        )
+    assert fallback.calls == []
+
+
 def test_anthropic_without_credentials_is_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     from fraud_summarizer.llm.factory import UnavailableProvider, build_gateway
 
