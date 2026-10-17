@@ -4,10 +4,14 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/url"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -209,5 +213,95 @@ func TestSpoolReplayAfterPostgresRecovers(t *testing.T) {
 	}
 	if got := count(t, direct, "SELECT count(*) FROM review_cases"); got != n {
 		t.Fatalf("review cases %d, want %d", got, n)
+	}
+	// The breaker closed with the drain: new decisions go to Postgres again, not the spool.
+	if w.Degraded() {
+		t.Fatal("breaker still open after recovery")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	spooled := w.Stats().Spooled
+	if _, err := w.Commit(ctx, record(2999, fraudv1.Action_ACTION_APPROVE)); err != nil || w.Stats().Spooled != spooled {
+		t.Fatalf("post-recovery commit: %v, spooled %d -> %d", err, spooled, w.Stats().Spooled)
+	}
+	if got := count(t, direct, "SELECT count(*) FROM decisions"); got != n+1 {
+		t.Fatalf("decisions %d after recovery, want %d", got, n+1)
+	}
+}
+
+// hungListener accepts TCP connections and never answers: Postgres hung, not refusing.
+func hungListener(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var conns []net.Conn
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			conns = append(conns, c)
+			mu.Unlock()
+		}
+	}()
+	t.Cleanup(func() {
+		_ = ln.Close()
+		mu.Lock()
+		defer mu.Unlock()
+		for _, c := range conns {
+			_ = c.Close()
+		}
+	})
+	return ln.Addr().String()
+}
+
+func TestHungPostgresSpoolsInsteadOfOverloading(t *testing.T) {
+	u, _ := url.Parse(testutil.PostgresAdminDSN(t))
+	u.Host = hungListener(t)
+	pool := newPool(t, u.String())
+	w, err := NewGroupWriter(pool, WriterConfig{SpoolDir: t.TempDir(), QueueSize: 1000, ReplayInterval: 50 * time.Millisecond}, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const workers, perWorker = 32, 100
+	var overloaded, failed, ok atomic.Int64
+	var wg sync.WaitGroup
+	for g := range workers {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := range perWorker {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+				d, err := w.Commit(ctx, record(10_000+g*perWorker+i, fraudv1.Action_ACTION_APPROVE))
+				cancel()
+				switch {
+				case errors.Is(err, ErrOverloaded):
+					overloaded.Add(1)
+				case err != nil || d == nil:
+					failed.Add(1)
+				default:
+					ok.Add(1)
+				}
+			}
+		}(g)
+	}
+	wg.Wait()
+	if overloaded.Load() != 0 || failed.Load() != 0 || ok.Load() != workers*perWorker {
+		t.Fatalf("hung Postgres: %d overloaded, %d failed, %d ok of %d", overloaded.Load(), failed.Load(), ok.Load(), workers*perWorker)
+	}
+	if !w.Degraded() || w.SpoolDepth() < workers*perWorker {
+		t.Fatalf("breaker open %t, spool depth %d", w.Degraded(), w.SpoolDepth())
+	}
+	done := make(chan struct{})
+	go func() { w.Close(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Close hung behind the unresponsive Postgres")
 	}
 }

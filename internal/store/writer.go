@@ -30,7 +30,7 @@ type WriterConfig struct {
 	MaxBatch       int           // 256
 	FlushEvery     time.Duration // 2 ms
 	EnqueueWait    time.Duration // 5 ms
-	BatchTimeout   time.Duration // deadline of one batch transaction (1 s)
+	BatchTimeout   time.Duration // deadline of one batch transaction (200 ms)
 	ReplayInterval time.Duration // spool replay attempts (1 s)
 }
 
@@ -48,7 +48,7 @@ func (c *WriterConfig) defaults() {
 		c.EnqueueWait = 5 * time.Millisecond
 	}
 	if c.BatchTimeout == 0 {
-		c.BatchTimeout = time.Second
+		c.BatchTimeout = 200 * time.Millisecond
 	}
 	if c.ReplayInterval == 0 {
 		c.ReplayInterval = time.Second
@@ -63,6 +63,8 @@ type commitResult struct {
 type pending struct {
 	rec  DecisionRecord
 	done chan commitResult // buffered(1): the flusher never blocks on a gone caller
+	// abandoned is set by a caller that gave up and spooled; the flusher skips it.
+	abandoned atomic.Bool
 }
 
 // WriterStats are counters for tests and metrics.
@@ -76,7 +78,8 @@ type WriterStats struct {
 // GroupWriter persists decisions in group commits: one transaction per batch writes decisions,
 // decision_outbox and (for REVIEW) review_cases before any caller in the batch gets its response.
 // When Postgres fails or a caller's deadline (30 ms) passes, decisions go to the disk spool instead
-// and are replayed later; every insert is idempotent on transaction_id.
+// and are replayed later; every insert is idempotent on transaction_id. A failed batch opens a breaker
+// so that a hung (not refusing) Postgres never backs the queue up into ErrOverloaded.
 type GroupWriter struct {
 	pool  *pgxpool.Pool
 	cfg   WriterConfig
@@ -86,6 +89,9 @@ type GroupWriter struct {
 	stop  chan struct{}
 	wg    sync.WaitGroup
 	stats struct{ batches, rows, spooled, replayed atomic.Int64 }
+	// down is the breaker: after a failed batch every Commit spools directly (no queueing behind a hung
+	// Postgres) until the replay loop reaches Postgres and drains the spool.
+	down atomic.Bool
 }
 
 // NewGroupWriter starts the flusher and the spool replayer.
@@ -125,6 +131,9 @@ func (w *GroupWriter) SpoolDepth() int { return w.spool.Depth() }
 // or the earlier decision for the same transaction_id. On Postgres failure or when ctx expires the
 // decision is spooled and returned (the caller responds; replay persists it later).
 func (w *GroupWriter) Commit(ctx context.Context, rec DecisionRecord) (*fraudv1.Decision, error) {
+	if w.down.Load() {
+		return w.spoolOne(rec)
+	}
 	p := &pending{rec: rec, done: make(chan commitResult, 1)}
 	enqueue := time.NewTimer(w.cfg.EnqueueWait)
 	defer enqueue.Stop()
@@ -139,7 +148,9 @@ func (w *GroupWriter) Commit(ctx context.Context, rec DecisionRecord) (*fraudv1.
 	case r := <-p.done:
 		return r.d, r.err
 	case <-ctx.Done():
-		// Too slow: spool now. If the batch commits later, replay finds the row and skips it.
+		// Too slow: spool now and tell the flusher to skip the entry. If its batch is already being
+		// written, the row may land twice in effect (Postgres and spool); replay's insert is a no-op.
+		p.abandoned.Store(true)
 		return w.spoolOne(rec)
 	}
 }
@@ -188,17 +199,32 @@ func (w *GroupWriter) flushLoop() {
 	}
 }
 
-func (w *GroupWriter) flush(batch []*pending) {
+func (w *GroupWriter) flush(all []*pending) {
+	batch := make([]*pending, 0, len(all))
+	for _, p := range all {
+		if !p.abandoned.Load() {
+			batch = append(batch, p)
+		}
+	}
+	if len(batch) == 0 {
+		return
+	}
 	recs := make([]DecisionRecord, len(batch))
 	for i, p := range batch {
 		recs[i] = p.rec
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), w.cfg.BatchTimeout)
-	stored, err := w.insertBatch(ctx, recs)
-	cancel()
-	w.stats.batches.Add(1)
+	var stored []*fraudv1.Decision
+	err := errBreakerOpen
+	if !w.down.Load() {
+		ctx, cancel := context.WithTimeout(context.Background(), w.cfg.BatchTimeout)
+		stored, err = w.insertBatch(ctx, recs)
+		cancel()
+		w.stats.batches.Add(1)
+	}
 	if err != nil {
-		w.log.Warn("group commit failed; spooling batch", "rows", len(recs), "err", err)
+		if !errors.Is(err, errBreakerOpen) && !w.down.Swap(true) {
+			w.log.Warn("group commit failed; spooling until Postgres recovers", "rows", len(recs), "err", err)
+		}
 		if serr := w.spool.Append(recs); serr != nil {
 			for _, p := range batch {
 				p.done <- commitResult{err: fmt.Errorf("postgres: %v; spool: %w", err, serr)}
@@ -350,6 +376,9 @@ func (w *GroupWriter) GetByTransaction(ctx context.Context, txID string) (*fraud
 	return m[txID], nil
 }
 
+// errBreakerOpen marks batches spooled without trying Postgres.
+var errBreakerOpen = errors.New("postgres breaker open")
+
 func (w *GroupWriter) replayLoop() {
 	defer w.wg.Done()
 	t := time.NewTicker(w.cfg.ReplayInterval)
@@ -359,7 +388,16 @@ func (w *GroupWriter) replayLoop() {
 		case <-w.stop:
 			return
 		case <-t.C:
+			if w.down.Load() {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				err := w.pool.Ping(ctx)
+				cancel()
+				if err != nil {
+					continue
+				}
+			}
 			if w.spool.Depth() == 0 {
+				w.closeBreaker()
 				continue
 			}
 			n, err := w.spool.Drain(func(recs []DecisionRecord) error {
@@ -372,9 +410,23 @@ func (w *GroupWriter) replayLoop() {
 			telemetry.SpoolDepth.Set(float64(w.spool.Depth()))
 			if err != nil {
 				w.log.Debug("spool replay deferred", "err", err)
-			} else if n > 0 {
+				continue
+			}
+			if n > 0 {
 				w.log.Info("spool replayed", "decisions", n)
+			}
+			if w.spool.Depth() == 0 {
+				w.closeBreaker()
 			}
 		}
 	}
 }
+
+func (w *GroupWriter) closeBreaker() {
+	if w.down.Swap(false) {
+		w.log.Info("postgres reachable again; group commit resumed")
+	}
+}
+
+// Degraded reports whether the breaker is open (decisions go straight to the spool).
+func (w *GroupWriter) Degraded() bool { return w.down.Load() }
