@@ -1,0 +1,395 @@
+{
+  "schema": "evalgate.report.v1",
+  "suite": "model",
+  "run_id": "20261017T161756Z",
+  "created_at": "2026-10-17T16:17:56.916504+00:00",
+  "git_sha": "beafcea2eb44d88e5473101d9cdf7d82731c2b93",
+  "mode": "offline",
+  "models": [
+    "fraud-gbdt/3"
+  ],
+  "prompt_hashes": {},
+  "n_cases": 20,
+  "metrics": {
+    "recall_at_1pct_fpr_combined": {
+      "value": 0.9232142857142858,
+      "threshold": 0.8,
+      "direction": "higher",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "pr_auc": {
+      "value": 0.8740422718482969,
+      "threshold": 0.7,
+      "direction": "higher",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "ece": {
+      "value": 0.0007010222092660179,
+      "threshold": 0.02,
+      "direction": "lower",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "recall_at_1pct_fpr_model": {
+      "value": 0.924404761904762,
+      "threshold": null,
+      "direction": "higher",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "recall_at_1pct_fpr_rules": {
+      "value": 0.6011904761904762,
+      "threshold": null,
+      "direction": "higher",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    }
+  },
+  "cost_usd_total": 0.0,
+  "cost_usd_per_case": 0.0,
+  "latency_p50_ms": 0.0,
+  "latency_p95_ms": 0.0,
+  "cases": [
+    {
+      "id": "shard-00",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9444444444444444,
+        "pr_auc": 0.9274538240566518,
+        "ece": 0.000763689067806819,
+        "recall_at_1pct_fpr_model": 0.9444444444444444,
+        "recall_at_1pct_fpr_rules": 0.5333333333333333
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-01",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9381443298969072,
+        "pr_auc": 0.897728953304799,
+        "ece": 0.00263171651491175,
+        "recall_at_1pct_fpr_model": 0.9381443298969072,
+        "recall_at_1pct_fpr_rules": 0.7525773195876289
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-02",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.8947368421052632,
+        "pr_auc": 0.8260503829381698,
+        "ece": 0.0012238284523244886,
+        "recall_at_1pct_fpr_model": 0.8947368421052632,
+        "recall_at_1pct_fpr_rules": 0.6140350877192983
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-03",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9896907216494846,
+        "pr_auc": 0.9618695931125859,
+        "ece": 0.0017212238685569425,
+        "recall_at_1pct_fpr_model": 0.9896907216494846,
+        "recall_at_1pct_fpr_rules": 0.5463917525773195
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-04",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.8983050847457628,
+        "pr_auc": 0.7673547507516126,
+        "ece": 0.0014673111631137658,
+        "recall_at_1pct_fpr_model": 0.8983050847457628,
+        "recall_at_1pct_fpr_rules": 0.7457627118644068
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-05",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9156626506024096,
+        "pr_auc": 0.8109895455162498,
+        "ece": 0.0015409497729938772,
+        "recall_at_1pct_fpr_model": 0.9156626506024096,
+        "recall_at_1pct_fpr_rules": 0.5903614457831325
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-06",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9056603773584906,
+        "pr_auc": 0.835233788822783,
+        "ece": 0.0016144050901091885,
+        "recall_at_1pct_fpr_model": 0.9056603773584906,
+        "recall_at_1pct_fpr_rules": 0.5849056603773585
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-07",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.8648648648648649,
+        "pr_auc": 0.8110637932171402,
+        "ece": 0.0036264271383812286,
+        "recall_at_1pct_fpr_model": 0.8648648648648649,
+        "recall_at_1pct_fpr_rules": 0.45045045045045046
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-08",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.8823529411764706,
+        "pr_auc": 0.8135170801332041,
+        "ece": 0.0014294548736378484,
+        "recall_at_1pct_fpr_model": 0.8823529411764706,
+        "recall_at_1pct_fpr_rules": 0.6470588235294118
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-09",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9518072289156626,
+        "pr_auc": 0.9025185749122131,
+        "ece": 0.0015019699749211804,
+        "recall_at_1pct_fpr_model": 0.9518072289156626,
+        "recall_at_1pct_fpr_rules": 0.6746987951807228
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-10",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9272727272727272,
+        "pr_auc": 0.896252341969887,
+        "ece": 0.0014784744418847638,
+        "recall_at_1pct_fpr_model": 0.9454545454545454,
+        "recall_at_1pct_fpr_rules": 0.5272727272727272
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-11",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9270833333333334,
+        "pr_auc": 0.8749945766506231,
+        "ece": 0.002696423558196838,
+        "recall_at_1pct_fpr_model": 0.9270833333333334,
+        "recall_at_1pct_fpr_rules": 0.59375
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-12",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9418604651162791,
+        "pr_auc": 0.8635461136299215,
+        "ece": 0.0016125930216767431,
+        "recall_at_1pct_fpr_model": 0.9418604651162791,
+        "recall_at_1pct_fpr_rules": 0.627906976744186
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-13",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9305555555555556,
+        "pr_auc": 0.8777570354282127,
+        "ece": 0.0009979181359166442,
+        "recall_at_1pct_fpr_model": 0.9305555555555556,
+        "recall_at_1pct_fpr_rules": 0.6805555555555556
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-14",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.85,
+        "pr_auc": 0.8145391172279602,
+        "ece": 0.002507897193413874,
+        "recall_at_1pct_fpr_model": 0.86,
+        "recall_at_1pct_fpr_rules": 0.55
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-15",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9438202247191011,
+        "pr_auc": 0.8985925027261867,
+        "ece": 0.001261023408138995,
+        "recall_at_1pct_fpr_model": 0.9438202247191011,
+        "recall_at_1pct_fpr_rules": 0.6629213483146067
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-16",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9482758620689655,
+        "pr_auc": 0.9224686889792886,
+        "ece": 0.0014153983515624708,
+        "recall_at_1pct_fpr_model": 0.9482758620689655,
+        "recall_at_1pct_fpr_rules": 0.5517241379310345
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-17",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.8617021276595744,
+        "pr_auc": 0.843324376893239,
+        "ece": 0.00212977722760469,
+        "recall_at_1pct_fpr_model": 0.8617021276595744,
+        "recall_at_1pct_fpr_rules": 0.5957446808510638
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-18",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9734513274336283,
+        "pr_auc": 0.9682302896277537,
+        "ece": 0.0014404533983112043,
+        "recall_at_1pct_fpr_model": 0.9734513274336283,
+        "recall_at_1pct_fpr_rules": 0.6283185840707964
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-19",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9230769230769231,
+        "pr_auc": 0.8553781818121663,
+        "ece": 0.001422805691403222,
+        "recall_at_1pct_fpr_model": 0.9230769230769231,
+        "recall_at_1pct_fpr_rules": 0.5641025641025641
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    }
+  ],
+  "extensions": {
+    "split": "test",
+    "gates": {
+      "recall_at_1pct_fpr_combined": true,
+      "pr_auc": true,
+      "ece": true,
+      "recall_at_1pct_fpr_model": false,
+      "recall_at_1pct_fpr_rules": false
+    },
+    "budget": {},
+    "target_errors": 0,
+    "metric_errors": {},
+    "run_health": "ok",
+    "error_rate": 0.0,
+    "n_transactions": 169604,
+    "n_fraud": 1680,
+    "rules_fpr": 0.0020961863700245348,
+    "operating_point_from_valid": {
+      "threshold": 0.04081632941961289,
+      "test_recall": 0.9160714285714285,
+      "test_fpr": 0.00792024963674043
+    },
+    "case_unit": "20 account shards (CRC-32 of account_id)",
+    "data": {
+      "events_sha256": "632291c0507e7824235d20d95e598dce72710d16898429789f09edbf95cd62c9",
+      "gen_version": 2,
+      "seed": 7,
+      "size": "eval",
+      "events": 2000000
+    },
+    "model_dir": "/home/user/fraud-scoring-service/artifacts/model",
+    "onnx_sha256": "5102bf495868297f29106987a5dee68bb9929ae37ade766822e367cf4d11eea9",
+    "feature_spec": "v2"
+  }
+}

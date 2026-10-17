@@ -1,0 +1,796 @@
+{
+  "schema": "evalgate.report.v1",
+  "suite": "latency",
+  "run_id": "20261017T161304Z",
+  "created_at": "2026-10-17T16:13:04.902640537Z",
+  "git_sha": "6a707f3196adb9c718d627665ad48604529112fd",
+  "mode": "offline",
+  "models": [],
+  "prompt_hashes": {},
+  "n_cases": 60,
+  "metrics": {
+    "degraded_rate": {
+      "value": 0.008667148174898606,
+      "threshold": 0.05,
+      "direction": "lower",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "p95_ms": {
+      "value": 21.772272,
+      "threshold": 80,
+      "direction": "lower",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "p99_ms": {
+      "value": 28.378261,
+      "threshold": null,
+      "direction": "lower",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "success_rate": {
+      "value": 1,
+      "threshold": 0.999,
+      "direction": "higher",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    }
+  },
+  "cost_usd_total": 0,
+  "cost_usd_per_case": 0,
+  "latency_p50_ms": 12.707923,
+  "latency_p95_ms": 21.772272,
+  "cases": [
+    {
+      "id": "window-000",
+      "split": "test",
+      "scores": {
+        "p95_ms": 21.319391,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 13.550702,
+      "error": null
+    },
+    {
+      "id": "window-001",
+      "split": "test",
+      "scores": {
+        "p95_ms": 23.244246,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 14.796266,
+      "error": null
+    },
+    {
+      "id": "window-002",
+      "split": "test",
+      "scores": {
+        "p95_ms": 22.932328,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 15.394256,
+      "error": null
+    },
+    {
+      "id": "window-003",
+      "split": "test",
+      "scores": {
+        "p95_ms": 24.353252,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 12.881068,
+      "error": null
+    },
+    {
+      "id": "window-004",
+      "split": "test",
+      "scores": {
+        "p95_ms": 26.678198,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 11.767826,
+      "error": null
+    },
+    {
+      "id": "window-005",
+      "split": "test",
+      "scores": {
+        "p95_ms": 16.934022,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 12.069717,
+      "error": null
+    },
+    {
+      "id": "window-006",
+      "split": "test",
+      "scores": {
+        "p95_ms": 22.682532,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 12.753783,
+      "error": null
+    },
+    {
+      "id": "window-007",
+      "split": "test",
+      "scores": {
+        "p95_ms": 17.061419,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 11.480597,
+      "error": null
+    },
+    {
+      "id": "window-008",
+      "split": "test",
+      "scores": {
+        "p95_ms": 17.00473,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 9.840699,
+      "error": null
+    },
+    {
+      "id": "window-009",
+      "split": "test",
+      "scores": {
+        "p95_ms": 23.967501,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 15.394081,
+      "error": null
+    },
+    {
+      "id": "window-010",
+      "split": "test",
+      "scores": {
+        "p95_ms": 18.79078,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 13.331654,
+      "error": null
+    },
+    {
+      "id": "window-011",
+      "split": "test",
+      "scores": {
+        "p95_ms": 22.460848,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 14.729788,
+      "error": null
+    },
+    {
+      "id": "window-012",
+      "split": "test",
+      "scores": {
+        "p95_ms": 20.687753,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 14.388062,
+      "error": null
+    },
+    {
+      "id": "window-013",
+      "split": "test",
+      "scores": {
+        "p95_ms": 24.746629,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 13.330023,
+      "error": null
+    },
+    {
+      "id": "window-014",
+      "split": "test",
+      "scores": {
+        "p95_ms": 22.310305,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 10.43279,
+      "error": null
+    },
+    {
+      "id": "window-015",
+      "split": "test",
+      "scores": {
+        "p95_ms": 19.476395,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 12.228107,
+      "error": null
+    },
+    {
+      "id": "window-016",
+      "split": "test",
+      "scores": {
+        "p95_ms": 18.075357,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 10.978278,
+      "error": null
+    },
+    {
+      "id": "window-017",
+      "split": "test",
+      "scores": {
+        "p95_ms": 20.64267,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 12.230636,
+      "error": null
+    },
+    {
+      "id": "window-018",
+      "split": "test",
+      "scores": {
+        "p95_ms": 16.832624,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 10.85493,
+      "error": null
+    },
+    {
+      "id": "window-019",
+      "split": "test",
+      "scores": {
+        "p95_ms": 34.615616,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 13.530681,
+      "error": null
+    },
+    {
+      "id": "window-020",
+      "split": "test",
+      "scores": {
+        "p95_ms": 26.770129,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 13.093901,
+      "error": null
+    },
+    {
+      "id": "window-021",
+      "split": "test",
+      "scores": {
+        "p95_ms": 17.046996,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 11.403944,
+      "error": null
+    },
+    {
+      "id": "window-022",
+      "split": "test",
+      "scores": {
+        "p95_ms": 24.788089,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 15.638343,
+      "error": null
+    },
+    {
+      "id": "window-023",
+      "split": "test",
+      "scores": {
+        "p95_ms": 19.209378,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 13.689378,
+      "error": null
+    },
+    {
+      "id": "window-024",
+      "split": "test",
+      "scores": {
+        "p95_ms": 23.511364,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 14.819011,
+      "error": null
+    },
+    {
+      "id": "window-025",
+      "split": "test",
+      "scores": {
+        "p95_ms": 25.463377,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 13.841541,
+      "error": null
+    },
+    {
+      "id": "window-026",
+      "split": "test",
+      "scores": {
+        "p95_ms": 24.581196,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 14.285264,
+      "error": null
+    },
+    {
+      "id": "window-027",
+      "split": "test",
+      "scores": {
+        "p95_ms": 18.458778,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 12.87677,
+      "error": null
+    },
+    {
+      "id": "window-028",
+      "split": "test",
+      "scores": {
+        "p95_ms": 22.494177,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 10.995458,
+      "error": null
+    },
+    {
+      "id": "window-029",
+      "split": "test",
+      "scores": {
+        "p95_ms": 19.994971,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 13.186548,
+      "error": null
+    },
+    {
+      "id": "window-030",
+      "split": "test",
+      "scores": {
+        "p95_ms": 20.756222,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 13.702228,
+      "error": null
+    },
+    {
+      "id": "window-031",
+      "split": "test",
+      "scores": {
+        "p95_ms": 22.361027,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 13.740707,
+      "error": null
+    },
+    {
+      "id": "window-032",
+      "split": "test",
+      "scores": {
+        "p95_ms": 24.200541,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 14.470746,
+      "error": null
+    },
+    {
+      "id": "window-033",
+      "split": "test",
+      "scores": {
+        "p95_ms": 16.705106,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 10.303708,
+      "error": null
+    },
+    {
+      "id": "window-034",
+      "split": "test",
+      "scores": {
+        "p95_ms": 30.286911,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 14.375327,
+      "error": null
+    },
+    {
+      "id": "window-035",
+      "split": "test",
+      "scores": {
+        "p95_ms": 25.420534,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 13.665861,
+      "error": null
+    },
+    {
+      "id": "window-036",
+      "split": "test",
+      "scores": {
+        "p95_ms": 27.002746,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 13.576917,
+      "error": null
+    },
+    {
+      "id": "window-037",
+      "split": "test",
+      "scores": {
+        "p95_ms": 34.386009,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 12.465402,
+      "error": null
+    },
+    {
+      "id": "window-038",
+      "split": "test",
+      "scores": {
+        "p95_ms": 18.708779,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 9.913066,
+      "error": null
+    },
+    {
+      "id": "window-039",
+      "split": "test",
+      "scores": {
+        "p95_ms": 17.585216,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 11.351879,
+      "error": null
+    },
+    {
+      "id": "window-040",
+      "split": "test",
+      "scores": {
+        "p95_ms": 15.693293,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 9.59062,
+      "error": null
+    },
+    {
+      "id": "window-041",
+      "split": "test",
+      "scores": {
+        "p95_ms": 16.646044,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 10.868475,
+      "error": null
+    },
+    {
+      "id": "window-042",
+      "split": "test",
+      "scores": {
+        "p95_ms": 14.108949,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 9.827562,
+      "error": null
+    },
+    {
+      "id": "window-043",
+      "split": "test",
+      "scores": {
+        "p95_ms": 16.919599,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 9.9907,
+      "error": null
+    },
+    {
+      "id": "window-044",
+      "split": "test",
+      "scores": {
+        "p95_ms": 18.306756,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 9.832956,
+      "error": null
+    },
+    {
+      "id": "window-045",
+      "split": "test",
+      "scores": {
+        "p95_ms": 20.077272,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 14.088497,
+      "error": null
+    },
+    {
+      "id": "window-046",
+      "split": "test",
+      "scores": {
+        "p95_ms": 19.300504,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 13.274356,
+      "error": null
+    },
+    {
+      "id": "window-047",
+      "split": "test",
+      "scores": {
+        "p95_ms": 21.458999,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 14.094747,
+      "error": null
+    },
+    {
+      "id": "window-048",
+      "split": "test",
+      "scores": {
+        "p95_ms": 22.850023,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 14.965806,
+      "error": null
+    },
+    {
+      "id": "window-049",
+      "split": "test",
+      "scores": {
+        "p95_ms": 18.639616,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 11.940436,
+      "error": null
+    },
+    {
+      "id": "window-050",
+      "split": "test",
+      "scores": {
+        "p95_ms": 18.626634,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 11.483496,
+      "error": null
+    },
+    {
+      "id": "window-051",
+      "split": "test",
+      "scores": {
+        "p95_ms": 24.715018,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 15.039517,
+      "error": null
+    },
+    {
+      "id": "window-052",
+      "split": "test",
+      "scores": {
+        "p95_ms": 24.150152,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 14.993431,
+      "error": null
+    },
+    {
+      "id": "window-053",
+      "split": "test",
+      "scores": {
+        "p95_ms": 18.390943,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 11.942771,
+      "error": null
+    },
+    {
+      "id": "window-054",
+      "split": "test",
+      "scores": {
+        "p95_ms": 23.505549,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 12.957049,
+      "error": null
+    },
+    {
+      "id": "window-055",
+      "split": "test",
+      "scores": {
+        "p95_ms": 18.223962,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 10.937629,
+      "error": null
+    },
+    {
+      "id": "window-056",
+      "split": "test",
+      "scores": {
+        "p95_ms": 18.92692,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 12.558077,
+      "error": null
+    },
+    {
+      "id": "window-057",
+      "split": "test",
+      "scores": {
+        "p95_ms": 18.033055,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 10.345602,
+      "error": null
+    },
+    {
+      "id": "window-058",
+      "split": "test",
+      "scores": {
+        "p95_ms": 21.68489,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 11.725171,
+      "error": null
+    },
+    {
+      "id": "window-059",
+      "split": "test",
+      "scores": {
+        "p95_ms": 19.272863,
+        "success_rate": 1
+      },
+      "passed": true,
+      "cost_usd": 0,
+      "latency_ms": 13.539178,
+      "error": null
+    }
+  ],
+  "extensions": {
+    "achieved_rps": 299.90360454987416,
+    "budget": {
+      "max_p95_ms": 80
+    },
+    "decisions": 17999,
+    "degraded": 156,
+    "duration_s": 60.015950882,
+    "error_rate": 0,
+    "failures": null,
+    "gates": {
+      "degraded_rate": false,
+      "p95_ms": false,
+      "p99_ms": false,
+      "success_rate": true
+    },
+    "metric_errors": {},
+    "p99_ms": 28.378261,
+    "profile": "ci",
+    "requests": 17999,
+    "run_health": "ok",
+    "split": "test",
+    "target_errors": 0,
+    "target_rps": 300
+  }
+}
