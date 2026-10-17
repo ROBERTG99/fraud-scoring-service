@@ -19,9 +19,9 @@ rm -rf gen/go gen/openapi
 buf generate --path proto/fraud
 uv run --frozen python scripts/openapi_v3.py gen/openapi/fraud.swagger.json gen/openapi/fraud.yaml
 rm -f gen/openapi/fraud.swagger.json
+uv run --frozen python scripts/summarizer_openapi.py gen/openapi/summarizer.json
 
 if [ -f web/package.json ] && [ -d web/node_modules ]; then
-  pnpm -C web exec openapi-typescript ../gen/openapi/fraud.yaml -o src/api/schema.d.ts >/dev/null
-  pnpm -C web exec prettier --log-level warn -w src/api/schema.d.ts >/dev/null
+  pnpm -C web gen:api >/dev/null
 fi
 echo "proto: ok"

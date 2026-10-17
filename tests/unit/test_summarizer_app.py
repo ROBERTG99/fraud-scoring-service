@@ -185,3 +185,37 @@ async def test_missing_sdk_credentials_degrade_to_fallback(monkeypatch: pytest.M
     with pytest.raises(ProviderError) as exc:
         await provider.complete(None)  # type: ignore[arg-type]
     assert exc.value.kind == "unavailable" and not exc.value.retryable
+
+
+def test_regenerate_keys_are_per_case_and_rate_limited(client: TestClient, store: Store) -> None:
+    other = "33333333-3333-4333-8333-333333333333"
+    store.cases["d2"] = journey_case()
+    store.cases["d2"].case_id = other
+    key = {"Idempotency-Key": "shared-key-0001"}
+    assert (
+        client.post(f"/v1/summaries/{CASE_ID}:regenerate", headers={**auth("analyst"), **key}).json()[
+            "duplicate"
+        ]
+        is False
+    )
+    # The same key on a different case is a different request, not a replay.
+    second = client.post(f"/v1/summaries/{other}:regenerate", headers={**auth("analyst"), **key})
+    assert second.status_code == 202 and second.json()["duplicate"] is False
+
+    svc = client.app.state.services  # type: ignore[attr-defined]
+    svc.regenerate_limit.limit = 2
+    third = client.post(
+        f"/v1/summaries/{CASE_ID}:regenerate",
+        headers={**auth("analyst"), "Idempotency-Key": "fresh-key-0003"},
+    )
+    assert third.status_code == 429
+
+
+def test_sliding_window_limit() -> None:
+    from fraud_summarizer.app import SlidingWindowLimit
+
+    now = [0.0]
+    lim = SlidingWindowLimit(2, 10, clock=lambda: now[0])
+    assert lim.allow("a") and lim.allow("a") and not lim.allow("a") and lim.allow("b")
+    now[0] = 10.5
+    assert lim.allow("a")

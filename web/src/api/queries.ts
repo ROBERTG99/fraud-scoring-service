@@ -1,7 +1,7 @@
 // The one TanStack Query layer: every screen reads and writes through these hooks.
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { api, unwrap } from "./client";
+import { api, summarizerApi, unwrap } from "./client";
 import type { components } from "./schema";
 
 export type Schemas = components["schemas"];
@@ -119,4 +119,22 @@ export function useTestRule() {
     mutationFn: async (v: { when: string; sampleSize?: number }) =>
       unwrap(await api.POST("/v1/rules:test", { body: { when: v.when, sample_size: v.sampleSize } })),
   });
+}
+
+/** Asks the summarizer for a fresh AI summary (analyst or risk_engineer); the case refetches while pending. */
+export function useRegenerateSummary() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { caseId: string; idempotencyKey: string }) =>
+      unwrap(
+        await summarizerApi.POST("/v1/summaries/{case_id}:regenerate", {
+          params: { path: { case_id: v.caseId }, header: { "Idempotency-Key": v.idempotencyKey } },
+        }),
+      ),
+    onSuccess: (_r, v) => void qc.invalidateQueries({ queryKey: keys.case(v.caseId) }),
+  });
+}
+
+export function newIdempotencyKey(): string {
+  return crypto.randomUUID();
 }

@@ -3,6 +3,7 @@ import createClient, { type Middleware } from "openapi-fetch";
 
 import { clearSession, getSession } from "../auth/session";
 import type { paths } from "./schema";
+import type { paths as summarizerPaths } from "./summarizer";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -39,10 +40,10 @@ export interface ClientOptions {
   onUnauthorized?: () => void;
 }
 
-export function createApi(opts: ClientOptions = {}) {
-  const client = createClient<paths>({ baseUrl: opts.baseUrl ?? "/api", fetch: opts.fetch });
-  const onUnauthorized = opts.onUnauthorized ?? (() => window.location.assign(signInPath(window.location)));
-  const auth: Middleware = {
+/** Adds the session's bearer token; a 401 clears the session and goes to sign-in. */
+export function authMiddleware(onUnauthorized?: () => void): Middleware {
+  const goSignIn = onUnauthorized ?? (() => window.location.assign(signInPath(window.location)));
+  return {
     onRequest({ request }) {
       const s = getSession();
       if (s) request.headers.set("Authorization", `Bearer ${s.token}`);
@@ -51,12 +52,34 @@ export function createApi(opts: ClientOptions = {}) {
     onResponse({ response }) {
       if (response.status === 401) {
         clearSession();
-        onUnauthorized();
+        goSignIn();
       }
       return response;
     },
   };
-  client.use(auth);
+}
+
+// Resolve fetch per call so the module-level clients pick up a fetch installed later (tests, polyfills).
+const lateFetch: typeof fetch = (input, init) => globalThis.fetch(input, init);
+
+// Absolute base URLs: Request objects need them outside browsers (jsdom, Node), and they are same-origin.
+const sameOrigin = (path: string) => new URL(path, window.location.origin).toString().replace(/\/$/, "");
+
+export function createApi(opts: ClientOptions = {}) {
+  const client = createClient<paths>({
+    baseUrl: opts.baseUrl ?? sameOrigin("/api"),
+    fetch: opts.fetch ?? lateFetch,
+  });
+  client.use(authMiddleware(opts.onUnauthorized));
+  return client;
+}
+
+export function createSummarizerApi(opts: ClientOptions = {}) {
+  const client = createClient<summarizerPaths>({
+    baseUrl: opts.baseUrl ?? sameOrigin("/summarizer"),
+    fetch: opts.fetch ?? lateFetch,
+  });
+  client.use(authMiddleware(opts.onUnauthorized));
   return client;
 }
 
@@ -69,3 +92,4 @@ export function unwrap<T>(r: { data?: T; error?: unknown; response: Response }):
 }
 
 export const api = createApi();
+export const summarizerApi = createSummarizerApi();

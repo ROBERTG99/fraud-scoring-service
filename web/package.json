@@ -14,7 +14,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "gen:api": "openapi-typescript ../gen/openapi/fraud.yaml -o src/api/schema.d.ts && prettier --log-level warn -w src/api/schema.d.ts"
+    "gen:api": "openapi-typescript ../gen/openapi/fraud.yaml -o src/api/schema.d.ts && openapi-typescript ../gen/openapi/summarizer.json -o src/api/summarizer.d.ts && prettier --log-level warn -w src/api/schema.d.ts src/api/summarizer.d.ts"
   },
   "dependencies": {
     "@fontsource/inter": "5.2.8",

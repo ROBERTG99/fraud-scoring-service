@@ -1,0 +1,83 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { getSession } from "../auth/session";
+import { CASE_ID, sampleCase, signedIn } from "../test/fixtures";
+import { json, stubApi } from "../test/render";
+import { LabelDialog } from "./LabelDialog";
+
+afterEach(() => vi.unstubAllGlobals());
+
+function setup(status = 200) {
+  signedIn("analyst");
+  const { fetchMock, calls } = stubApi({
+    [`POST /api/v1/cases/{id}:label`]: () =>
+      status === 200
+        ? json(sampleCase({ status: "CASE_STATUS_LABELLED" }))
+        : json({ code: 6, message: "conflicting label" }, status),
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const onClose = vi.fn();
+  render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { mutations: { retry: false } } })}>
+      <LabelDialog caseId={CASE_ID} session={getSession()!} onClose={onClose} />
+    </QueryClientProvider>,
+  );
+  return { calls, onClose };
+}
+
+describe("LabelDialog", () => {
+  it("previews the exact row to be written and sends the same values", async () => {
+    const { calls, onClose } = setup();
+    const preview = () => JSON.parse(screen.getByTestId("label-preview").textContent ?? "{}");
+    expect(preview()).toMatchObject({
+      case_id: CASE_ID,
+      label: "(choose)",
+      note: null,
+      analyst_sub: "analyst-1",
+    });
+    expect(screen.getByRole("button", { name: "Confirm label" })).toBeDisabled();
+
+    await userEvent.click(screen.getByLabelText("Fraud"));
+    await userEvent.type(screen.getByLabelText(/Note/), "Customer denied the purchase");
+    const row = preview();
+    expect(row).toMatchObject({
+      label: "fraud",
+      note: "Customer denied the purchase",
+      analyst_sub: "analyst-1",
+    });
+    expect(row.idempotency_key).toMatch(/^[A-Za-z0-9_-]{8,128}$/);
+
+    await userEvent.click(screen.getByRole("button", { name: "Confirm label" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const sent = JSON.parse(calls[0]!.body);
+    expect(sent).toEqual({
+      label: "LABEL_FRAUD",
+      note: "Customer denied the purchase",
+      idempotency_key: row.idempotency_key,
+    });
+    expect(calls[0]!.path).toBe(`/api/v1/cases/${CASE_ID}:label`);
+  });
+
+  it("explains a conflicting label and keeps the dialog open", async () => {
+    const { onClose } = setup(409);
+    await userEvent.click(screen.getByLabelText("Legitimate"));
+    await userEvent.click(screen.getByRole("button", { name: "Confirm label" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("already has a different label");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("blocks notes over 2000 characters and closes on Escape", async () => {
+    const { onClose } = setup();
+    await userEvent.click(screen.getByLabelText("Fraud"));
+    const note = screen.getByLabelText(/Note/);
+    await userEvent.click(note);
+    await userEvent.paste("x".repeat(2001));
+    expect(screen.getByText(/longer than 2000/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirm label" })).toBeDisabled();
+    await userEvent.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalled();
+  });
+});

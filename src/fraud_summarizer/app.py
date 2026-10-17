@@ -12,15 +12,18 @@ import contextlib
 import logging
 import os
 import re
+import time
 import uuid
+from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Annotated, Any, Protocol
+from typing import Annotated, Any, Literal, Protocol
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from pydantic import BaseModel, ConfigDict
 
 from fraud_summarizer.auth import InvalidTokenError, Principal, RemoteKeys, Verifier
 from fraud_summarizer.consumer import DecisionHandler, KafkaDecisionConsumer
@@ -50,12 +53,44 @@ class TokenVerifier(Protocol):
     async def verify(self, token: str) -> Principal: ...
 
 
+class RegenerateAccepted(BaseModel):
+    """202 response of POST /v1/summaries/{case_id}:regenerate."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    case_id: str
+    status: Literal["accepted"]
+    run_id: str | None = None
+    duplicate: bool = False
+
+
+class SlidingWindowLimit:
+    """At most `limit` events per subject in the trailing `window_s` seconds (in memory, per process)."""
+
+    def __init__(self, limit: int, window_s: float, clock: Callable[[], float] = time.monotonic) -> None:
+        self.limit = limit
+        self.window_s = window_s
+        self.clock = clock
+        self._hits: dict[str, deque[float]] = {}
+
+    def allow(self, subject: str) -> bool:
+        now = self.clock()
+        q = self._hits.setdefault(subject, deque())
+        while q and q[0] <= now - self.window_s:
+            q.popleft()
+        if len(q) >= self.limit:
+            return False
+        q.append(now)
+        return True
+
+
 @dataclass
 class Services:
     store: SummaryStore
     pipeline: SummaryPipeline
     verifier: TokenVerifier
     background: list[asyncio.Task[Any]] = field(default_factory=list)
+    regenerate_limit: SlidingWindowLimit = field(default_factory=lambda: SlidingWindowLimit(20, 3600))
 
 
 Factory = Callable[[], Awaitable[tuple[Services, Callable[[], Awaitable[None]]]]]
@@ -151,14 +186,14 @@ def create_app(factory: Factory | None = None) -> FastAPI:
             raise HTTPException(404, "no summary yet")
         return summary
 
-    @app.post("/v1/summaries/{case_id}:regenerate", status_code=202)
+    @app.post("/v1/summaries/{case_id}:regenerate", status_code=202, response_model=RegenerateAccepted)
     async def regenerate(
         case_id: str,
         background: BackgroundTasks,
         svc: Annotated[Services, Depends(services)],
         who: Annotated[Principal, Depends(principal)],
         idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-    ) -> JSONResponse:
+    ) -> RegenerateAccepted:
         if who.role not in REGENERATE_ROLES:
             raise HTTPException(403, f"role {who.role} may not regenerate summaries")
         if not _UUID.match(case_id):
@@ -168,10 +203,12 @@ def create_app(factory: Factory | None = None) -> FastAPI:
         decision_id = await svc.store.decision_for_case(case_id)
         if decision_id is None:
             raise HTTPException(404, "case not found")
-        if not await svc.store.mark_processed(REGENERATE_CONSUMER, idempotency_key):
-            return JSONResponse(
-                {"case_id": case_id, "status": "accepted", "duplicate": True}, status_code=202
-            )
+        # Keys are scoped to the case: the same key on another case is a different request.
+        if not await svc.store.mark_processed(REGENERATE_CONSUMER, f"{case_id}:{idempotency_key}"):
+            return RegenerateAccepted(case_id=case_id, status="accepted", duplicate=True)
+        # Each regeneration is a paid model call: bound it per user (NFR-9).
+        if not svc.regenerate_limit.allow(who.subject):
+            raise HTTPException(429, "regeneration rate limit: try again later")
         run_id = str(uuid.uuid4())
 
         async def run() -> None:
@@ -182,7 +219,7 @@ def create_app(factory: Factory | None = None) -> FastAPI:
 
         background.add_task(run)
         log.info("summary regeneration requested", extra={"case_id": case_id, "actor": who.subject})
-        return JSONResponse({"case_id": case_id, "status": "accepted", "run_id": run_id}, status_code=202)
+        return RegenerateAccepted(case_id=case_id, status="accepted", run_id=run_id)
 
     return app
 

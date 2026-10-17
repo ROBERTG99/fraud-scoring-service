@@ -32,7 +32,8 @@ describe("sign-in", () => {
     await userEvent.click(await screen.findByRole("button", { name: /Analyst One/ }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/rules"));
     expect(getSession()?.persona.id).toBe("analyst-1");
-    expect(screen.getByRole("navigation", { name: "Main" })).toBeInTheDocument();
+    // The router state changes before React commits the new screen: wait for the layout itself.
+    expect(await screen.findByRole("navigation", { name: "Main" })).toBeInTheDocument();
     // Analysts do not see the shadow screen in the navigation.
     expect(screen.queryByRole("link", { name: /shadow/i })).toBeNull();
   });
