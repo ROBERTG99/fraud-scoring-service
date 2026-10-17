@@ -51,7 +51,17 @@ test("console screens", async ({ page }) => {
   await shot(page, "timeline");
 
   await signIn(page, "risk", "/live");
-  await page.waitForTimeout(3_000); // a few samples of the 1 s live stream
+  // A few samples of the live stream: poll the sparkline's data table instead of sleeping.
+  await expect
+    .poll(
+      () =>
+        page
+          .getByRole("table", { name: "Requests per second" })
+          .locator("tbody tr")
+          .count(),
+      { timeout: 15_000 },
+    )
+    .toBeGreaterThanOrEqual(3);
   await shot(page, "live");
   await page.goto("/rules");
   await shot(page, "rules");
