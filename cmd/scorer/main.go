@@ -133,10 +133,18 @@ func run(ctx context.Context, log *slog.Logger) error {
 		kcl.Close()
 	}()
 
-	mc, err := modelClient(os.Getenv("FRAUD_MODEL_BACKEND"))
+	base, err := modelClient(os.Getenv("FRAUD_MODEL_BACKEND"))
 	if err != nil {
 		return err
 	}
+	// Primary and shadow predictions share one batcher per alias (docs/DECISIONS.md D-024).
+	inflight, err := strconv.Atoi(envOr("FRAUD_MODEL_MAX_INFLIGHT", "1"))
+	if err != nil {
+		return fmt.Errorf("FRAUD_MODEL_MAX_INFLIGHT: %w", err)
+	}
+	batcher := model.NewBatcher(base, model.BatchConfig{MaxInFlight: inflight})
+	defer batcher.Close()
+	var mc model.Client = batcher
 
 	cases := store.NewCaseStore(pool)
 	saveRules := func(rs *rules.RuleSet) {
