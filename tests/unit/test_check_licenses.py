@@ -50,3 +50,8 @@ def test_normalises_declared_licences(declared: str, spdx: str | None) -> None:
 )
 def test_verdicts(name: str, spdx: str | None, verdict: str) -> None:
     assert cl.verdict(name, spdx) == verdict
+
+
+@pytest.mark.parametrize("expr", ["MIT GPL-3.0", "MIT and GPL-3.0", "MIT) GPL-3.0", "(MIT", "MIT AND"])
+def test_malformed_expressions_fail(expr: str) -> None:
+    assert cl.verdict("anything", expr) == "fail"

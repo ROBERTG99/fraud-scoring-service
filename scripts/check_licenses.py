@@ -109,8 +109,11 @@ def verdict(name: str, spdx: str | None) -> str:
         tok = take()
         if tok == "(":
             v = any_of()
-            take()  # ")"
+            if take() != ")":
+                raise IndexError
             return v
+        if tok in ("(", ")", "AND", "OR", "WITH"):
+            raise IndexError
         if peek() == "WITH":  # a licence exception only widens the licence
             take()
             take()
@@ -131,9 +134,10 @@ def verdict(name: str, spdx: str | None) -> str:
         return v
 
     try:
-        return any_of()
+        result = any_of()
     except IndexError:
         return "fail"
+    return result if pos == len(tokens) else "fail"  # tokens left over: not a well-formed expression
 
 
 def python_packages() -> list[tuple[str, str, str | None]]:

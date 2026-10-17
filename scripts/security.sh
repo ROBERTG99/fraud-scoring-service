@@ -31,12 +31,23 @@ run gosec gosec -quiet ./cmd/... ./internal/...
 run govulncheck govulncheck ./cmd/... ./internal/...
 run bandit bandit -q -r src training serving scripts evals -ll
 REQ=$(mktemp)
-uv export --frozen --all-groups --no-emit-project --format requirements-txt 2>/dev/null | grep -v -- '-e \|third_party' >"$REQ"
-run pip-audit pip-audit -r "$REQ" --no-deps --disable-pip --progress-spinner off
+if uv export --frozen --all-groups --no-emit-project --format requirements-txt >"$REQ.all" 2>"$OUT/uv-export.txt" &&
+  grep -v -- '-e \|third_party' "$REQ.all" >"$REQ" && [ "$(grep -c '==' "$REQ")" -gt 0 ]; then
+  run pip-audit pip-audit -r "$REQ" --no-deps --disable-pip --progress-spinner off
+else # an empty requirements file would "pass" pip-audit: fail closed instead
+  ROWS+=("pip-audit|NOT RUN|uv export failed or listed no packages (see $OUT/uv-export.txt)")
+  FAILED=1
+fi
+rm -f "$REQ.all"
 run pnpm-audit pnpm -C web audit --audit-level high
 run hadolint hadolint Dockerfile.go Dockerfile.summarizer serving/bentoml/Dockerfile deploy/mlflow/Dockerfile
 run checkov checkov --quiet --compact -d . --framework dockerfile --skip-path web/node_modules --skip-path third_party
-for img in $(docker compose config --images 2>/dev/null | grep '^fraud/'); do
+IMAGES=$(docker compose config --images 2>/dev/null | grep '^fraud/' || true)
+if [ -z "$IMAGES" ]; then # no image scanned is not a pass
+  ROWS+=("trivy|NOT RUN|docker compose config listed no fraud/ images")
+  FAILED=1
+fi
+for img in $IMAGES; do
   tag=${img//[\/:]/-}
   run "trivy-vuln-$tag" trivy image --quiet --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$img"
   # Secrets in our own layers; installed third-party packages are skipped (their docstrings match key
