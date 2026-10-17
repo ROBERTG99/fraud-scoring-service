@@ -40,5 +40,20 @@ What is not done, approximate or out of scope. Each entry names where it shows u
 The Python model server (BentoML) is the scorer's throughput limit when everything runs on one 4-CPU
 machine. Measurements in docs/DECISIONS.md D-024: without request batching, 250 tx/s with shadow scoring
 degraded 40% of decisions to rules-only (`MODEL_UNAVAILABLE`). The batching client fixed that for the seed
-rate (0.37% degraded); the same seed run measured 5% degraded when the host was already loaded by earlier
-runs. Higher rates (the 1,000 RPS load target) need more model-server workers or Triton.
+rate (68 of 16,863 degraded in the run after the D-025 fix); a run on a host already loaded by earlier runs
+measured 5% degraded. Higher rates (the 1,000 RPS load target) need more model-server workers or Triton.
+
+## Few review cases on the synthetic data
+
+With point-in-time-correct features (D-025) the demo model separates the synthetic fraud almost perfectly:
+replaying the 72 h test split gives 151 of 174 frauds DECLINE (score ≥ 0.85), 5 REVIEW and 18 APPROVE, so
+only 10 cases are opened at the spec thresholds (review 0.30, decline 0.85). Measured with
+`scripts/seed_host.sh` (seed exits 1 on its ≥ 50 open-case gate).
+
+## `new_device` is almost always 0
+
+`new_device` counts any earlier sighting of the device on the account, logins included
+(`features/spec.yaml`). The generator's account-takeover and mule patterns log in on the new device before
+transacting, so in the demo data `new_device=1` occurs on 14 of the 95,717 train and test transactions
+(offline `training.features.compute_features`; all 14 are card testing) and rule R001 (`NEW_DEVICE_AFTER_CREDENTIAL_CHANGE`) practically never fires,
+although `cmd/gen/PATTERNS.md` lists `new_device` as a signal for those patterns.

@@ -13,6 +13,12 @@ Build progress for `fraud-scoring-service`, driven by `docs/specs/000-build-spec
   host was unreachable for a full read. Override the variable if your account uses a different model.
 - **Maintainer review of 30 judge labels** (spec §11) — pending until the judge calibration set exists (T-38).
 
+- **T-31 seed target vs. synthetic data.** With correct point-in-time features, the 72 h replay opens 10 review
+  cases, not ≥ 50: the model declines 151 of 174 frauds and only 5 score in the REVIEW band (0.30–0.85).
+  Options: (a) make the generator more realistic (legitimate look-alikes and low-and-slow fraud, so scores
+  spread into the review band; also fix `new_device` being ~always 0, KNOWN_LIMITATIONS); (b) lower the seed
+  gate; (c) change thresholds. Recommended: (a). Awaiting a decision; nothing was weakened.
+
 ## Session handoff (read this first)
 
 Last updated 2026-10-16 at the end of session 1. Status: **M0, M1, M2 done and reviewed; M3 in progress
@@ -121,7 +127,7 @@ chore: configure commit attribution
 | T-28 | CaseService, RBAC, dev-issuer | M3 | done | internal/api/cases.go (CaseServer), internal/auth (EdDSA JWT, JWKS, RBAC), cmd/dev-issuer; TestAnalystCannotTestRule (internal/api, real interceptors + JWTs over bufconn) and TestLabelWritesAuditRow (internal/store) pass; cmd/scorer serves gRPC :8510 + gateway :8511 (TestScoreReturnsRulesOnlyDecision, TestGatewayAuthAndLimits); tests/contract/test_openapi_contract.py: Schemathesis passes on all 8 non-streaming operations (3 consecutive runs, fresh DB each) |
 | T-29 | Summarizer consumer | M3 | done | src/fraud_summarizer/{consumer,app,repository,auth,metrics}.py; test_duplicate_decision_processed_once, test_provider_failure_writes_fallback pass; tests/integration/test_summarizer_consumer.py writes an ok account_takeover summary for a REVIEW decision from Redpanda into Postgres (duplicate skipped, invalid message to DLQ; 3 consecutive runs); make test-py: 172 passed, src/fraud_summarizer 93.6% (scripts/pycover.py) |
 | T-30 | SageMaker launcher | M3 | done | training/sagemaker_launch.py (boto3 only, request validated offline against botocore service model), training/sagemaker_entry.py, training/Dockerfile; test_dry_run_request_shape, test_submit_to_moto pass; `make sagemaker-dry-run` exit 0 with AWS_* unset; image built (`docker build --network host --secret id=extra_ca,...`) and trained offline with `docker run --network none` (tiny: model.onnx + model_meta.json written) |
-| T-31 | Seed job and replay | M3 | done | internal/replay (warm → wait for feature-updater lag 0 → paced, per-account-ordered scoring), cmd/replay, cmd/seed, internal/model/batcher.go; TestReplayRateLimit, TestSeedIdempotent pass (-race, x3); `SHADOW=true scripts/seed_host.sh`: 78 s, 183,137 events produced, 16,863 scored, 0 errors, 16,863 decisions persisted, 144 open cases (≥ 50), 63 degraded, Score p50 3.3 / p95 7.7 / p99 11.5 ms; a second run of the committed script: 148 open cases, 76 degraded, 0 errors. `make seed` via the compose seed service lands with T-43 |
+| T-31 | Seed job and replay | M3 | partial | Code done: internal/replay (warm via Kafka + wait; live per-account apply-then-score, D-025), cmd/replay, cmd/seed, internal/model/batcher.go; TestReplayRateLimit, TestSeedIdempotent, TestReplayDoesNotLeakLaterEventsIntoFeatures pass. Done-when NOT met: `scripts/seed_host.sh` → 16,863 scored, 0 errors, 68 degraded, new_device=1 on 4 (matches offline features), 10 open cases < 50. Earlier 144/148 came from a leaking replay (M3 review blocker 1) and are withdrawn. Decision needed (PROGRESS "Needs the maintainer") |
 | T-32 | Console scaffold and data layer | M4 | done | web/ (Vite 7 + React 19 + TanStack Query 5 + Tailwind 4; generated web/src/api/schema.d.ts; api/client.ts with 401 → clear session + /sign-in?next=; auth/session.ts; tokens.css with text-safe status tokens), cmd/webserve (SPA + CSP + /api,/auth,/summarizer proxies, unbuffered streaming); client.test.ts "401 clears the session and redirects to sign-in" passes; `pnpm -C web test` 32 passed incl. WCAG contrast checks; `pnpm -C web build` ok; go test -race ./cmd/webserve ok |
 | T-33 | Queue and case detail | M4 | todo | |
 | T-34 | Timeline, shadow, live metrics, rules | M4 | todo | |

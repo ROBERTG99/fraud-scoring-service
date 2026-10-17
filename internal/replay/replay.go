@@ -1,15 +1,18 @@
 // Package replay feeds a generated dataset through the running system (spec FR-4, T-31).
 //
-// Point-in-time features need history, so a replay runs in three phases:
+// Point-in-time features need history, so a replay runs in two phases:
 //  1. warm: every event before the window goes to Kafka (events.login, events.device, events.transaction)
-//     for the feature-updater; nothing is scored.
-//  2. login and device events inside the window go to Kafka too, then the replay waits until the
-//     feature-updater has caught up.
-//  3. transactions inside the window are scored over gRPC, at most Rate per second, in event order per
-//     account (the scorer publishes events.transaction for them).
+//     and the replay waits until the feature-updater has applied it; nothing is scored. Every warm event
+//     precedes every live event, so loading them first cannot leak the future.
+//  2. live: the window's events go, in event order, to one worker per account shard. A worker applies a
+//     login or device event to the feature store itself (the same idempotent script the feature-updater
+//     runs), then publishes it to Kafka for the updater's Postgres sink; it scores a transaction over
+//     gRPC, at most Rate per second (the scorer adds it to the store and publishes events.transaction).
 //
-// The feature store reads strictly before each transaction's event_ts, so loading later login and device
-// events before scoring never leaks future data into a decision.
+// Features are per account, so this gives each transaction exactly its account's earlier events and none
+// of its later ones. Loading a whole window of later events first does not: device and merchant sightings
+// keep only the latest timestamp (ZADD GT), so a later sighting erases an earlier one (docs/DECISIONS.md
+// D-025).
 package replay
 
 import (
@@ -150,14 +153,24 @@ type Config struct {
 	Clock   Clock
 	// WaitCaughtUp blocks until the feature-updater has applied everything produced (nil = no wait).
 	WaitCaughtUp func(ctx context.Context) error
-	Log          *slog.Logger
+	// Applier writes live login and device events to the feature store (features.Store). Required when
+	// the live window contains them.
+	Applier Applier
+	Log     *slog.Logger
+}
+
+// Applier applies one event to the feature store.
+type Applier interface {
+	ApplyEvent(ctx context.Context, e *events.Event) error
 }
 
 // Stats summarises a run.
 type Stats struct {
-	Produced int // events written to Kafka
-	Scored   int // successful Score calls
-	Errors   int // failed Score calls
+	Produced    int // events written to Kafka
+	Applied     int // live login/device events applied to the feature store
+	ApplyErrors int // live login/device events that could not be applied
+	Scored      int // successful Score calls
+	Errors      int // failed Score calls
 	// TransactionIDs lists the transactions scored successfully, so callers can check persistence.
 	TransactionIDs []string
 	Actions        map[string]int // APPROVE | REVIEW | DECLINE
@@ -208,7 +221,7 @@ func Transaction(e *events.Event) *fraudv1.Transaction {
 	}
 }
 
-// Run executes the three phases.
+// Run executes the warm and live phases.
 func Run(ctx context.Context, cfg Config, prod Producer, sc Scorer, warm, live []events.Event) (Stats, error) {
 	st := Stats{Actions: map[string]int{}, ByCode: map[string]int{}}
 	if cfg.Log == nil {
@@ -220,25 +233,27 @@ func Run(ctx context.Context, cfg Config, prod Producer, sc Scorer, warm, live [
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 2 * time.Second
 	}
+	if cfg.Applier == nil {
+		for i := range live {
+			if live[i].Kind != events.KindTransaction {
+				return st, fmt.Errorf("live window has %s events but no feature-store Applier is configured", live[i].TopicFor())
+			}
+		}
+	}
 	if prod != nil {
 		n, err := produce(ctx, prod, warm, func(*events.Event) bool { return true })
 		st.Produced += n
 		if err != nil {
 			return st, fmt.Errorf("warm: %w", err)
 		}
-		n, err = produce(ctx, prod, live, func(e *events.Event) bool { return e.Kind != events.KindTransaction })
-		st.Produced += n
-		if err != nil {
-			return st, fmt.Errorf("live account events: %w", err)
-		}
-		cfg.Log.Info("replay: events produced", "count", st.Produced)
+		cfg.Log.Info("replay: warm events produced", "count", n)
 	}
 	if cfg.WaitCaughtUp != nil {
 		if err := cfg.WaitCaughtUp(ctx); err != nil {
 			return st, fmt.Errorf("wait for feature-updater: %w", err)
 		}
 	}
-	err := score(ctx, cfg, sc, live, &st)
+	err := runLive(ctx, cfg, prod, sc, live, &st)
 	return st, err
 }
 
@@ -248,7 +263,47 @@ func shard(account string, n int) int {
 	return int(h.Sum32() % uint32(n)) // #nosec G115 -- n > 0 and small
 }
 
-func score(ctx context.Context, cfg Config, sc Scorer, live []events.Event, st *Stats) error {
+// publisher batches live login/device events to Kafka after the workers applied them.
+func publisher(ctx context.Context, prod Producer, in <-chan *kgo.Record, st *Stats, mu *sync.Mutex, log *slog.Logger) {
+	batch := make([]*kgo.Record, 0, produceBatch)
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		pctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		err := prod.ProduceSync(pctx, batch...).FirstErr()
+		cancel()
+		mu.Lock()
+		if err == nil {
+			st.Produced += len(batch)
+		}
+		mu.Unlock()
+		if err != nil {
+			// The feature store already has these events; only account_events (timelines) misses them.
+			log.Warn("replay: publishing live account events failed", "count", len(batch), "err", err)
+		}
+		batch = batch[:0]
+	}
+	tick := time.NewTicker(100 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case r, ok := <-in:
+			if !ok {
+				flush()
+				return
+			}
+			batch = append(batch, r)
+			if len(batch) == produceBatch {
+				flush()
+			}
+		case <-tick.C:
+			flush()
+		}
+	}
+}
+
+func runLive(ctx context.Context, cfg Config, prod Producer, sc Scorer, live []events.Event, st *Stats) error {
 	start := time.Now()
 	queues := make([]chan *events.Event, cfg.Workers)
 	var mu sync.Mutex
@@ -257,28 +312,58 @@ func score(ctx context.Context, cfg Config, sc Scorer, live []events.Event, st *
 	if cfg.Token != "" {
 		callCtx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+cfg.Token)
 	}
+	var pub chan *kgo.Record
+	pubDone := make(chan struct{})
+	if prod != nil {
+		pub = make(chan *kgo.Record, 4*produceBatch)
+		go func() { defer close(pubDone); publisher(ctx, prod, pub, st, &mu, cfg.Log) }()
+	} else {
+		close(pubDone)
+	}
+	apply := func(e *events.Event) {
+		actx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+		err := cfg.Applier.ApplyEvent(actx, e)
+		cancel()
+		mu.Lock()
+		if err != nil {
+			st.ApplyErrors++
+		} else {
+			st.Applied++
+		}
+		mu.Unlock()
+		if err == nil && pub != nil {
+			pub <- &kgo.Record{Topic: e.TopicFor(), Key: []byte(e.AccountID), Value: e.AppendJSON(nil)}
+		}
+	}
+	score := func(e *events.Event) {
+		cctx, cancel := context.WithTimeout(callCtx, cfg.Timeout)
+		d, err := sc.Score(cctx, &fraudv1.ScoreRequest{Transaction: Transaction(e)})
+		cancel()
+		mu.Lock()
+		defer mu.Unlock()
+		if err != nil {
+			st.Errors++
+			st.ByCode[status.Code(err).String()]++
+			return
+		}
+		st.Scored++
+		st.TransactionIDs = append(st.TransactionIDs, d.TransactionId)
+		st.Actions[actionName(d.Action)]++
+		if d.Degraded {
+			st.Degraded++
+		}
+	}
 	for i := range queues {
 		queues[i] = make(chan *events.Event, 64)
 		wg.Add(1)
 		go func(q <-chan *events.Event) {
 			defer wg.Done()
 			for e := range q {
-				cctx, cancel := context.WithTimeout(callCtx, cfg.Timeout)
-				d, err := sc.Score(cctx, &fraudv1.ScoreRequest{Transaction: Transaction(e)})
-				cancel()
-				mu.Lock()
-				if err != nil {
-					st.Errors++
-					st.ByCode[status.Code(err).String()]++
+				if e.Kind == events.KindTransaction {
+					score(e)
 				} else {
-					st.Scored++
-					st.TransactionIDs = append(st.TransactionIDs, d.TransactionId)
-					st.Actions[actionName(d.Action)]++
-					if d.Degraded {
-						st.Degraded++
-					}
+					apply(e)
 				}
-				mu.Unlock()
 			}
 		}(queues[i])
 	}
@@ -286,12 +371,11 @@ func score(ctx context.Context, cfg Config, sc Scorer, live []events.Event, st *
 	var runErr error
 	for i := range live {
 		e := &live[i]
-		if e.Kind != events.KindTransaction {
-			continue
-		}
-		if err := pacer.Wait(ctx); err != nil {
-			runErr = err
-			break
+		if e.Kind == events.KindTransaction {
+			if err := pacer.Wait(ctx); err != nil {
+				runErr = err
+				break
+			}
 		}
 		queues[shard(e.AccountID, len(queues))] <- e
 	}
@@ -299,6 +383,10 @@ func score(ctx context.Context, cfg Config, sc Scorer, live []events.Event, st *
 		close(q)
 	}
 	wg.Wait()
+	if pub != nil {
+		close(pub)
+	}
+	<-pubDone
 	st.Elapsed = time.Since(start)
 	return runErr
 }

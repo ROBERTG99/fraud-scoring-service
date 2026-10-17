@@ -123,7 +123,7 @@ func TestReplayRateLimit(t *testing.T) {
 	clock = &fakeClock{now: time.Unix(0, 0)}
 	sc := &recordingScorer{}
 	evs := dataset(100)
-	st, err := Run(context.Background(), Config{Rate: 200, Workers: 4, Clock: clock}, nil, sc, nil, evs)
+	st, err := Run(context.Background(), Config{Rate: 200, Workers: 4, Clock: clock, Applier: &recordingApplier{sc: &recordingScorer{}}}, nil, sc, nil, evs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestReplayRateLimit(t *testing.T) {
 	}
 	// Unlimited rate never sleeps.
 	clock = &fakeClock{now: time.Unix(0, 0)}
-	if _, err := Run(context.Background(), Config{Clock: clock}, nil, &recordingScorer{}, nil, evs); err != nil || !clock.Now().Equal(time.Unix(0, 0)) {
+	if _, err := Run(context.Background(), Config{Clock: clock, Applier: &recordingApplier{sc: &recordingScorer{}}}, nil, &recordingScorer{}, nil, evs); err != nil || !clock.Now().Equal(time.Unix(0, 0)) {
 		t.Fatalf("unlimited: %v %v", err, clock.Now())
 	}
 }
@@ -158,6 +158,30 @@ func TestPacerCatchesUpWithoutBurst(t *testing.T) {
 	}
 }
 
+type recordingApplier struct {
+	mu   sync.Mutex
+	sc   *recordingScorer
+	seen []string
+	fail string
+}
+
+func (a *recordingApplier) ApplyEvent(_ context.Context, e *events.Event) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if e.EventID == a.fail {
+		return errors.New("redis down")
+	}
+	a.seen = append(a.seen, e.EventID)
+	// Interleave with the scorer's log so per-account order covers both kinds.
+	a.sc.mu.Lock()
+	if a.sc.order == nil {
+		a.sc.order, a.sc.tokens = map[string][]int64{}, map[string]int{}
+	}
+	a.sc.order[e.AccountID] = append(a.sc.order[e.AccountID], e.TSMillis)
+	a.sc.mu.Unlock()
+	return nil
+}
+
 func TestPhasesOrderAndPerAccountOrdering(t *testing.T) {
 	evs := dataset(200)
 	warm, live := Split(evs, 2*time.Hour)
@@ -166,11 +190,12 @@ func TestPhasesOrderAndPerAccountOrdering(t *testing.T) {
 	}
 	prod := &recordingProducer{}
 	sc := &recordingScorer{}
+	app := &recordingApplier{sc: sc}
 	var producedAtWait int
-	cfg := Config{Workers: 8, Token: "svc", WaitCaughtUp: func(context.Context) error {
+	cfg := Config{Workers: 8, Token: "svc", Applier: app, WaitCaughtUp: func(context.Context) error {
 		producedAtWait = len(prod.records)
 		if len(sc.order) != 0 {
-			t.Error("scoring started before the feature-updater caught up")
+			t.Error("live work started before the feature-updater caught up on the warm events")
 		}
 		return nil
 	}}
@@ -186,8 +211,8 @@ func TestPhasesOrderAndPerAccountOrdering(t *testing.T) {
 			liveOther++
 		}
 	}
-	if st.Produced != len(warm)+liveOther || producedAtWait != st.Produced || st.Scored != liveTx {
-		t.Fatalf("stats %+v (warm %d, live other %d, live tx %d)", st, len(warm), liveOther, liveTx)
+	if producedAtWait != len(warm) || st.Produced != len(warm)+liveOther || st.Applied != liveOther || st.Scored != liveTx {
+		t.Fatalf("stats %+v (warm %d at wait %d, live other %d, live tx %d)", st, len(warm), producedAtWait, liveOther, liveTx)
 	}
 	for _, r := range prod.records {
 		if string(r.Key) == "" || r.Topic == "" {
@@ -197,7 +222,7 @@ func TestPhasesOrderAndPerAccountOrdering(t *testing.T) {
 	for acc, ts := range sc.order {
 		for i := 1; i < len(ts); i++ {
 			if ts[i] < ts[i-1] {
-				t.Fatalf("%s scored out of order: %v", acc, ts)
+				t.Fatalf("%s handled out of event order: %v", acc, ts)
 			}
 		}
 	}
@@ -209,10 +234,23 @@ func TestPhasesOrderAndPerAccountOrdering(t *testing.T) {
 	}
 }
 
+func TestLiveAccountEventsNeedAnApplier(t *testing.T) {
+	evs := dataset(20)
+	if _, err := Run(context.Background(), Config{}, nil, &recordingScorer{}, nil, evs); err == nil {
+		t.Fatal("login/device events without an Applier must be refused, not silently dropped")
+	}
+	sc := &recordingScorer{}
+	app := &recordingApplier{sc: sc, fail: "dev-5"}
+	st, err := Run(context.Background(), Config{Applier: app}, nil, sc, nil, evs)
+	if err != nil || st.ApplyErrors != 1 || st.Applied != 3 {
+		t.Fatalf("apply errors are counted: %+v %v", st, err)
+	}
+}
+
 func TestScoreErrorsAreCountedNotFatal(t *testing.T) {
 	evs := dataset(10)
 	sc := &recordingScorer{fail: map[string]error{evs[2].EventID: status.Error(codes.ResourceExhausted, "queue full")}}
-	st, err := Run(context.Background(), Config{}, nil, sc, nil, evs)
+	st, err := Run(context.Background(), Config{Applier: &recordingApplier{sc: &recordingScorer{}}}, nil, sc, nil, evs)
 	if err != nil || st.Errors != 1 || st.ByCode["ResourceExhausted"] != 1 {
 		t.Fatalf("stats %+v err %v", st, err)
 	}
@@ -220,7 +258,7 @@ func TestScoreErrorsAreCountedNotFatal(t *testing.T) {
 		t.Fatal("produce failure must fail the run")
 	}
 	waitErr := errors.New("timeout")
-	if _, err := Run(context.Background(), Config{WaitCaughtUp: func(context.Context) error { return waitErr }}, nil, sc, nil, evs); !errors.Is(err, waitErr) {
+	if _, err := Run(context.Background(), Config{Applier: &recordingApplier{sc: &recordingScorer{}}, WaitCaughtUp: func(context.Context) error { return waitErr }}, nil, sc, nil, evs); !errors.Is(err, waitErr) {
 		t.Fatalf("wait failure: %v", err)
 	}
 }

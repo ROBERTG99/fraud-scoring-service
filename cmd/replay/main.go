@@ -1,5 +1,6 @@
 // Command replay feeds a generated dataset through the running system: history to Kafka, then the last
-// -window of transactions to the scorer over gRPC at -rate per second (see internal/replay).
+// -window in event order per account: login/device events applied to the feature store and published,
+// transactions scored over gRPC at -rate per second (see internal/replay).
 package main
 
 import (
@@ -20,6 +21,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	fraudv1 "github.com/ROBERTG99/fraud-scoring-service/gen/go/fraud/v1"
+	"github.com/ROBERTG99/fraud-scoring-service/internal/features"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/replay"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/stream"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/telemetry"
@@ -84,8 +86,8 @@ func main() {
 }
 
 func summary(st replay.Stats) string {
-	return fmt.Sprintf("replay: produced %d events, scored %d transactions in %s (APPROVE %d, REVIEW %d, DECLINE %d, degraded %d, errors %d %v)",
-		st.Produced, st.Scored, st.Elapsed.Round(time.Millisecond), st.Actions["APPROVE"], st.Actions["REVIEW"],
+	return fmt.Sprintf("replay: produced %d events, applied %d, scored %d transactions in %s (APPROVE %d, REVIEW %d, DECLINE %d, degraded %d, errors %d %v)",
+		st.Produced, st.Applied, st.Scored, st.Elapsed.Round(time.Millisecond), st.Actions["APPROVE"], st.Actions["REVIEW"],
 		st.Actions["DECLINE"], st.Degraded, st.Errors, st.ByCode)
 }
 
@@ -115,7 +117,14 @@ func run(ctx context.Context, o options, log *slog.Logger) (replay.Stats, error)
 	}
 	defer func() { _ = conn.Close() }()
 
-	cfg := replay.Config{Rate: o.rate, Workers: o.workers, Token: o.token, Log: log}
+	spec, err := features.LoadSpec(envOr("FRAUD_FEATURE_SPEC", "features/spec.yaml"))
+	if err != nil {
+		return replay.Stats{}, err
+	}
+	rdb := features.NewUpdaterRedisClient(envOr("FRAUD_REDIS_ADDR", "127.0.0.1:8530"))
+	defer func() { _ = rdb.Close() }()
+	cfg := replay.Config{Rate: o.rate, Workers: o.workers, Token: o.token, Log: log,
+		Applier: features.NewStore(rdb, os.Getenv("FRAUD_REDIS_PREFIX"), spec)}
 	if o.waitGroup != "" {
 		wait := replay.CaughtUp(kadm.NewClient(kcl), o.waitGroup, []string{stream.TopicLogin, stream.TopicDevice, stream.TopicTransaction}, 250*time.Millisecond)
 		cfg.WaitCaughtUp = func(ctx context.Context) error {

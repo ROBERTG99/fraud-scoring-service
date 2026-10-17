@@ -1,6 +1,6 @@
 // Command seed prepares a demo environment (compose `seed` job, `make seed`): migrate, generate the
-// demo dataset, train and register the model, replay the last 24 h through the scorer, and check that
-// enough review cases exist. Every step is idempotent, so seed can run again on a seeded stack.
+// demo dataset, train and register the model, replay the last 72 h (the held-out test split) through the
+// scorer, and check that enough review cases exist. Every step is idempotent, so seed can run again on a seeded stack.
 package main
 
 import (
@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	fraudv1 "github.com/ROBERTG99/fraud-scoring-service/gen/go/fraud/v1"
+	"github.com/ROBERTG99/fraud-scoring-service/internal/features"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/replay"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/store"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/stream"
@@ -117,6 +118,9 @@ func seed(ctx context.Context, cfg config, d deps, log *slog.Logger) (report, er
 	}
 	if total := r.Stats.Scored + r.Stats.Errors; total > 0 && float64(r.Stats.Errors)/float64(total) > cfg.MaxErrRate {
 		return r, fmt.Errorf("replay: %d of %d Score calls failed (%v)", r.Stats.Errors, total, r.Stats.ByCode)
+	}
+	if total := r.Stats.Applied + r.Stats.ApplyErrors; total > 0 && float64(r.Stats.ApplyErrors)/float64(total) > cfg.MaxErrRate {
+		return r, fmt.Errorf("replay: %d of %d account events could not be applied to the feature store", r.Stats.ApplyErrors, total)
 	}
 
 	r.OpenCases, r.Decisions, r.Missing, err = countCases(ctx, cfg.AppDSN, r.Stats.TransactionIDs, cfg.PersistWait)
@@ -262,6 +266,15 @@ func main() {
 	}
 	defer func() { _ = conn.Close() }()
 
+	spec, err := features.LoadSpec(envOr("FRAUD_FEATURE_SPEC", "features/spec.yaml"))
+	if err != nil {
+		log.Error("feature spec", "err", err)
+		os.Exit(1)
+	}
+	rdb := features.NewUpdaterRedisClient(envOr("FRAUD_REDIS_ADDR", "127.0.0.1:8530"))
+	defer func() { _ = rdb.Close() }()
+	applier := features.NewStore(rdb, os.Getenv("FRAUD_REDIS_PREFIX"), spec)
+
 	wait := replay.CaughtUp(kadm.NewClient(kcl), "feature-updater", []string{stream.TopicLogin, stream.TopicDevice, stream.TopicTransaction}, 250*time.Millisecond)
 	cfg := config{
 		DataDir:    *data,
@@ -271,7 +284,7 @@ func main() {
 		TrainCmds:  train,
 		ModelWait:  *modelWait,
 		Window:     *window,
-		Replay: replay.Config{Rate: *rate, Workers: 32, Token: token, Log: log, WaitCaughtUp: func(ctx context.Context) error {
+		Replay: replay.Config{Rate: *rate, Workers: 32, Token: token, Log: log, Applier: applier, WaitCaughtUp: func(ctx context.Context) error {
 			wctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 			defer cancel()
 			return wait(wctx)
@@ -286,7 +299,7 @@ func main() {
 		log.Error("seed failed", "err", err)
 		os.Exit(1)
 	}
-	fmt.Printf("seed: done in %s | generated=%t trained=%t model_ready=%t | produced %d events, scored %d (REVIEW %d, DECLINE %d, degraded %d, errors %d) | %d decisions, %d open cases\n",
-		time.Since(start).Round(time.Second), r.Generated, r.Trained, r.ModelReady, r.Stats.Produced, r.Stats.Scored,
+	fmt.Printf("seed: done in %s | generated=%t trained=%t model_ready=%t | produced %d events, applied %d, scored %d (REVIEW %d, DECLINE %d, degraded %d, errors %d) | %d decisions, %d open cases\n",
+		time.Since(start).Round(time.Second), r.Generated, r.Trained, r.ModelReady, r.Stats.Produced, r.Stats.Applied, r.Stats.Scored,
 		r.Stats.Actions["REVIEW"], r.Stats.Actions["DECLINE"], r.Stats.Degraded, r.Stats.Errors, r.Decisions, r.OpenCases)
 }
