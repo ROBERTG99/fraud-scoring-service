@@ -1,0 +1,86 @@
+/* Design tokens (spec §13, "control room", dark-first). Every colour used by the console comes from here;
+   status colours are always paired with a text label. Contrast pairs are checked by tokens.test.ts. */
+@import "tailwindcss";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+
+:root {
+  color-scheme: dark;
+  --bg: #0b1220;
+  --panel: #111a2e;
+  --panel-raised: #18233b;
+  --border: #26324d;
+  --text: #e6edf7;
+  --text-muted: #9fb0c8;
+  --accent: #22d3ee;
+  --decline: #f43f5e;
+  --review: #f59e0b;
+  --approve: #10b981;
+  /* Status colours used as text: ≥ 4.5:1 on every surface (the spec colours above are for borders/fills). */
+  --decline-text: #fa5c74;
+  --review-text: #f59e0b;
+  --approve-text: #10b981;
+  --focus: #22d3ee;
+  --on-accent: #0b1220;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f6f8fb;
+  --panel: #ffffff;
+  --panel-raised: #eef2f7;
+  --border: #c9d3e0;
+  --text: #0b1220;
+  --text-muted: #46566e;
+  --accent: #0e7490;
+  --decline: #be123c;
+  --review: #b45309;
+  --approve: #047857;
+  --decline-text: #be123c;
+  --review-text: #a3480a;
+  --approve-text: #047857;
+  --focus: #0e7490;
+  --on-accent: #ffffff;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-panel-raised: var(--panel-raised);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-decline: var(--decline);
+  --color-review: var(--review);
+  --color-approve: var(--approve);
+  --color-decline-text: var(--decline-text);
+  --color-review-text: var(--review-text);
+  --color-approve-text: var(--approve-text);
+  --color-on-accent: var(--on-accent);
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+}
+
+/* IDs and amounts: monospace with tabular numerals. */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.row {
+  min-height: 32px;
+}
