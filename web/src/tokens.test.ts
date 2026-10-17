@@ -49,6 +49,10 @@ describe.each([
       expect(contrast(t[c]!, t[bg]!)).toBeGreaterThanOrEqual(3);
     }
   });
+  it("chart series meets 3:1 on every surface", () => {
+    for (const bg of ["bg", "panel", "panel-raised"])
+      expect(contrast(t["chart-series"]!, t[bg]!)).toBeGreaterThanOrEqual(3);
+  });
   it("button text meets 4.5:1 on the accent", () => {
     expect(contrast(t["on-accent"]!, t["accent"]!)).toBeGreaterThanOrEqual(4.5);
   });

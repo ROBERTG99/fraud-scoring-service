@@ -4,8 +4,12 @@ import { NavLink, Navigate, Outlet, createBrowserRouter, useLocation, useNavigat
 import { signInPath } from "./api/client";
 import { can, clearSession, getSession } from "./auth/session";
 import CaseDetail from "./routes/case";
+import Live from "./routes/live";
 import Placeholder from "./routes/placeholder";
 import Queue from "./routes/queue";
+import Rules from "./routes/rules";
+import Shadow from "./routes/shadow";
+import Timeline from "./routes/timeline";
 import SignIn from "./routes/signin";
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -103,10 +107,10 @@ export const routes = [
       { index: true, element: <Navigate to="/queue" replace /> },
       { path: "/queue", element: <Queue /> },
       { path: "/cases/:caseId", element: <CaseDetail /> },
-      { path: "/accounts/:accountId", element: <Placeholder title="Account timeline" /> },
-      { path: "/shadow", element: <Placeholder title="Model and shadow" /> },
-      { path: "/live", element: <Placeholder title="Live metrics" /> },
-      { path: "/rules", element: <Placeholder title="Rules" /> },
+      { path: "/accounts/:accountId", element: <Timeline /> },
+      { path: "/shadow", element: <Shadow /> },
+      { path: "/live", element: <Live /> },
+      { path: "/rules", element: <Rules /> },
       { path: "*", element: <Placeholder title="Not found" /> },
     ],
   },

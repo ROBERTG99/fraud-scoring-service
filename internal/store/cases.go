@@ -357,10 +357,11 @@ func (s *CaseStore) Timeline(ctx context.Context, accountID string, limit int) (
 	rows, err := s.pool.Query(ctx, `
 		(SELECT 'event.' || kind, event_id, event_ts, payload::text FROM account_events WHERE account_id = $1 ORDER BY event_ts DESC LIMIT $2)
 		UNION ALL
-		(SELECT 'decision', decision_id::text, decided_at,
-		        json_build_object('action', action, 'score', score, 'reason_codes', array_to_string(reason_codes, ','), 'model_version', model_version,
-		                          'transaction_id', transaction_id)::text
-		   FROM decisions WHERE account_id = $1 ORDER BY decided_at DESC LIMIT $2)
+		(SELECT 'decision', d.decision_id::text, d.decided_at,
+		        json_strip_nulls(json_build_object('action', d.action, 'score', d.score, 'reason_codes', array_to_string(d.reason_codes, ','),
+		                          'model_version', d.model_version, 'transaction_id', d.transaction_id, 'case_id', rc.case_id))::text
+		   FROM decisions d LEFT JOIN review_cases rc ON rc.decision_id = d.decision_id
+		  WHERE d.account_id = $1 ORDER BY d.decided_at DESC LIMIT $2)
 		UNION ALL
 		(SELECT 'label', al.label_id::text, al.created_at,
 		        json_build_object('label', al.label, 'analyst', al.analyst_sub, 'case_id', al.case_id)::text

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	fraudv1 "github.com/ROBERTG99/fraud-scoring-service/gen/go/fraud/v1"
@@ -193,16 +194,37 @@ func TestListGetTimelineShadowAndRules(t *testing.T) {
 	if _, err := s.LabelCase(ctx, LabelInput{CaseID: c.CaseId, Label: "fraud", IdempotencyKey: "tl-key-1", ActorSub: "analyst-1", Role: "analyst"}); err != nil {
 		t.Fatal(err)
 	}
+	approveW, err := NewGroupWriter(pool, WriterConfig{SpoolDir: t.TempDir()}, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := approveW.Commit(ctx, record(6000, fraudv1.Action_ACTION_APPROVE)); err != nil { // no case for APPROVE
+		t.Fatal(err)
+	}
+	approveW.Close()
 	items, err := s.Timeline(ctx, "acc_00000042", 100)
-	if err != nil || len(items) != 7 || items[0].Kind != "label" {
+	if err != nil || len(items) != 8 || items[0].Kind != "label" {
 		t.Fatalf("timeline %d %v first=%v", len(items), err, items)
 	}
 	kinds := map[string]int{}
 	for _, it := range items {
 		kinds[it.Kind]++
 	}
-	if kinds["decision"] != 5 || kinds["event.login"] != 1 || kinds["label"] != 1 {
+	if kinds["decision"] != 6 || kinds["event.login"] != 1 || kinds["label"] != 1 {
 		t.Fatalf("kinds %v", kinds)
+	}
+	// REVIEW decisions link to their case; other decisions carry no case_id (not "<nil>").
+	for _, it := range items {
+		if it.Kind != "decision" {
+			continue
+		}
+		id, ok := it.Details["case_id"]
+		if review := it.Details["action"] == "REVIEW"; review != ok {
+			t.Fatalf("decision %s action %s: case_id %q present=%t", it.Id, it.Details["action"], id, ok)
+		}
+		if _, err := uuid.Parse(id); ok && err != nil {
+			t.Fatalf("decision case_id %q", id)
+		}
 	}
 	// Shadow summary.
 	shadow := NewShadowStore(pool)

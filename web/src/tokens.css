@@ -21,6 +21,9 @@
   --decline-text: #fa5c74;
   --review-text: #f59e0b;
   --approve-text: #10b981;
+  /* Single chart series (sparklines): passes the dataviz validator's lightness, chroma and 3:1 checks in both themes. */
+  --chart-series: #0891b2;
+  --chart-grid: #26324d;
   --focus: #22d3ee;
   --on-accent: #0b1220;
 }
@@ -40,6 +43,8 @@
   --decline-text: #be123c;
   --review-text: #a3480a;
   --approve-text: #047857;
+  --chart-series: #0891b2;
+  --chart-grid: #c9d3e0;
   --focus: #0e7490;
   --on-accent: #ffffff;
 }
