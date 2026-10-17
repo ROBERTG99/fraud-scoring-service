@@ -59,7 +59,11 @@ class _OneCase:
 
 
 async def target(row: dict[str, Any]) -> TargetResult:
-    base = _base()
+    return await summarize_with(_base(), row)
+
+
+async def summarize_with(base: LLMGateway, row: dict[str, Any]) -> TargetResult:
+    """Run the summary pipeline on one case through `base`'s providers, recording every provider request."""
     sent: list[str] = []
     providers = {name: _Recorder(p, sent) for name, p in base.providers.items()}
     gateway = LLMGateway(base.config, providers)
@@ -77,7 +81,9 @@ async def target(row: dict[str, Any]) -> TargetResult:
         "confidence": s.confidence,
         "model": s.model,
         "prompt_version": s.prompt_version,
-        "evidence": [e.model_dump(mode="json") for e in s.evidence],
+        "evidence": [{"fact_key": e.fact_key, "statement": e.statement} for e in s.evidence],
+        "recommended_checks": list(s.recommended_checks),
+        "facts": dict(s.facts),
         "provider_prompt": "\n".join(sent),
         "prompt_hash": res.prompt_hash,
     }

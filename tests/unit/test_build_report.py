@@ -125,3 +125,29 @@ def test_live_evals_not_run_are_stated(tmp_path: Path) -> None:
     )
     text = br.render(reports, tmp_path / "none")
     assert "Live evals (`make eval-live`): run" in text and "claude-haiku-5-5" in text
+
+
+def test_judge_calibration_is_reported(tmp_path: Path) -> None:
+    reports = tmp_path / "r"
+    write(reports, "decisions", report("decisions", {"action_exact": (1.0, 1.0, "higher")}))
+    assert "Judge calibration (`make eval-judge`): not run" in br.render(reports, tmp_path / "none")
+    calib = {
+        "schema": "evalgate.calibration.v1",
+        "mode": "offline",
+        "models": ["fake-judge-v1"],
+        "split": "test",
+        "n": 40,
+        "agreement": 0.925,
+        "kappa": 0.85,
+        "thresholds": {"agreement_min": 0.8},
+        "passed": True,
+    }
+    (reports / "judge_calibration.json").write_text(json.dumps(calib), encoding="utf-8")
+    text = br.render(reports, tmp_path / "none")
+    assert (
+        "Judge calibration (`make eval-judge`): offline, fake-judge-v1, 40 test labels: agreement 0.925 (min 0.8), kappa 0.850: PASS"
+        in text
+    )
+    calib["passed"] = False
+    (reports / "judge_calibration.json").write_text(json.dumps(calib), encoding="utf-8")
+    assert "Gate: **FAIL**" in br.render(reports, tmp_path / "none")

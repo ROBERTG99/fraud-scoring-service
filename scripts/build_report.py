@@ -153,12 +153,25 @@ def render(reports_dir: Path, baseline_dir: Path) -> str:
             )
             + "."
         )
+    calib_path = reports_dir / "judge_calibration.json"
+    if calib_path.is_file():
+        c = json.loads(calib_path.read_text(encoding="utf-8"))
+        verdicts.append(bool(c["passed"]))
+        judge_line = (
+            f"Judge calibration (`make eval-judge`): {c['mode']}, {', '.join(c['models']) or 'no model'}, "
+            f"{c['n']} {c['split']} labels: agreement {c['agreement']:.3f} "
+            f"(min {c['thresholds']['agreement_min']:g}), kappa {c['kappa']:.3f}: {'PASS' if c['passed'] else 'FAIL'}."
+        )
+    else:
+        judge_line = "Judge calibration (`make eval-judge`): not run."
     gate_all = "PASS" if verdicts and all(verdicts) else "FAIL"
     out += [
-        f"Gate: **{gate_all}** ({sum(verdicts)} of {len(verdicts)} suites pass; thresholds from spec §11, "
+        f"Gate: **{gate_all}** ({sum(verdicts)} of {len(verdicts)} checks pass; thresholds from spec §11, "
         "regressions over 1 pp with a 95% paired-bootstrap interval excluding 0).",
         "",
         live_line,
+        "",
+        judge_line,
         "",
         "| Suite | Metric | Value | Threshold | Status | Baseline | Δ (pp) |",
         "|---|---|---|---|---|---|---|",

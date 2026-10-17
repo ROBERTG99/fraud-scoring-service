@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import Any
 
 from fraud_summarizer import facts as factfmt
 from fraud_summarizer.llm.cassettes import CassetteStore
@@ -149,6 +150,28 @@ def summarize(facts: dict[str, str]) -> dict[str, object]:
     }
 
 
+def fake_judge(facts: dict[str, str], summary: dict[str, Any]) -> dict[str, object]:
+    """Offline stand-in for the usefulness judge: the three tests of judge_summary_usefulness.v1, by rule.
+
+    It reads only fact keys, values and the summary's fields, so instructions inside text cannot steer it.
+    """
+    from fraud_summarizer.faithfulness import check
+
+    evidence = [
+        (str(e.get("fact_key", "")), str(e.get("statement", ""))) for e in summary.get("evidence", [])
+    ]
+    if not evidence or check(evidence, facts).score < 1.0:
+        return {
+            "useful": False,
+            "rationale": "An evidence item cites an absent fact or a number that differs.",
+        }
+    if summary.get("pattern") != classify(facts):
+        return {"useful": False, "rationale": "The pattern is not the one the facts support."}
+    if not any(len(str(c).split()) >= 6 for c in summary.get("recommended_checks", [])):
+        return {"useful": False, "rationale": "No recommended check is a concrete next step."}
+    return {"useful": True, "rationale": "Faithful evidence, a supported pattern and a concrete check."}
+
+
 @dataclass
 class FakeLLM:
     """Deterministic provider. `cassette_model` is the route's real model whose recordings win."""
@@ -162,8 +185,10 @@ class FakeLLM:
             hit = self.cassettes.get(req, self.cassette_model)
             if hit is not None:
                 return hit
-        if req.route != "case_summary":
-            body: dict[str, object] = {"useful": True, "rationale": "fake judge"}
+        if req.route == "judge_usefulness":
+            from fraud_summarizer.judge import parse_message
+
+            body: dict[str, object] = fake_judge(*parse_message(req.user))
         else:
             body = summarize(factfmt.parse(req.user))
         text = json.dumps(body, sort_keys=True)
