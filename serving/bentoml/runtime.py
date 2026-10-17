@@ -73,7 +73,9 @@ def _check_feature_spec(model_dir: Path) -> None:
         return  # bare test fixtures carry no metadata
     spec = json.loads(meta_path.read_text(encoding="utf-8")).get("feature_spec")
     if spec != EXPECTED_FEATURE_SPEC:
-        raise ModelNotReadyError(f"model trained on feature spec {spec!r}, server expects {EXPECTED_FEATURE_SPEC!r}")
+        raise ModelNotReadyError(
+            f"model trained on feature spec {spec!r}, server expects {EXPECTED_FEATURE_SPEC!r}"
+        )
 
 
 class ModelRuntime:

@@ -14,9 +14,9 @@ DATE_TIME = re.compile(
     r"\b\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?)?\b"
 )
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-# Card-like: 13-19 digits, optionally separated by spaces or dashes.
-CARD = re.compile(r"(?<![\w.])(?:\d[ -]?){12,18}\d(?![\w.])")
-PHONE = re.compile(r"(?<![\w.])\+?\(?\d{1,4}\)?(?:[ .-]?\(?\d{2,4}\)?){2,5}(?![\w.])")
+# Card-like: 13-19 digits, optionally separated by spaces, dashes or dots. A sentence-ending dot may follow.
+CARD = re.compile(r"(?<![\w.])(?:\d[ .-]?){12,18}\d(?!\w|\.\d)")
+PHONE = re.compile(r"(?<![\w.])\+?\(?\d{1,4}\)?(?:[ .-]?\(?\d{2,4}\)?){2,5}(?!\w|\.\d)")
 
 
 def luhn_ok(digits: str) -> bool:
@@ -39,8 +39,12 @@ def _card(m: re.Match[str]) -> str:
 def _phone(m: re.Match[str]) -> str:
     raw = m.group(0)
     digits = re.sub(r"\D", "", raw)
-    # Phone numbers need separators or a leading +; bare digit runs are amounts, counts or timestamps.
+    # Phone numbers need separators or a leading +, except a bare run of 10 or 11 digits (a national number,
+    # optionally with its country code). Shorter or longer bare runs are amounts, counts or epoch milliseconds;
+    # no fact carries a 10-11 digit number (amounts stop at 8 digits, timestamps are ISO 8601).
     if 8 <= len(digits) <= 15 and (raw.startswith("+") or re.search(r"[ .()-]", raw)):
+        return "[REDACTED_PHONE]"
+    if raw.isdigit() and len(raw) in (10, 11):
         return "[REDACTED_PHONE]"
     return raw
 
