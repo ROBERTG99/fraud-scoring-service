@@ -94,7 +94,9 @@ def fmt_number(x: float) -> str:
 
 
 def _text(value: Any) -> str:
-    s = str(value)
+    # Redact before the cut: truncating first could split a card or phone number so that its remaining
+    # digits no longer match a pattern (T-42). The redact step runs again on every fact (idempotent).
+    s = redact_text(str(value))
     return s if len(s) <= MAX_TEXT else s[:MAX_TEXT]
 
 

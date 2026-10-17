@@ -49,3 +49,17 @@ def test_keeps_non_pii(text: str) -> None:
 
 def test_luhn() -> None:
     assert luhn_ok("4111111111111111") and not luhn_ok("4111111111111112")
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # Adjacent numbers must not merge into one rejected span that is then left in place.
+        ("+44 20 7946 0958 (555) 014-2398", "[REDACTED_PHONE] [REDACTED_PHONE]"),
+        ("call +44 20 7946 0958 5550142398", "call [REDACTED_PHONE] [REDACTED_PHONE]"),
+        ("4111 1111 1111 1111 5550142398", "[REDACTED_CARD] [REDACTED_PHONE]"),
+        ("ref 94000 then 4111 1111 1111 1111", "ref 94000 then [REDACTED_CARD]"),
+    ],
+)
+def test_adjacent_pii_is_each_redacted(text: str, expected: str) -> None:
+    assert redact_text(text) == expected

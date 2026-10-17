@@ -31,8 +31,7 @@ import (
 	"github.com/ROBERTG99/fraud-scoring-service/internal/telemetry"
 )
 
-// maxBody is the request size limit for gRPC messages and HTTP bodies (spec §4.4: 64 KB).
-const maxBody = 64 << 10
+const maxBody = api.MaxBodyBytes
 
 // serverConfig wires the transport layer.
 type serverConfig struct {
@@ -150,7 +149,7 @@ func newServers(ctx context.Context, cfg serverConfig) (*servers, error) {
 		if r.Body != nil && r.Method == http.MethodPost {
 			body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
 			if err != nil {
-				writeStatus(w, http.StatusRequestEntityTooLarge, codes.InvalidArgument, "body larger than 64 KB")
+				writeStatus(w, http.StatusRequestEntityTooLarge, codes.ResourceExhausted, "body larger than 64 KB")
 				return
 			}
 			if hasJSONNull(body) {
@@ -163,7 +162,7 @@ func newServers(ctx context.Context, cfg serverConfig) (*servers, error) {
 		gw.ServeHTTP(w, r)
 	}))
 	hsrv := &http.Server{Handler: mux, ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second,
-		MaxHeaderBytes: 16 << 10}
+		MaxHeaderBytes: api.MaxHeaderBytes}
 	return &servers{grpc: gs, http: hsrv, grpcLis: grpcLis, httpLis: httpLis, health: hs, conn: conn}, nil
 }
 

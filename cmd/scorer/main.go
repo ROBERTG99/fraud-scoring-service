@@ -198,7 +198,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	})
 	caseSrv := &api.CaseServer{Backend: cases, Rules: eng, Live: live, ShadowDropped: shadowDropped, Log: log}
 
-	rps, err := strconv.ParseFloat(envOr("FRAUD_RATE_LIMIT_RPS", "20"), 64)
+	rps, err := strconv.ParseFloat(envOr("FRAUD_RATE_LIMIT_RPS", strconv.Itoa(api.DefaultUserRPS)), 64)
 	if err != nil {
 		return fmt.Errorf("FRAUD_RATE_LIMIT_RPS: %w", err)
 	}

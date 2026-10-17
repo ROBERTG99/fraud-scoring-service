@@ -15,6 +15,11 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	fraudv1 "github.com/ROBERTG99/fraud-scoring-service/gen/go/fraud/v1"
@@ -68,8 +73,9 @@ func (s *memStore) GetByTransaction(ctx context.Context, id string) (*fraudv1.De
 }
 
 type testStack struct {
-	base   string
-	signer *auth.Signer
+	base     string
+	grpcAddr string
+	signer   *auth.Signer
 }
 
 // startStack runs the real gRPC server, interceptors and HTTP gateway with in-memory dependencies.
@@ -128,7 +134,7 @@ func startTracedStack(t *testing.T, tp trace.TracerProvider) testStack {
 			t.Errorf("serve: %v", err)
 		}
 	})
-	return testStack{base: "http://" + srv.httpLis.Addr().String(), signer: signer}
+	return testStack{base: "http://" + srv.httpLis.Addr().String(), grpcAddr: srv.grpcLis.Addr().String(), signer: signer}
 }
 
 func do(t *testing.T, method, url, token string, body []byte) *http.Response {
@@ -330,5 +336,42 @@ func TestScoreContinuesTheCallersTrace(t *testing.T) {
 	}
 	if score, ok := spans["fraud.score"]; !ok || score.Parent().SpanID() != server.SpanContext().SpanID() {
 		t.Fatal("fraud.score is not a child of the gRPC server span")
+	}
+}
+
+// TestBodyOver64KBRejected: spec §4.4/§15 cap request bodies at 64 KB on both surfaces.
+func TestBodyOver64KBRejected(t *testing.T) {
+	st := startStack(t)
+	pad := func(total int) []byte { // a JSON body of exactly total bytes
+		head, tail := `{"transaction":{"merchant_name":"`, `"}}`
+		return []byte(head + strings.Repeat("x", total-len(head)-len(tail)) + tail)
+	}
+	at := do(t, http.MethodPost, st.base+"/v1/score", "svc-token", pad(api.MaxBodyBytes))
+	if at.StatusCode == http.StatusRequestEntityTooLarge {
+		t.Fatal("a body of exactly 64 KB must be read (then fail validation), not rejected for size")
+	}
+	over := do(t, http.MethodPost, st.base+"/v1/score", "svc-token", pad(api.MaxBodyBytes+1))
+	var body struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(over.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if over.StatusCode != http.StatusRequestEntityTooLarge || body.Code != int(codes.ResourceExhausted) {
+		t.Fatalf("64 KB + 1 byte: status %d code %d, want 413 RESOURCE_EXHAUSTED", over.StatusCode, body.Code)
+	}
+
+	conn, err := grpc.NewClient(st.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithDefaultCallOptions(grpc.MaxCallSendMsgSize(1<<20)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	ctx, cancel := context.WithTimeout(metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer svc-token"), 5*time.Second)
+	defer cancel()
+	big := &fraudv1.ScoreRequest{Transaction: &fraudv1.Transaction{MerchantName: strings.Repeat("x", api.MaxBodyBytes)}}
+	if _, err := fraudv1.NewScorerClient(conn).Score(ctx, big); status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("gRPC message over 64 KB: %v, want ResourceExhausted", err)
 	}
 }

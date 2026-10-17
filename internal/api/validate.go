@@ -29,9 +29,6 @@ var (
 	reMerch   = regexp.MustCompile(`^m_[0-9a-z]{4,32}$`)
 )
 
-// MaxAmountMinor is the largest accepted amount (spec §4.4).
-const MaxAmountMinor = 10_000_000
-
 // ValidateTransaction returns field violations in field order (empty when valid).
 func ValidateTransaction(tx *fraudv1.Transaction) []*errdetails.BadRequest_FieldViolation {
 	var v []*errdetails.BadRequest_FieldViolation
@@ -71,7 +68,7 @@ func ValidateTransaction(tx *fraudv1.Transaction) []*errdetails.BadRequest_Field
 	if !reCountry.MatchString(tx.Country) {
 		add("country", "must be ISO 3166-1 alpha-2")
 	}
-	if utf8.RuneCountInString(tx.MerchantName) > 120 || strings.ContainsFunc(tx.MerchantName, isControl) {
+	if utf8.RuneCountInString(tx.MerchantName) > MaxMerchantNameRunes || strings.ContainsFunc(tx.MerchantName, isControl) {
 		add("merchant_name", "at most 120 characters, no control characters")
 	}
 	if tx.EventTs != nil && !tx.EventTs.IsValid() {
