@@ -137,7 +137,9 @@ func gitSHA() *string {
 	if err != nil {
 		return nil
 	}
-	dirty := exec.Command("git", "diff", "--quiet", "HEAD", "--").Run() != nil
+	// Untracked files count: a new .go file is compiled into the measured binary.
+	status, err := exec.Command("git", "status", "--porcelain", "--untracked-files=normal").Output()
+	dirty := err != nil || len(strings.TrimSpace(string(status))) > 0
 	s := stampSHA(strings.TrimSpace(string(out)), dirty)
 	return &s
 }

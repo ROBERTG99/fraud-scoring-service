@@ -30,20 +30,20 @@ What is not done, approximate or out of scope. Each entry names where it shows u
   combined policy catches 0.8387 of test fraud at FPR 0.32%; the 1% FPR point chosen on valid catches 0.9161
   at FPR 0.79% (`make eval-model`, `evals/reports/model.json`). Lowering the review threshold trades analyst
   load for recall; it is a rule-set change (`rules/`), not a model change.
-- **Fraud is easier to catch at night.** `cmd/gen` starts fraud incidents uniformly over the day while
-  legitimate activity follows a daily curve, so hours 0–5 UTC hold 27.9% of test fraud but 3.4% of
-  legitimate transactions, and `hour_of_day_utc` is a model feature. Retrained without it, model-only
-  recall@1%FPR falls from 0.9244 to 0.9071 and friendly-fraud recall from 22.0% to 7.3% (M5 ML review,
-  ablation on the eval test split). Real fraud timing differs.
+- **Fraud is easier to catch at night.** `cmd/gen` starts fraud incidents uniformly over the day
+  (`generator.go`) while legitimate activity follows a daily curve, so night hours hold a much larger share
+  of fraud than of legitimate transactions, and `hour_of_day_utc` is a model feature. The M5 ML review found
+  that recall drops when the model is retrained without it, most for friendly fraud; no committed command
+  reproduces that ablation. Real fraud timing differs.
 - **The temporal test measures sampling variation, not drift.** The model is trained on the demo data and
   evaluated on the eval data's later days; both are independent draws from a generator that does not change
   over time.
-- **Demo and eval data share identifiers.** Both use seed 7, so account, device and merchant ids repeat, and
-  4,833 transaction ids collide (different transactions). No feature uses an id, but loading both data sets
+- **Demo and eval data share identifiers.** Both use seed 7, so account, device and merchant ids repeat and
+  some transaction ids collide (different transactions). No feature uses an id, but loading both data sets
   into one stack breaks transaction-id idempotency.
-- **ONNX parity bound.** On eval data, 5 rows differ from the native model by up to 1.16e-5 (the training
-  check covers demo valid and test at 1e-5), and float32 output ties some scores (PR-AUC 0.8740 for ONNX,
-  0.8713 native). No decision changes.
+- **ONNX parity is checked on demo data only.** The training check (`training/train.py`, 1e-5 on demo valid
+  and test) does not cover the eval data, where the M5 ML review saw a few rows just over 1e-5; float32
+  output also ties some scores. No decision changes at the review or decline thresholds.
 - **The decisions suite is a conformance check.** Its expected actions restate the rule text, so 1.0 shows
   the Go engine applies the YAML rules and combination table as written, not that the rules are good.
 

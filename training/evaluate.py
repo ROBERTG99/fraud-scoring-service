@@ -166,6 +166,9 @@ def build_report(
     cases = []
     for k in range(N_SHARDS):
         scores = metrics_of(_subset(test, shards == k), max_fpr, op["threshold"], bands)
+        # ~30 transactions per band per shard: a per-shard gap is noise, so each shard carries the pooled
+        # value and the paired check compares the whole split (D-037).
+        scores["band_calibration_gap"] = overall["band_calibration_gap"]
         cases.append(
             CaseReport(
                 id=f"shard-{k:02d}",

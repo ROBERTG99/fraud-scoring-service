@@ -137,3 +137,11 @@ def test_band_calibration_gap_catches_what_ece_misses() -> None:
         extensions={},
     )
     assert not report.metrics["band_calibration_gap"].passed
+
+
+def test_shards_carry_the_pooled_band_calibration_gap() -> None:
+    # ~30 transactions per band per shard make a per-shard gap noise; the paired check compares the pooled value.
+    d = synthetic(5)
+    report = ev.build_report(d, valid=d, thresholds=ev.load_thresholds(), model_version="m/1", extensions={})
+    pooled = report.metrics["band_calibration_gap"].value
+    assert all(c.scores["band_calibration_gap"] == pooled for c in report.cases)

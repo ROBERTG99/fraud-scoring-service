@@ -13,6 +13,7 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
@@ -66,6 +67,18 @@ def mode_of(reports: dict[str, Report]) -> str:
     return "offline"
 
 
+def _band_lines(r: Report, ext: dict[str, Any]) -> list[str]:
+    """The policy the scorer ships: rule flags OR score at the active rule set's review threshold."""
+    b = ext.get("bands")
+    recall, fpr = r.metrics.get("recall_review_band"), r.metrics.get("fpr_review_band")
+    if not b or recall is None or fpr is None:
+        return []
+    return [
+        f"Shipped review threshold {b['review']:g} (rule set {b['rules_version']}): test recall {recall.value:.4f} "
+        f"at FPR {fpr.value * 100:.2f}%."
+    ]
+
+
 def _details(name: str, r: Report) -> list[str]:
     ext = r.extensions or {}
     if name == "model":
@@ -78,6 +91,7 @@ def _details(name: str, r: Report) -> list[str]:
             f"Model {', '.join(r.models)} (feature spec {ext.get('feature_spec')}, onnx sha256 {str(ext.get('onnx_sha256', ''))[:12]}); "
             f"rules alone flag {ext.get('rules_fpr', 0) * 100:.2f}% of legitimate transactions.",
             f"Threshold chosen on valid: test recall {op.get('test_recall', 0):.4f} at FPR {op.get('test_fpr', 0) * 100:.2f}%.",
+            *_band_lines(r, ext),
             f"Cases: {ext.get('case_unit', 'shards')}.",
         ]
     if name == "latency":
