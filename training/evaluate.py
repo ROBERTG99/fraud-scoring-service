@@ -6,6 +6,10 @@ the scorer receives. Rule flags come from the real Go rule engine (`cmd/evaldeci
 REVIEW or DECLINE is a rule flag). Writes an `evalgate.report.v1`: metric values are computed on the whole
 test split; `cases` are 20 account shards with the same metrics per shard, the paired units
 `evalgate check` compares against a baseline (D-033).
+
+No threshold is fit on test (D-037): the gated combined recall uses the threshold chosen on valid, the band
+metrics use the active rule set's review and decline thresholds (what the scorer applies), and the per-band
+calibration gap checks the probabilities those bands rely on. The test-oracle recall is reported only.
 """
 
 from __future__ import annotations
@@ -47,6 +51,41 @@ class EvalData:
 
 
 @dataclass(frozen=True)
+class Bands:
+    version: str
+    review: float
+    decline: float
+
+
+def active_bands(rules_dir: Path = ROOT / "rules") -> Bands:
+    """Thresholds of the highest-versioned rules.v*.yaml, the set internal/rules.NewEngine loads."""
+
+    def version(path: Path) -> tuple[int, ...]:
+        return tuple(int(x) for x in path.name.removeprefix("rules.v").removesuffix(".yaml").split("."))
+
+    path = max(rules_dir.glob("rules.v*.yaml"), key=version)
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    t = doc["thresholds"]
+    return Bands(version=str(doc["version"]), review=float(t["review"]), decline=float(t["decline"]))
+
+
+def band_calibration_gap(y: npt.ArrayLike, prob: npt.ArrayLike, review: float, decline: float) -> float:
+    """Largest |mean probability - fraud rate| over the review [review, decline) and decline [decline, 1] bands.
+
+    ECE is dominated by the ~99% legitimate mass near 0 and cannot fail at a 1% base rate; the bands are
+    where a decision depends on the probability's value. An empty band gives 1.0 (nothing to act on).
+    """
+    y_arr = np.asarray(y, dtype=np.float64)
+    p = np.asarray(prob, dtype=np.float64)
+    gap = 0.0
+    for mask in ((p >= review) & (p < decline), p >= decline):
+        if not mask.any():
+            return 1.0
+        gap = max(gap, abs(float(p[mask].mean()) - float(y_arr[mask].mean())))
+    return gap
+
+
+@dataclass(frozen=True)
 class MetricDef:
     name: str
     direction: str
@@ -70,15 +109,27 @@ def shard_of(accounts: npt.ArrayLike) -> npt.NDArray[np.int64]:
     return np.asarray([zlib.crc32(str(a).encode()) % N_SHARDS for a in np.asarray(accounts)], dtype=np.int64)
 
 
-def metrics_of(d: EvalData, max_fpr: float) -> dict[str, float]:
+def _rate(flagged: npt.NDArray[np.bool_], mask: npt.NDArray[np.bool_]) -> float:
+    return float(flagged[mask].mean()) if mask.any() else 0.0
+
+
+def metrics_of(d: EvalData, max_fpr: float, t_valid: float, bands: Bands) -> dict[str, float]:
+    """Metrics at fixed thresholds (t_valid from valid, bands from the rule set), so shards are comparable."""
     y = d.y.astype(bool)
-    rules_recall = float(d.flags[y].mean()) if y.any() else 0.0
+    combined = d.flags | (d.p >= t_valid)
+    review = d.flags | (d.p >= bands.review)
     return {
-        "recall_at_1pct_fpr_combined": recall_at_fpr_with_flags(d.y, d.p, d.flags, max_fpr)[0],
+        "recall_at_1pct_fpr_combined": _rate(combined, y),
+        "fpr_combined": _rate(combined, ~y),
+        "recall_review_band": _rate(review, y),
+        "fpr_review_band": _rate(review, ~y),
+        "recall_decline_band": _rate(d.p >= bands.decline, y),
+        "band_calibration_gap": band_calibration_gap(d.y, d.p, bands.review, bands.decline),
         "pr_auc": pr_auc(d.y, d.p) if y.any() else 0.0,
         "ece": expected_calibration_error(d.y, d.p),
+        "recall_at_1pct_fpr_combined_test_oracle": recall_at_fpr_with_flags(d.y, d.p, d.flags, max_fpr)[0],
         "recall_at_1pct_fpr_model": recall_at_fpr(d.y, d.p, max_fpr)[0],
-        "recall_at_1pct_fpr_rules": rules_recall,
+        "recall_at_1pct_fpr_rules": _rate(d.flags, y),
     }
 
 
@@ -106,12 +157,15 @@ def build_report(
     model_version: str,
     extensions: dict[str, Any],
     max_fpr: float = 0.01,
+    bands: Bands | None = None,
 ) -> Report:
-    overall = metrics_of(test, max_fpr)
+    bands = bands or active_bands()
+    op = operating_point_from_valid(valid, test, max_fpr)
+    overall = metrics_of(test, max_fpr, op["threshold"], bands)
     shards = shard_of(test.accounts)
     cases = []
     for k in range(N_SHARDS):
-        scores = metrics_of(_subset(test, shards == k), max_fpr)
+        scores = metrics_of(_subset(test, shards == k), max_fpr, op["threshold"], bands)
         cases.append(
             CaseReport(
                 id=f"shard-{k:02d}",
@@ -142,7 +196,8 @@ def build_report(
         "n_transactions": len(test.y),
         "n_fraud": int(y.sum()),
         "rules_fpr": float(test.flags[~y].mean()) if (~y).any() else 0.0,
-        "operating_point_from_valid": operating_point_from_valid(valid, test, max_fpr),
+        "operating_point_from_valid": op,
+        "bands": {"rules_version": bands.version, "review": bands.review, "decline": bands.decline},
         "case_unit": f"{N_SHARDS} account shards (CRC-32 of account_id)",
         **extensions,
     }

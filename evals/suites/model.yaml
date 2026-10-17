@@ -6,8 +6,17 @@ name: model
 data: artifacts/data/eval
 max_fpr: 0.01
 metrics:
+  # Thresholds are never fit on test (D-037): combined uses the threshold chosen on valid; the bands use the
+  # active rule set's review/decline thresholds. evalgate check enforces thresholds on gated metrics only,
+  # so every thresholded metric is gated; gated metrics without a threshold are regression-checked only.
   - { name: recall_at_1pct_fpr_combined, threshold: 0.80, direction: higher, gate: true }
+  - { name: fpr_combined, threshold: 0.015, direction: lower, gate: true } # valid threshold holds on test
+  - { name: recall_review_band, direction: higher, gate: true }
+  - { name: fpr_review_band, threshold: 0.01, direction: lower, gate: true }
+  - { name: recall_decline_band, direction: higher, gate: false } # reported only
+  - { name: band_calibration_gap, threshold: 0.05, direction: lower, gate: true }
   - { name: pr_auc, threshold: 0.70, direction: higher, gate: true }
   - { name: ece, threshold: 0.02, direction: lower, gate: true }
+  - { name: recall_at_1pct_fpr_combined_test_oracle, direction: higher, gate: false } # threshold fit on test
   - { name: recall_at_1pct_fpr_model, direction: higher, gate: false } # reported only
   - { name: recall_at_1pct_fpr_rules, direction: higher, gate: false } # reported only

@@ -26,6 +26,26 @@ What is not done, approximate or out of scope. Each entry names where it shows u
   features; metrics on this data say nothing about production fraud (see `cmd/gen/PATTERNS.md`).
 - Isotonic calibration is post-processed to a maximum slope of 10 (docs/DECISIONS.md D-008), which slightly
   smooths very steep steps of the calibration map.
+- **The scorer runs below the 1% FPR operating point.** At the active rule set's review threshold (0.30) the
+  combined policy catches 0.8387 of test fraud at FPR 0.32%; the 1% FPR point chosen on valid catches 0.9161
+  at FPR 0.79% (`make eval-model`, `evals/reports/model.json`). Lowering the review threshold trades analyst
+  load for recall; it is a rule-set change (`rules/`), not a model change.
+- **Fraud is easier to catch at night.** `cmd/gen` starts fraud incidents uniformly over the day while
+  legitimate activity follows a daily curve, so hours 0–5 UTC hold 27.9% of test fraud but 3.4% of
+  legitimate transactions, and `hour_of_day_utc` is a model feature. Retrained without it, model-only
+  recall@1%FPR falls from 0.9244 to 0.9071 and friendly-fraud recall from 22.0% to 7.3% (M5 ML review,
+  ablation on the eval test split). Real fraud timing differs.
+- **The temporal test measures sampling variation, not drift.** The model is trained on the demo data and
+  evaluated on the eval data's later days; both are independent draws from a generator that does not change
+  over time.
+- **Demo and eval data share identifiers.** Both use seed 7, so account, device and merchant ids repeat, and
+  4,833 transaction ids collide (different transactions). No feature uses an id, but loading both data sets
+  into one stack breaks transaction-id idempotency.
+- **ONNX parity bound.** On eval data, 5 rows differ from the native model by up to 1.16e-5 (the training
+  check covers demo valid and test at 1e-5), and float32 output ties some scores (PR-AUC 0.8740 for ONNX,
+  0.8713 native). No decision changes.
+- **The decisions suite is a conformance check.** Its expected actions restate the rule text, so 1.0 shows
+  the Go engine applies the YAML rules and combination table as written, not that the rules are good.
 
 ## Serving
 

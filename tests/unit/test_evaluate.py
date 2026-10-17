@@ -75,3 +75,65 @@ def test_stale_eval_data_is_refused(tmp_path) -> None:  # type: ignore[no-untype
     with pytest.raises(ValueError, match="gen_version 1"):
         ev.check_data(tmp_path)
     assert ev.go_gen_version() == ev.GEN_VERSION
+
+
+def synthetic(seed: int, n: int = 40_000, calibrated: bool = True) -> ev.EvalData:
+    """Scores drawn so that P(fraud | p) = p when calibrated; p**3 otherwise (over-confident low, fine ranking)."""
+    rng = np.random.default_rng(seed)
+    # Mostly near 0, with 4% spread over [0.2, 1] so the review and decline bands are populated.
+    tail = rng.random(n) < 0.04
+    p = np.where(tail, rng.uniform(0.2, 1.0, n), rng.beta(0.3, 30.0, n))
+    y = (rng.random(n) < p).astype(np.int8)
+    flags = (y == 1) & (rng.random(n) < 0.2)
+    accounts = np.asarray([f"acc_{i % 3000:08d}" for i in range(n)])
+    return ev.EvalData(y=y, p=p if calibrated else p**3, flags=flags, accounts=accounts)
+
+
+def test_active_thresholds_follow_the_scorer() -> None:
+    bands = ev.active_bands()
+    assert bands.version == "2026.10.2" and bands.review == 0.30 and bands.decline == 0.85
+
+
+def test_gated_combined_recall_uses_the_valid_threshold() -> None:
+    valid, test = synthetic(1), synthetic(2)
+    report = ev.build_report(
+        test, valid=valid, thresholds=ev.load_thresholds(), model_version="m/1", extensions={}
+    )
+    op = report.extensions["operating_point_from_valid"]
+    m = report.metrics
+    assert m["recall_at_1pct_fpr_combined"].value == op["test_recall"]
+    assert m["fpr_combined"].value == op["test_fpr"]
+    # The test-oracle point (threshold fit on test) is reported, not gated.
+    oracle = recall_at_fpr_with_flags(test.y, test.p, test.flags, 0.01)[0]
+    assert m["recall_at_1pct_fpr_combined_test_oracle"].value == oracle
+    assert report.extensions["gates"]["recall_at_1pct_fpr_combined_test_oracle"] is False
+
+
+def test_deployed_band_metrics_are_reported_and_regression_gated() -> None:
+    d = synthetic(3)
+    report = ev.build_report(d, valid=d, thresholds=ev.load_thresholds(), model_version="m/1", extensions={})
+    m, gates = report.metrics, report.extensions["gates"]
+    y = d.y.astype(bool)
+    flagged = d.flags | (d.p >= 0.30)
+    assert m["recall_review_band"].value == float(flagged[y].mean()) and gates["recall_review_band"] is True
+    assert m["fpr_review_band"].value == float(flagged[~y].mean())
+    assert m["recall_decline_band"].value == float((d.p >= 0.85)[y].mean())
+    assert report.extensions["bands"] == {"rules_version": "2026.10.2", "review": 0.30, "decline": 0.85}
+
+
+def test_band_calibration_gap_catches_what_ece_misses() -> None:
+    good = synthetic(4)
+    assert ev.band_calibration_gap(good.y, good.p, 0.30, 0.85) < 0.05
+    bad = synthetic(4, calibrated=False)
+    assert ev.band_calibration_gap(bad.y, bad.p, 0.30, 0.85) > 0.05
+    # A constant predictor has empty bands: the gap is 1, while its ECE is under the 0.02 threshold.
+    zeros = np.zeros(len(good.y))
+    assert ev.band_calibration_gap(good.y, zeros, 0.30, 0.85) == 1.0
+    report = ev.build_report(
+        ev.EvalData(y=good.y, p=zeros, flags=good.flags, accounts=good.accounts),
+        valid=good,
+        thresholds=ev.load_thresholds(),
+        model_version="m/1",
+        extensions={},
+    )
+    assert not report.metrics["band_calibration_gap"].passed
