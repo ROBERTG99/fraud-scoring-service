@@ -133,6 +133,8 @@ class LLMGateway:
                         )
                     except ProviderError as exc:
                         err = exc
+                    except Exception as exc:  # a provider bug (e.g. SDK TypeError) must not stall the caller
+                        err = ProviderError(f"{type(exc).__name__}: {exc}"[:300], kind="provider_error")
                     else:
                         cost = self.config.cost_usd(
                             resp.model,

@@ -20,6 +20,10 @@ class AnthropicProvider:
     def __init__(self, client: anthropic.AsyncAnthropic | None = None, http_client: Any = None) -> None:
         # The gateway owns retries (Appendix B), so the SDK must not retry on its own.
         self.client = client or anthropic.AsyncAnthropic(max_retries=0, http_client=http_client)
+        if client is None and not (self.client.api_key or self.client.auth_token):
+            # The SDK only fails at request time without credentials; fail here so the factory substitutes
+            # UnavailableProvider and the gateway falls back at once.
+            raise ProviderError("no ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN", kind="unavailable")
 
     async def complete(self, req: ProviderRequest) -> ProviderResponse:
         # Stable system prompt first and marked for caching; facts go in the user turn.

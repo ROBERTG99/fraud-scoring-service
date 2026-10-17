@@ -140,6 +140,29 @@ async def test_three_attempts_then_fallback_provider() -> None:
     assert all(0 < s <= 2.0 for s in sleeps) and sleeps[1] > sleeps[0] * 0.9
 
 
+async def test_an_unexpected_provider_exception_falls_back_instead_of_escaping() -> None:
+    # The anthropic SDK raises TypeError per request when no credentials are configured; any such bug in a
+    # provider must end in the fallback or the templated summary, never stall the consumer.
+    primary = Scripted([TypeError("Could not resolve authentication method")])
+    fallback = Scripted([ok_text()])
+    gw, sleeps = gateway(primary, fallback)
+    res = await run(gw)
+    assert len(primary.calls) == 1 and sleeps == [], "a provider bug is not retried"
+    assert res.provider == "openai"
+    assert res.attempts[0].error_kind == "provider_error" and "TypeError" in (res.attempts[0].error or "")
+    with pytest.raises(GatewayExhaustedError):
+        await run(gateway(Scripted([RuntimeError("boom")]))[0])
+
+
+def test_anthropic_without_credentials_is_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fraud_summarizer.llm.factory import UnavailableProvider, build_gateway
+
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    gw = build_gateway(load(env={"FRAUD_SUMMARY_PROVIDER": "anthropic"}))
+    assert isinstance(gw.providers["anthropic"], UnavailableProvider)
+
+
 async def test_three_failures_without_fallback_exhausts() -> None:
     primary = Scripted([ProviderError.from_status(500, "e")] * 3)
     gw, _ = gateway(primary)

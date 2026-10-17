@@ -21,7 +21,9 @@ def model_dir(tmp_path: Path) -> Path:
     d.mkdir()
     shutil.copyfile(FIXTURES / "tiny.onnx", d / "model.onnx")
     meta = json.loads((FIXTURES / "golden.json").read_text(encoding="utf-8"))
-    (d / "model_meta.json").write_text(json.dumps({"model_version": meta["model_version"], "feature_spec": "v2"}), encoding="utf-8")
+    (d / "model_meta.json").write_text(
+        json.dumps({"model_version": meta["model_version"], "feature_spec": "v2"}), encoding="utf-8"
+    )
     return d
 
 

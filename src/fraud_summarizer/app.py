@@ -140,12 +140,23 @@ async def principal(request: Request, svc: Annotated[Services, Depends(services)
         raise HTTPException(401, "invalid token") from exc
 
 
+def _report_stopped(task: asyncio.Task[Any]) -> None:
+    """A background loop never ends on its own before shutdown: log why it stopped (readyz turns 503)."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        log.error("%s stopped", task.get_name(), exc_info=exc)
+
+
 def create_app(factory: Factory | None = None) -> FastAPI:
     factory = factory or _production_services
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         services, close = await factory()
+        for task in services.background:
+            task.add_done_callback(_report_stopped)
         app.state.services = services
         try:
             yield

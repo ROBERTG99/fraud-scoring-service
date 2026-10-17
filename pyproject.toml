@@ -6,7 +6,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.12,<3.14"
 dependencies = [
-  "aiokafka>=0.12",
+  "aiokafka[lz4,snappy,zstd]>=0.12",
   "anthropic>=0.70",
   "fastapi>=0.115",
   "httpx>=0.28",

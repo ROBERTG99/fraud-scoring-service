@@ -127,7 +127,8 @@ async def test_consumer_writes_summary_for_review_event(database: Database) -> N
     finally:
         await admin.close()
 
-    producer = AIOKafkaProducer(bootstrap_servers=brokers)
+    # franz-go producers (scorer, seed, replay) compress batches with snappy by default.
+    producer = AIOKafkaProducer(bootstrap_servers=brokers, compression_type="snappy")
     await producer.start()
     try:
         for _ in range(2):  # at-least-once delivery: the same decision twice

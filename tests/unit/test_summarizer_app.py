@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import logging
 import time
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
@@ -219,3 +221,30 @@ def test_sliding_window_limit() -> None:
     assert lim.allow("a") and lim.allow("a") and not lim.allow("a") and lim.allow("b")
     now[0] = 10.5
     assert lim.allow("a")
+
+
+def test_a_crashed_background_consumer_is_logged_and_fails_readiness(
+    store: Store, caplog: pytest.LogCaptureFixture
+) -> None:
+    async def crash() -> None:
+        raise RuntimeError("Libraries for snappy compression codec not found")
+
+    async def factory() -> tuple[Services, Callable[[], Awaitable[None]]]:
+        gw = LLMGateway(load(env={"FRAUD_SUMMARY_PROVIDER": "fake"}), {"fake": FakeLLM()})
+        svc = Services(
+            store=store, pipeline=SummaryPipeline(gw, store), verifier=Verifier(ISSUER, StaticKeys(jwks()))
+        )
+        svc.background.append(asyncio.create_task(crash(), name="decisions-consumer"))
+
+        async def close() -> None:
+            return None
+
+        return svc, close
+
+    with caplog.at_level(logging.ERROR, logger="fraud_summarizer.app"), TestClient(create_app(factory)) as c:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not caplog.records:
+            c.get("/healthz")  # lets the event loop run the task and its callback
+        assert c.get("/readyz").status_code == 503
+    crashed = [r for r in caplog.records if "decisions-consumer" in r.getMessage()]
+    assert crashed and crashed[0].exc_info is not None, "the crash must be logged with its traceback"

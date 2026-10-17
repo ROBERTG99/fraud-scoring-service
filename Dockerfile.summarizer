@@ -32,5 +32,5 @@ ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1 FRAUD_REPO_ROOT=/app
 USER 10001
 EXPOSE 8513
 HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=10 \
-  CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8513/healthz', timeout=2).status == 200 else 1)"]
+  CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8513/readyz', timeout=2).status == 200 else 1)"]
 CMD ["uvicorn", "fraud_summarizer.app:app", "--host", "0.0.0.0", "--port", "8513"]
