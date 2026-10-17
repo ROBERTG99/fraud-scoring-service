@@ -13,11 +13,11 @@ Build progress for `fraud-scoring-service`, driven by `docs/specs/000-build-spec
   host was unreachable for a full read. Override the variable if your account uses a different model.
 - **Maintainer review of 30 judge labels** (spec §11) — pending until the judge calibration set exists (T-38).
 
-- **T-31 seed target vs. synthetic data.** With correct point-in-time features, the 72 h replay opens 10 review
-  cases, not ≥ 50: the model declines 151 of 174 frauds and only 5 score in the REVIEW band (0.30–0.85).
-  Options: (a) make the generator more realistic (legitimate look-alikes and low-and-slow fraud, so scores
-  spread into the review band; also fix `new_device` being ~always 0, KNOWN_LIMITATIONS); (b) lower the seed
-  gate; (c) change thresholds. Recommended: (a). Awaiting a decision; nothing was weakened.
+- **T-31 seed target vs. synthetic data — decided: make the data realistic (D-026), in progress.** Plan:
+  (1) `new_device` = first seen on the account < 24 h ago (Lua first-seen ZSET + offline mirror + parity);
+  (2) generator v2 look-alikes and low-and-slow fraud; (3) regenerate demo/eval/parity data, retrain,
+  refresh golden/parity fixtures and every number that depends on them (T-08, T-10..T-16, T-31);
+  (4) re-run `scripts/seed_host.sh` for the ≥ 50 open-case done-when; then M3 re-review and M4.
 
 ## Session handoff (read this first)
 
