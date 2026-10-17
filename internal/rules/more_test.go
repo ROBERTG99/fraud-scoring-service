@@ -134,3 +134,32 @@ func TestReloadRejectsOtherFeatureSpec(t *testing.T) {
 		t.Fatalf("active set changed to %s", eng.Active().Version)
 	}
 }
+
+// TestCompileExprRejectsUnboundedWork: security audit M6 H1. A 60-character expression with nested
+// predicates over ranges ran for seconds per sample inside the scorer; rules only ever need comparisons,
+// boolean logic, membership and min/max/abs over the env.
+func TestCompileExprRejectsUnboundedWork(t *testing.T) {
+	for _, bad := range []string{
+		"all(1..990, {all(1..990, {# > 0 && # < 2000 && # * # > 0})})",
+		"any(1..10, {# > 5})",
+		"count([1, 2, 3], {# > 1}) > 0",
+		"len(filter([1, 2], {# > 0})) > 0",
+		"1..1000000 == []",
+		"let x = 1; x > 0",
+		"amount_minor > 0 " + strings.Repeat("&& amount_minor > 0 ", 120),
+	} {
+		if _, err := CompileExpr(bad); err == nil {
+			t.Errorf("compiled %q, want rejected", bad)
+		}
+	}
+	for _, good := range []string{
+		"new_device && min(minutes_since_pwd_change, minutes_since_email_change) < 60",
+		"mcc in ['7995'] || channel == 'P2P' && abs(amount_ratio_24h) >= 8",
+		"tx_count_10m >= 8 ? amount_minor <= 300 : false",
+		"max(tx_count_1h, tx_count_10m) >= 20 && not new_device",
+	} {
+		if _, err := CompileExpr(good); err != nil {
+			t.Errorf("rejected %q: %v", good, err)
+		}
+	}
+}

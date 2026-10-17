@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/expr-lang/expr"
+	"github.com/expr-lang/expr/ast"
 	"github.com/expr-lang/expr/vm"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
@@ -212,13 +213,51 @@ func rulesSchema() (*jsonschema.Schema, error) {
 	return schema, schemaErr
 }
 
+// MaxExprNodes bounds a rule expression's syntax tree: production rules use well under 30 nodes.
+const MaxExprNodes = 200
+
 // CompileExpr compiles a boolean rule expression against Env.
 //
-// Builtins are disabled except min, max and abs: rule outcomes must depend only on the env (no now(),
-// no randomness, no string/date helpers that could fail at runtime).
+// Only comparisons, boolean and arithmetic operators, conditionals, membership in literal lists and the
+// min, max and abs builtins are allowed (an allowlist over the syntax tree): no predicates (all, any, count,
+// filter, map...), closures, ranges, variables or calls, so every expression runs in time proportional to
+// its size, which MaxExprNodes bounds (security audit M6 H1: TestRule runs caller expressions in the
+// scorer). Rule outcomes depend only on the env: no now(), no randomness.
 func CompileExpr(when string) (*vm.Program, error) {
-	return expr.Compile(when, expr.Env(Env{}), expr.AsBool(), expr.Optimize(true),
-		expr.DisableAllBuiltins(), expr.EnableBuiltin("min"), expr.EnableBuiltin("max"), expr.EnableBuiltin("abs"))
+	guard := &exprGuard{}
+	prog, err := expr.Compile(when, expr.Env(Env{}), expr.AsBool(), expr.Optimize(true), expr.MaxNodes(MaxExprNodes),
+		expr.DisableAllBuiltins(), expr.EnableBuiltin("min"), expr.EnableBuiltin("max"), expr.EnableBuiltin("abs"),
+		expr.Patch(guard))
+	if err != nil {
+		return nil, err
+	}
+	if guard.err != nil {
+		return nil, guard.err
+	}
+	return prog, nil
+}
+
+// exprGuard records the first syntax node outside the rule-expression allowlist.
+type exprGuard struct{ err error }
+
+func (g *exprGuard) Visit(node *ast.Node) {
+	if g.err != nil {
+		return
+	}
+	switch n := (*node).(type) {
+	case *ast.NilNode, *ast.IdentifierNode, *ast.IntegerNode, *ast.FloatNode, *ast.BoolNode, *ast.StringNode,
+		*ast.ConstantNode, *ast.UnaryNode, *ast.ConditionalNode, *ast.ArrayNode, *ast.MemberNode:
+	case *ast.BinaryNode:
+		if n.Operator == ".." {
+			g.err = errors.New("rules: ranges are not allowed")
+		}
+	case *ast.BuiltinNode:
+		if n.Name != "min" && n.Name != "max" && n.Name != "abs" {
+			g.err = fmt.Errorf("rules: %s is not allowed (only min, max and abs)", n.Name)
+		}
+	default:
+		g.err = fmt.Errorf("rules: %T is not allowed in a rule expression", n)
+	}
 }
 
 // Parse validates (JSON Schema), compiles and returns a rule set. Any error rejects the whole set.

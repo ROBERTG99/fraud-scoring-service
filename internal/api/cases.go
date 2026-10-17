@@ -243,7 +243,10 @@ func (s *CaseServer) TestRule(ctx context.Context, req *fraudv1.TestRuleRequest)
 		return nil, s.mapErr(err)
 	}
 	out := &fraudv1.TestRuleResponse{Valid: true, Evaluated: int64(len(samples))}
-	for _, smp := range samples {
+	for i, smp := range samples {
+		if i%256 == 0 && ctx.Err() != nil { // the console deadline bounds evaluation too, not only the read
+			return nil, s.mapErr(ctx.Err())
+		}
 		env := rules.EnvFromMap(smp.Features, smp.Tx.MCC, smp.Tx.Channel, smp.Tx.Country, smp.Tx.Currency)
 		ok, err := rules.EvalProgram(prog, &env)
 		if err != nil {
