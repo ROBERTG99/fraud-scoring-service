@@ -61,6 +61,22 @@ describe("live metrics", () => {
     expect(api.calls.every((c) => c.headers.get("Authorization") === "Bearer tok-analyst-1")).toBe(true);
   });
 
+  it("tells loading (connecting) apart from an idle scorer (connected, no decisions)", async () => {
+    signedIn("analyst");
+    let open: (r: Response) => void = () => {};
+    vi.stubGlobal(
+      "fetch",
+      stubApi({ "GET /api/v1/metrics/live": () => new Promise<Response>((r) => (open = r)) }).fetchMock,
+    );
+    render(<Live retryBaseMs={5} />);
+    expect(await screen.findByText("Connecting to the live stream…")).toBeInTheDocument();
+    const idle = sample(0, "2026-10-17T10:00:00Z");
+    idle.result = { ...idle.result, approve: "0", review: "0", decline: "0", p95_ms: 0 };
+    open(ndjson([idle], true));
+    expect(await screen.findByText("No decisions in the last 10 s window.")).toBeInTheDocument();
+    expect(screen.queryByText(/Connecting/)).toBeNull();
+  });
+
   it("parses partial lines and backs off exponentially up to 10 s", () => {
     const [msgs, rest] = parseLines('{"result":{"rps":1}}\n{"resu');
     expect(msgs).toHaveLength(1);

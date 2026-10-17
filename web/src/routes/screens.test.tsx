@@ -183,3 +183,41 @@ describe("layout", () => {
       expect(skip).toHaveClass(c);
   });
 });
+
+describe.each([
+  [
+    "timeline",
+    "/accounts/acc_00000042",
+    "analyst",
+    "GET /api/v1/accounts/{id}/timeline",
+    "timeline",
+    { account_id: "acc_00000042", items: [] },
+    "No events, decisions or labels for this account.",
+  ],
+  [
+    "shadow",
+    "/shadow",
+    "ml_engineer",
+    "GET /api/v1/shadow/summary",
+    "shadow comparisons",
+    { total: "0", agreement_rate: 0, band_matrix: [], disagreements: [] },
+    "No shadow comparisons in this window.",
+  ],
+  ["rules", "/rules", "risk_engineer", "GET /api/v1/rules/active", "the active rule set", ruleSet, "R001"],
+] as const)("%s screen", (_name, path, role, endpoint, label, body, ready) => {
+  it("shows loading, then an error with Retry that recovers", async () => {
+    signedIn(role);
+    let n = 0;
+    vi.stubGlobal(
+      "fetch",
+      stubApi({
+        [endpoint]: () => (n++ === 0 ? json({ code: 13, message: "internal error" }, 500) : json(body)),
+      }).fetchMock,
+    );
+    renderRoutes(routes, path);
+    expect(await screen.findByRole("status")).toHaveTextContent(`Loading ${label}`);
+    expect(await screen.findByRole("alert")).toHaveTextContent(`Could not load ${label} (500)`);
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText(ready)).toBeInTheDocument();
+  });
+});
