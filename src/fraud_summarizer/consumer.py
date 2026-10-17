@@ -18,10 +18,12 @@ from typing import Any, Literal, Protocol
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, ConsumerRecord, TopicPartition
 from aiokafka.errors import CommitFailedError
+from opentelemetry import trace
 
 from fraud_summarizer import events
 from fraud_summarizer.metrics import MESSAGES, SUMMARY_STATUS
 from fraud_summarizer.pipeline import SummaryPipeline
+from fraud_summarizer.telemetry import KafkaHeaders, context_from_headers, tracer
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +54,22 @@ class DecisionHandler:
         self.pipeline = pipeline
         self.processed = processed
 
-    async def handle(self, raw: bytes) -> HandleResult:
+    async def handle(self, raw: bytes, headers: KafkaHeaders = None) -> HandleResult:
+        """Handle one message inside a span that continues the Score trace from its `traceparent` header."""
+        with tracer().start_as_current_span(
+            "summarizer.decision", context=context_from_headers(headers), kind=trace.SpanKind.CONSUMER
+        ) as span:
+            span.set_attribute("messaging.system", "kafka")
+            span.set_attribute("messaging.destination.name", DECISIONS_TOPIC)
+            result = await self._handle(raw)
+            span.set_attribute("app.outcome", result.outcome)
+            if result.decision_id:
+                span.set_attribute("app.decision.id", result.decision_id)
+            if result.status:
+                span.set_attribute("app.summary.status", result.status)
+            return result
+
+    async def _handle(self, raw: bytes) -> HandleResult:
         name, doc = events.validate(raw)
         if name != "fraud.decision.v1":
             raise events.InvalidEventError(f"unexpected schema {name} on {DECISIONS_TOPIC}")
@@ -157,7 +174,7 @@ class KafkaDecisionConsumer:
         next_offset: int | None = None
         for msg in msgs:
             try:
-                await self.handler.handle(msg.value or b"")
+                await self.handler.handle(msg.value or b"", headers=msg.headers)
             except events.InvalidEventError as exc:
                 MESSAGES.labels(outcome="invalid").inc()
                 await producer.send_and_wait(self.dlq_topic, dlq_record(msg, str(exc)), key=msg.key)

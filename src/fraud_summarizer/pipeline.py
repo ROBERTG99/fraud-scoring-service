@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
+from opentelemetry import trace
 from pydantic import ValidationError
 
 from fraud_summarizer import facts as factfmt
@@ -29,6 +30,7 @@ from fraud_summarizer.schemas import (
     VerifiedEvidence,
     case_summary_json_schema,
 )
+from fraud_summarizer.telemetry import tracer
 
 PROMPT_VERSION = "case_summary.v1"
 FALLBACK_PROMPT_VERSION = "fallback.v1"
@@ -207,6 +209,33 @@ class SummaryPipeline:
         case_id: str | None = None
 
         async def step(node: str, kind: str, fn: Callable[[], Awaitable[Any]], **meta: Any) -> Any:
+            # One span per step record: app.step.* always, gen_ai.* for the LLM step (spec §14).
+            with tracer().start_as_current_span(f"summarizer.{node}") as span:
+                span.set_attribute("app.run_id", run_id)
+                span.set_attribute("app.step.node", node)
+                span.set_attribute("app.step.kind", kind)
+                if meta.get("prompt_version"):
+                    span.set_attribute("app.prompt_version", meta["prompt_version"])
+                try:
+                    value = await timed_step(node, kind, fn, **meta)
+                except Exception as exc:
+                    span.set_attribute("app.step.status", "error")
+                    span.record_exception(exc)
+                    span.set_status(trace.Status(trace.StatusCode.ERROR, type(exc).__name__))
+                    raise
+                span.set_attribute("app.step.status", "ok")
+                if case_id:
+                    span.set_attribute("app.case_id", case_id)
+                if isinstance(value, LLMResult):
+                    span.set_attribute("gen_ai.system", value.provider)
+                    span.set_attribute("gen_ai.request.model", value.model)
+                    span.set_attribute("gen_ai.response.model", value.model)
+                    span.set_attribute("gen_ai.usage.input_tokens", value.input_tokens)
+                    span.set_attribute("gen_ai.usage.output_tokens", value.output_tokens)
+                    span.set_attribute("app.cost_usd", value.cost_usd)
+                return value
+
+        async def timed_step(node: str, kind: str, fn: Callable[[], Awaitable[Any]], **meta: Any) -> Any:
             started = self.clock()
             t0 = time.perf_counter()
             try:

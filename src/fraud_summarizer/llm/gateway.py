@@ -21,6 +21,7 @@ from opentelemetry import trace
 
 from fraud_summarizer.llm.routes import RouteConfig
 from fraud_summarizer.llm.types import Provider, ProviderError, ProviderRequest, ProviderResponse
+from fraud_summarizer.metrics import LLM_CALLS, LLM_COST
 from fraud_summarizer.redact import redact_text
 from fraud_summarizer.schemas import provider_schema
 
@@ -148,6 +149,8 @@ class LLMGateway:
                                 cost,
                             )
                         )
+                        LLM_COST.labels(route=route_name, model=resp.model).inc(cost)
+                        LLM_CALLS.labels(route=route_name, model=resp.model, outcome="ok").inc()
                         span.set_attribute("gen_ai.system", provider_name)
                         span.set_attribute("gen_ai.request.model", model)
                         span.set_attribute("gen_ai.response.model", resp.model)
@@ -168,6 +171,7 @@ class LLMGateway:
                             attempts=attempts,
                             cassette=resp.extra.get("cassette"),
                         )
+                    LLM_CALLS.labels(route=route_name, model=model, outcome="error").inc()
                     attempts.append(
                         Attempt(
                             provider_name,

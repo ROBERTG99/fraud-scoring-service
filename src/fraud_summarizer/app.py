@@ -30,6 +30,7 @@ from fraud_summarizer.consumer import DecisionHandler, KafkaDecisionConsumer
 from fraud_summarizer.llm import routes
 from fraud_summarizer.llm.factory import build_gateway
 from fraud_summarizer.pipeline import SummaryPipeline
+from fraud_summarizer.telemetry import configure_logging, init_tracing
 
 log = logging.getLogger(__name__)
 
@@ -99,6 +100,7 @@ Factory = Callable[[], Awaitable[tuple[Services, Callable[[], Awaitable[None]]]]
 
 
 async def _production_services() -> tuple[Services, Callable[[], Awaitable[None]]]:
+    configure_logging("case-summarizer")  # production only: tests keep pytest's log capture
     from fraud_summarizer.repository import PostgresRepository
 
     dsn = os.environ.get("FRAUD_SUMMARIZER_PG_DSN", "postgresql://fraud_app:fraud_app@127.0.0.1:8520/fraud")
@@ -156,6 +158,7 @@ def create_app(factory: Factory | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        shutdown_tracing = init_tracing("case-summarizer")
         services, close = await factory()
         for task in services.background:
             task.add_done_callback(_report_stopped)
@@ -164,6 +167,7 @@ def create_app(factory: Factory | None = None) -> FastAPI:
             yield
         finally:
             await close()
+            shutdown_tracing()
 
     app = FastAPI(title="fraud case-summarizer", version="0.1.0", lifespan=lifespan)
 
