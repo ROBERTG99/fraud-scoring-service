@@ -16,7 +16,7 @@ Build progress for `fraud-scoring-service`, driven by `docs/specs/000-build-spec
 ## Session handoff (read this first)
 
 Last updated 2026-10-17. Status: **M0–M3 done and reviewed (M3: ship on 2cec37e); M4 code complete
-(T-32..T-35 done), M4 review pending.**
+(T-32..T-35 done); M4 ux-review "fix first" with 7 accessibility/UX blockers to fix next (listed below).**
 Data is generator v2 with feature spec v2 (D-026). Branch `feat/friendly-johnson-15rki1`, pushed.
 
 ### Resume checklist
@@ -43,8 +43,42 @@ Data is generator v2 with feature spec v2 (D-026). Branch `feat/friendly-johnson
 
 ### Next steps (in order)
 
-- M4 review: `reviewer` and `ux-reviewer` on T-32..T-35 (web/, cmd/webserve, tests/e2e), fix blockers,
-  record the M4 row. Then M5 (T-36 eval datasets).
+- **M4 ux-reviewer verdict: fix first** (2026-10-17, on 2ef1a63; probes in `/tmp/claude-0/review-ux/`, gone in a
+  new container). Fix test-first, then re-run `ux-reviewer` and record the M4 row. Blockers:
+  1. Queue keyboard cursor invisible and silent (`web/src/routes/queue.tsx:91,114-124`): the tbody focus
+     outline is clipped by the `overflow-x-auto` wrapper, the current row differs only by `bg-panel-raised`
+     (1.11:1), `aria-selected` on plain table rows announces nothing. Use a roving tabindex on rows/links
+     (or `role="grid"` + `aria-activedescendant`) and mark the row with ≥ 3:1 (inset accent outline/border).
+  2. Label dialog focus (`web/src/components/LabelDialog.tsx:40-59`, `web/src/routes/case.tsx:116`): the
+     focus effect depends on `onClose`, which case.tsx recreates each render; the case refetches every 3 s
+     while the summary is pending (`web/src/api/queries.ts:54`), so focus jumps back to the first radio
+     mid-typing. And focus lands on `<body>` after close. Mount-only initial focus, `onClose` via a ref,
+     return focus to "Label case" (or the "Labelled … by" text after save).
+  3. Evidence click highlights an off-screen fact (`web/src/components/AiSummary.tsx:69`, `case.tsx:94-99`):
+     add `scrollIntoView({block: "center"})`, `tabIndex=-1` + focus on the row (or a live announcement).
+     Follow-up (non-blocking): collapse event facts per event in `<details>`, auto-open when cited.
+  4. Timeline amounts 100x too large: `web/src/routes/timeline.tsx:40` shows the server title built in
+     `internal/store/cases.go:404-406` from `amount_minor` ("Transaction 2640 USD" for USD 26.40). Render
+     `formatAmount(details.amount_minor, details.currency)` in a `.num` span or fix the server title.
+  5. Form-field edges nearly invisible (`--border` #26324d 1.36:1; light #c9d3e0 1.51:1): add a field-border
+     token (#64748b dark, #7b8798 light, ≥ 3:1 on bg/panel/panel-raised) for inputs/selects/textareas in
+     queue.tsx:60,72,80, shadow.tsx:31, rules.tsx:38, LabelDialog.tsx:114; assert it in `tokens.test.ts`.
+  6. Skip link unreadable on focus (`web/src/App.tsx:51`): add `focus:bg-panel-raised focus:text-text
+     focus:z-20 focus:rounded`.
+  7. Short IDs collide: decision IDs are UUIDv7, so the first 8 chars are a timestamp (`rules.tsx:64`,
+     `shadow.tsx:106`); show the last 8 chars or the full ID.
+  Also strengthen tests: the keyboard e2e should Tab to the tbody and "Label case" instead of focusing them;
+  add an axe run at 768 px; test evidence scrolling and dialog focus under refetch; token pairs for borders,
+  selected row and focus ring. Non-blocking suggestions (do with or after the blockers): Live "Retry now" and
+  p95-over-budget flag; 404 shows "not found" + link instead of Retry, keep stale data on failed refetch;
+  queue loading cue on filter change, reset cursor on page change, `whitespace-nowrap` amounts at 375 px;
+  header wraps at 375 px; active nav needs a non-colour cue; theme toggle `aria-pressed`; per-route page
+  title; shadow matrix cell padding and thousands separators; rules result live region always present;
+  light placeholder contrast (`placeholder:text-muted`); timeline "Open case <id>" link text, `score=0` on
+  approvals; raw nanosecond `decided_at`; label preview should say `label_id`/`created_at` are server-set;
+  regenerate success message.
+- M4 code `reviewer`: see the M4 row in Milestone reviews (pending when this was written).
+- Then M5 (T-36 eval datasets).
 - M5 starting facts (analysed, nothing written yet):
   - `third_party/evalgate/src/evalgate/__init__.py` is **empty**: `evalgate run|check|calibrate` (CLI entry
     `evalgate.cli:main`) must be implemented first (D-002 scope). The report shape already in use is
@@ -181,7 +215,7 @@ chore: configure commit attribution
 - [ ] Lint, format and type checks are clean.
 - [ ] Security scans report no high or critical findings, or each one is documented with a reason in `docs/security.md`.
 - [ ] Every workflow in §17 exists and passes actionlint; if a GitHub remote exists and CI results can be observed, the pushed branch is green.
-- [x] Every screen in §13 is implemented with loading, empty, error and success states; axe reports no serious violations; Playwright captured the screenshots in `docs/images/`. (Vitest state tests per screen; `make e2e` 35 passed with 0 serious axe violations; 10 screenshots, T-35.)
+- [x] Every screen in §13 is implemented with loading, empty, error and success states; axe reports no serious violations; Playwright captured the screenshots in `docs/images/`. (Vitest state tests per screen; `make e2e` 35 passed with 0 serious axe violations; 10 screenshots, T-35. Recapture the screenshots after the M4 UX fixes: `timeline.png` shows the 100x amount bug.)
 - [ ] The harness in §7 is complete: CLAUDE.md, AGENTS.md, settings, hooks with passing tests, rules, subagents, skills and `.mcp.json`.
 - [ ] Every document in §18 exists, and every number in the README points to the command or report that produced it.
 - [ ] The `reviewer` subagent's final verdict is "ship", and `security-review` findings are fixed or documented.
