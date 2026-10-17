@@ -174,7 +174,7 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 	decision := &fraudv1.Decision{
 		DecisionId:    newDecisionID(),
 		TransactionId: tx.TransactionId,
-		Action:        fraudv1.Action(res.Action),
+		Action:        protoAction(res.Action),
 		Score:         score,
 		ReasonCodes:   res.ReasonCodes,
 		ModelVersion:  modelVersion,

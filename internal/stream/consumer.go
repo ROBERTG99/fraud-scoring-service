@@ -110,7 +110,7 @@ func (pc *PartitionConsumer) assigned(_ context.Context, _ *kgo.Client, assigned
 		for _, p := range parts {
 			w := &worker{recs: make(chan []*kgo.Record, 4), quit: make(chan struct{}), done: make(chan struct{})}
 			pc.workers[tp{topic, p}] = w
-			go pc.work(topic, p, w)
+			go pc.work(topic, p, w) // #nosec G118 -- owned by w.quit/w.done; the callback ctx is the client's, not a request's
 		}
 	}
 }

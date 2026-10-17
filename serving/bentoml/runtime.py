@@ -83,7 +83,9 @@ class ModelRuntime:
         self, model_dir: str | None = None, cache_dir: str | None = None, use_mlflow: bool | None = None
     ) -> None:
         self.model_dir = Path(model_dir) if model_dir else None
-        self.cache_dir = Path(cache_dir or os.environ.get("FRAUD_MODEL_CACHE", "/tmp/fraud-model-cache"))  # noqa: S108
+        # Not a fixed /tmp path, which another local user could pre-create or symlink (bandit B108).
+        default_cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "fraud-model"
+        self.cache_dir = Path(cache_dir or os.environ.get("FRAUD_MODEL_CACHE") or default_cache)
         self.use_mlflow = bool(os.environ.get("MLFLOW_TRACKING_URI")) if use_mlflow is None else use_mlflow
         self.models: dict[str, LoadedModel] = {}
         self._lock = threading.Lock()

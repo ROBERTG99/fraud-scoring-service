@@ -108,6 +108,7 @@ func spa(dist string) http.Handler {
 			return
 		}
 		if clean != "/" {
+			// #nosec G703 -- clean is path.Clean("/"+path), so it cannot climb out of dist (TestSPAFallbackCachingAndHeaders)
 			if fi, err := os.Stat(filepath.Join(dist, filepath.FromSlash(clean))); err == nil && !fi.IsDir() {
 				files.ServeHTTP(w, r)
 				return

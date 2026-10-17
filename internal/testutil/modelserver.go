@@ -45,7 +45,7 @@ func startModelServer() (string, *exec.Cmd, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	if err := os.WriteFile(filepath.Join(dir, "model.onnx"), onnx, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "model.onnx"), onnx, 0o600); err != nil { // #nosec G703 -- test temp dir
 		return "", nil, err
 	}
 	l, err := net.Listen("tcp", "127.0.0.1:0")

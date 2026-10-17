@@ -215,7 +215,7 @@ func (s *CaseServer) GetActiveRuleSet(context.Context, *fraudv1.GetActiveRuleSet
 	out := &fraudv1.RuleSet{Version: rs.Version, Sha256: rs.SHA256, FeatureSpec: rs.FeatureSpec, LoadedAt: timestamppb.New(rs.LoadedAt),
 		Thresholds: &fraudv1.Thresholds{Review: rs.Thresholds.Review, Decline: rs.Thresholds.Decline}}
 	for _, r := range rs.Rules {
-		out.Rules = append(out.Rules, &fraudv1.Rule{Id: r.ID, Name: r.Name, When: r.When, Action: fraudv1.Action(r.Action), ReasonCode: r.ReasonCode, Final: r.Final})
+		out.Rules = append(out.Rules, &fraudv1.Rule{Id: r.ID, Name: r.Name, When: r.When, Action: protoAction(r.Action), ReasonCode: r.ReasonCode, Final: r.Final})
 	}
 	return out, nil
 }

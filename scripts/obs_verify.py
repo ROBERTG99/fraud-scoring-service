@@ -24,7 +24,10 @@ EVENT_ONLY = ("fraud_dlq_total", "fraud_rule_errors_total", "fraud_degraded_tota
 
 
 def get(url: str) -> Any:
-    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310 (local URLs from arguments)
+    if urllib.parse.urlsplit(url).scheme not in ("http", "https"):
+        raise ValueError(f"only http(s) URLs: {url!r}")
+    # The scheme is checked above, so urlopen cannot read file: or custom-scheme URLs.
+    with urllib.request.urlopen(url, timeout=10) as resp:  # noqa: S310  # nosec B310
         return json.loads(resp.read())
 
 

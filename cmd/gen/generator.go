@@ -152,6 +152,7 @@ type generator struct {
 
 // Generate builds a deterministic dataset for cfg.
 func Generate(cfg Config) (*Dataset, error) {
+	// #nosec G404 -- synthetic data must be reproducible from the seed; nothing here is a secret
 	g := &generator{cfg: cfg, r: rand.New(rand.NewPCG(cfg.Seed, cfg.Seed^0x9e3779b97f4a7c15)), start: cfg.StartMillis}
 	g.end = g.start + int64(cfg.Days)*day
 	g.live = g.start + int64(cfg.WarmupDays)*day
@@ -189,8 +190,8 @@ func (g *generator) uuidv7(ms int64) string {
 	binary.BigEndian.PutUint64(b[0:8], uint64(ms)<<16) // #nosec G115 -- synthetic positive timestamps
 	binary.BigEndian.PutUint64(b[8:16], g.r.Uint64())
 	r2 := g.r.Uint32()
-	b[6] = 0x70 | byte(r2&0x0f)
-	b[7] = byte(r2 >> 8)
+	b[6] = 0x70 | byte(r2&0x0f) // #nosec G115 -- masked to 4 bits
+	b[7] = byte(r2 >> 8)        // #nosec G115 -- intended truncation: 8 random bits of the UUIDv7
 	b[8] = 0x80 | (b[8] & 0x3f)
 	var out [36]byte
 	hex.Encode(out[0:8], b[0:4])
