@@ -86,7 +86,12 @@ export default function Rules() {
               version {rs.version} · sha256 {rs.sha256?.slice(0, 12)} · feature spec {rs.feature_spec} ·
               review ≥ {rs.thresholds?.review} · decline ≥ {rs.thresholds?.decline}
             </p>
-            <div className="mt-3 overflow-x-auto rounded border border-border bg-panel">
+            <div
+              role="region"
+              aria-label="Active rules"
+              tabIndex={0}
+              className="mt-3 overflow-x-auto rounded border border-border bg-panel"
+            >
               <table className="w-full text-sm">
                 <thead className="text-left text-muted">
                   <tr>

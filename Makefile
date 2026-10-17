@@ -79,6 +79,7 @@ lint-py:
 lint-web:
 	$(PNPM) -C web lint
 	$(PNPM) -C web format:check
+	$(PNPM) -C web exec prettier --check ../tests/e2e
 
 lint-proto:
 	buf lint
@@ -93,6 +94,7 @@ lint-tf:
 typecheck: ## mypy --strict on src/ and training/, tsc --noEmit
 	$(PY) mypy --strict src training serving
 	$(PNPM) -C web typecheck
+	$(PNPM) -C web exec tsc -p ../tests/e2e
 
 security: ## gitleaks, gosec, govulncheck, bandit, pip-audit, pnpm audit, hadolint, trivy, checkov, tflint, actionlint, licences
 	./scripts/security.sh
@@ -131,7 +133,7 @@ test-docker: ## The full test suite inside containers
 	./scripts/test_docker.sh
 
 e2e: ## Playwright end-to-end tests against the running stack
-	$(PNPM) -C web exec playwright test --config ../tests/e2e/playwright.config.ts
+	NODE_PATH=$(CURDIR)/web/node_modules $(PNPM) -C web exec playwright test --config ../tests/e2e/playwright.config.ts
 
 # ---------------------------------------------------------------- data, model
 .PHONY: proto gen-data train register-model feature-parity bench-model sagemaker-dry-run
@@ -219,7 +221,7 @@ verify-clean: ## make verify in a fresh clone in a temporary folder
 
 docs: ## Regenerate diagrams, OpenAPI, frontend types and screenshots
 	./scripts/proto.sh
-	$(PNPM) -C web exec playwright test --config ../tests/e2e/playwright.config.ts screenshots.spec.ts
+	E2E_SCREENSHOTS=1 NODE_PATH=$(CURDIR)/web/node_modules $(PNPM) -C web exec playwright test --config ../tests/e2e/playwright.config.ts screenshots.spec.ts
 
 clean: ## Remove containers, volumes, caches and build outputs
 	-$(COMPOSE) --profile '*' down -v --remove-orphans

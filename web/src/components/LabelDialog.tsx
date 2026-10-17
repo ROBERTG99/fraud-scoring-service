@@ -6,6 +6,20 @@ import type { Session } from "../auth/session";
 
 const MAX_NOTE = 2000;
 
+/** The dialog's Tab stops in order. A radio group is one stop: its checked radio, else its first. */
+function tabStops(root: HTMLElement): HTMLElement[] {
+  const all = [...root.querySelectorAll<HTMLElement>('input,button,textarea,[href],[tabindex="0"]')].filter(
+    (n) => !n.hasAttribute("disabled"),
+  );
+  return all.filter((n) => {
+    if (!(n instanceof HTMLInputElement) || n.type !== "radio") return true;
+    const group = all.filter(
+      (m): m is HTMLInputElement => m instanceof HTMLInputElement && m.type === "radio" && m.name === n.name,
+    );
+    return n === (group.find((m) => m.checked) ?? group[0]);
+  });
+}
+
 interface Props {
   caseId: string;
   session: Session;
@@ -29,9 +43,7 @@ export function LabelDialog({ caseId, session, onClose }: Props) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
       if (e.key !== "Tab" || !el) return;
-      const items = [...el.querySelectorAll<HTMLElement>("input,button,textarea,[href]")].filter(
-        (n) => !n.hasAttribute("disabled"),
-      );
+      const items = tabStops(el);
       const first = items[0];
       const last = items[items.length - 1];
       if (e.shiftKey && document.activeElement === first) {
@@ -106,7 +118,11 @@ export function LabelDialog({ caseId, session, onClose }: Props) {
         )}
         <section aria-label="Row preview" className="mt-3">
           <h3 className="text-sm text-muted">Row to be written to analyst_labels</h3>
-          <pre data-testid="label-preview" className="num mt-1 overflow-x-auto rounded bg-bg p-2 text-xs">
+          <pre
+            data-testid="label-preview"
+            tabIndex={0}
+            className="num mt-1 overflow-x-auto rounded bg-bg p-2 text-xs"
+          >
             {JSON.stringify(row, null, 2)}
           </pre>
         </section>

@@ -15,8 +15,8 @@ Build progress for `fraud-scoring-service`, driven by `docs/specs/000-build-spec
 
 ## Session handoff (read this first)
 
-Last updated 2026-10-17. Status: **M0–M2 done and reviewed; M3 code complete (T-23..T-31 done) and the M3
-review blockers fixed (hung-Postgres breaker, replay leak), M3 re-review pending; M4 started (T-32 done).**
+Last updated 2026-10-17. Status: **M0–M3 done and reviewed (M3: ship on 2cec37e); M4 code complete
+(T-32..T-35 done), M4 review pending.**
 Data is generator v2 with feature spec v2 (D-026). Branch `feat/friendly-johnson-15rki1`, pushed.
 
 ### Resume checklist
@@ -43,10 +43,12 @@ Data is generator v2 with feature spec v2 (D-026). Branch `feat/friendly-johnson
 
 ### Next steps (in order)
 
-- M3 re-review (reviewer subagent) of the fixes since the first M3 review, then push and record the M3 row.
-- M4: T-33 queue and case detail (`web/src/routes/{queue,case}.tsx`, `AiSummary`, `LabelDialog` with
-  `LabelDialog.test.tsx`), T-34 timeline/shadow/live/rules (`live.test.tsx` reconnect), T-35 e2e + axe +
-  screenshots. The console talks to `/api` (gateway), `/auth` (dev-issuer) and `/summarizer` via webserve.
+- M4 review: `reviewer` and `ux-reviewer` on T-32..T-35 (web/, cmd/webserve, tests/e2e), fix blockers,
+  record the M4 row. Then M5 (T-36 eval datasets).
+- E2E needs the whole stack: `FULL=1 scripts/seed_host.sh` (adds dev-issuer 18515, summarizer on the fake
+  LLM 18513, webserve 18500), then `E2E_BASE_URL=http://127.0.0.1:18500 make e2e`; `make docs` style
+  screenshots with `E2E_SCREENSHOTS=1` (see `tests/e2e/playwright.config.ts`). `docs/images/live.png` shows
+  the idle stack after seeding; recapture it under load once a load generator exists (T-40/T-46).
 - Reviewer non-blocking items still open: gRPC health check rejected by the auth interceptor; ShadowRunner
   `Submit` after `Close` panics; JWKS lock held across the fetch (Go and Python); concurrent labels with the
   same idempotency key on different cases return 500; regenerate idempotency key is global and has no rate
@@ -118,7 +120,7 @@ chore: configure commit attribution
 | T-32 | Console scaffold and data layer | M4 | done | web/ (Vite 7 + React 19 + TanStack Query 5 + Tailwind 4; generated web/src/api/schema.d.ts; api/client.ts with 401 → clear session + /sign-in?next=; auth/session.ts; tokens.css with text-safe status tokens), cmd/webserve (SPA + CSP + /api,/auth,/summarizer proxies, unbuffered streaming); client.test.ts "401 clears the session and redirects to sign-in" passes; `pnpm -C web test` 32 passed incl. WCAG contrast checks; `pnpm -C web build` ok; go test -race ./cmd/webserve ok |
 | T-33 | Queue and case detail | M4 | done | web/src/routes/{queue,case}.tsx, components/{AiSummary,LabelDialog,ReasonChips}.tsx; LabelDialog.test.tsx "previews the exact row to be written and sends the same values" passes; queue/case tests cover loading, empty, error-with-retry and success, keyboard navigation (j/k/Enter), evidence → fact highlight, role-gated Label/Regenerate; `pnpm -C web test` 41 passed (3 consecutive runs), `pnpm -C web build` ok. Summarizer regenerate now typed (gen/openapi/summarizer.json → web/src/api/summarizer.d.ts), idempotency key scoped per case, 20/hour per user |
 | T-34 | Timeline, shadow, live metrics, rules | M4 | done | web/src/routes/{timeline,shadow,live,rules}.tsx, api/live.ts (NDJSON stream via openapi-fetch parseAs=stream, exponential reconnect 1→10 s), components/{Sparkline,StatTile}.tsx (series colour #0891b2 passes the dataviz validator in both themes); live.test.tsx "stream reconnects after error" passes; screens.test.tsx covers Test rule gating/compile errors, shadow role gate and band matrix, timeline links/empty; `pnpm -C web test` 50 passed (2 runs). Timeline decisions now carry case_id (TestListGetTimelineShadowAndRules) |
-| T-35 | E2E, axe, screenshots | M4 | todo | |
+| T-35 | E2E, axe, screenshots | M4 | done | `tests/e2e/` (`label-case.spec.ts`: label by mouse and keyboard-only, focus trap, RBAC 403 for ml_engineer, sign-in redirect; `a11y.spec.ts`: axe WCAG 2.0–2.2 A/AA on sign-in, queue, case, timeline, shadow, live, rules and the open label dialog, both themes, 1280 and 375 px; `layout.spec.ts`: no horizontal overflow). On a fresh `FULL=1 scripts/seed_host.sh` stack (73 open cases): `E2E_BASE_URL=http://127.0.0.1:18500 make e2e` → 35 passed, 0 serious/critical axe violations; screenshots (10) in `docs/images/` via `E2E_SCREENSHOTS=1`. Found and fixed on the way: summarizer could not decode snappy batches and died silently, provider TypeError stalled the consumer (1b5feb0); shadow screen showed completions as drops (679cf64); focus trap escaped when the second radio was checked; rules table region not keyboard-reachable; long fact values overflowed the case panel and timeline at 375 px. |
 | T-36 | Eval datasets | M5 | todo | |
 | T-37 | Model eval report | M5 | todo | |
 | T-38 | Decision and summary suites | M5 | todo | |
@@ -145,7 +147,7 @@ chore: configure commit attribution
 - [ ] Lint, format and type checks are clean.
 - [ ] Security scans report no high or critical findings, or each one is documented with a reason in `docs/security.md`.
 - [ ] Every workflow in §17 exists and passes actionlint; if a GitHub remote exists and CI results can be observed, the pushed branch is green.
-- [ ] Every screen in §13 is implemented with loading, empty, error and success states; axe reports no serious violations; Playwright captured the screenshots in `docs/images/`.
+- [x] Every screen in §13 is implemented with loading, empty, error and success states; axe reports no serious violations; Playwright captured the screenshots in `docs/images/`. (Vitest state tests per screen; `make e2e` 35 passed with 0 serious axe violations; 10 screenshots, T-35.)
 - [ ] The harness in §7 is complete: CLAUDE.md, AGENTS.md, settings, hooks with passing tests, rules, subagents, skills and `.mcp.json`.
 - [ ] Every document in §18 exists, and every number in the README points to the command or report that produced it.
 - [ ] The `reviewer` subagent's final verdict is "ship", and `security-review` findings are fixed or documented.
@@ -173,7 +175,7 @@ chore: configure commit attribution
 | FR-10 | `internal/store/writer_test.go::TestCommitBeforeRespond`, `internal/store/outbox_test.go::TestRelayCrashProducesDuplicatesWithSameDecisionID` | pass |
 | FR-11 | `tests/unit/test_pipeline.py::test_happy_path_stores_verified_summary_and_steps`, `tests/unit/test_consumer.py::test_duplicate_decision_processed_once`, `::test_provider_failure_writes_fallback`, `tests/integration/test_summarizer_consumer.py::test_consumer_writes_summary_for_review_event` | pass (pipeline, consumer, Postgres + Redpanda) |
 | FR-12 | `tests/unit/test_sagemaker_launch.py::test_dry_run_request_shape`, `::test_submit_to_moto` | launcher pass; Terraform pending T-44 |
-| FR-13 | `internal/api/cases_test.go::TestAnalystCannotTestRule`, `internal/store::TestLabelWritesAuditRow`, `tests/contract/test_openapi_contract.py` | API pass; console pending T-32..T-35 |
+| FR-13 | `internal/api/cases_test.go::TestAnalystCannotTestRule`, `internal/store::TestLabelWritesAuditRow`, `tests/contract/test_openapi_contract.py`, `tests/e2e/label-case.spec.ts`, `tests/e2e/a11y.spec.ts` | pass (API, console unit tests, e2e 35 passed on the host stack) |
 
 ## Milestone reviews
 

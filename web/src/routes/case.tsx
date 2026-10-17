@@ -75,7 +75,10 @@ export default function CaseDetail() {
               </p>
               <div className="mt-4 grid gap-4 lg:grid-cols-2">
                 <AiSummary c={c} session={session} highlighted={highlighted} onEvidence={setHighlighted} />
-                <section aria-labelledby="facts" className="rounded border border-border bg-panel p-4">
+                <section
+                  aria-labelledby="facts"
+                  className="min-w-0 rounded border border-border bg-panel p-4"
+                >
                   <h2 id="facts" className="font-semibold">
                     Feature snapshot and facts
                   </h2>
@@ -85,7 +88,7 @@ export default function CaseDetail() {
                   ].map(([title, list]) => (
                     <div key={title as string}>
                       <h3 className="mt-3 text-sm text-muted">{title as string}</h3>
-                      <table className="mt-1 w-full text-sm">
+                      <table className="mt-1 w-full table-fixed text-sm">
                         <tbody>
                           {(list as typeof facts).map((f) => (
                             <tr
@@ -94,10 +97,13 @@ export default function CaseDetail() {
                               aria-current={highlighted === f.key ? "true" : undefined}
                               className={`row border-t border-border ${highlighted === f.key ? "bg-panel-raised outline outline-1 outline-accent" : ""}`}
                             >
-                              <th scope="row" className="num px-2 text-left font-normal text-muted">
+                              <th
+                                scope="row"
+                                className="num w-1/2 break-all px-2 text-left font-normal text-muted"
+                              >
                                 {f.key}
                               </th>
-                              <td className="num px-2 text-right">{f.value}</td>
+                              <td className="num break-all px-2 text-right">{f.value}</td>
                             </tr>
                           ))}
                         </tbody>

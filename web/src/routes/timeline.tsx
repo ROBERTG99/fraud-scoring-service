@@ -38,7 +38,7 @@ export default function Timeline() {
                   </time>
                   <span className="w-24 text-sm font-semibold">{KIND_TEXT[it.kind ?? ""] ?? it.kind}</span>
                   <span className="text-sm">{it.title}</span>
-                  <span className="num text-xs text-muted">
+                  <span className="num min-w-0 break-all text-xs text-muted">
                     {Object.entries(it.details ?? {})
                       .map(([k, v]) => `${k}=${v}`)
                       .join(" ")}

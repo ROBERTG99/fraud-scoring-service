@@ -33,6 +33,8 @@ describe("rules", () => {
     expect(await screen.findByText("R001")).toBeInTheDocument();
     expect(screen.getByText(/feature spec v2/)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Test rule" })).toBeNull();
+    // The table scrolls sideways on narrow screens, so its region must be reachable from the keyboard.
+    expect(screen.getByRole("region", { name: "Active rules" })).toHaveAttribute("tabindex", "0");
   });
 
   it("tests an expression and reports compile errors", async () => {

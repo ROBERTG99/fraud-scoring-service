@@ -21,7 +21,7 @@ export function AiSummary({ c, session, highlighted, onEvidence }: Props) {
   const s = c.summary;
   const status = c.summary_status ?? "pending";
   return (
-    <section aria-labelledby="ai-summary" className="rounded border border-border bg-panel p-4">
+    <section aria-labelledby="ai-summary" className="min-w-0 rounded border border-border bg-panel p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 id="ai-summary" className="font-semibold">
           AI summary · does not affect decisions

@@ -80,4 +80,22 @@ describe("LabelDialog", () => {
     await userEvent.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalled();
   });
+
+  it("keeps Tab inside the dialog when the checked radio is not the first control", async () => {
+    setup();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("radio", { name: "Legitimate" }));
+    // Tab order: checked radio (the group is one stop), note, row preview, Cancel, Confirm label.
+    await user.tab();
+    expect(screen.getByRole("textbox")).toHaveFocus();
+    await user.tab();
+    expect(screen.getByTestId("label-preview")).toHaveFocus();
+    await user.tab();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Confirm label" })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("radio", { name: "Legitimate" })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(screen.getByRole("button", { name: "Confirm label" })).toHaveFocus();
+  });
 });
