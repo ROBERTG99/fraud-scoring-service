@@ -160,6 +160,8 @@ sagemaker-dry-run: ## Print the CreateTrainingJob request
 	env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE $(PY) python -m training.sagemaker_launch --dry-run
 
 # ---------------------------------------------------------------- evals and bench
+# Regression gating against evals/reports/baseline/<suite>.json once the baseline exists (T-40).
+baseline = $(if $(wildcard evals/reports/baseline/$(1).json),--baseline evals/reports/baseline/$(1).json)
 .PHONY: eval eval-model eval-summary eval-decisions eval-live bench record-fixtures
 eval: eval-model eval-decisions eval-summary ## Offline evals with thresholds, writes evals/REPORT.md
 	$(GO) run ./cmd/benchreport -check-only -report evals/reports/latency.json -allow-missing
@@ -168,15 +170,15 @@ eval: eval-model eval-decisions eval-summary ## Offline evals with thresholds, w
 eval-model:
 	@test -f artifacts/data/eval/events.jsonl || $(MAKE) gen-data SIZE=eval
 	$(PY) python -m training.evaluate --data artifacts/data/eval --out evals/reports/model.json
-	$(PY) evalgate check evals/reports/model.json --baseline evals/reports/baseline/model.json --max-regression-pp 1.0
+	$(PY) evalgate check evals/reports/model.json $(call baseline,model) --max-regression-pp 1.0
 
 eval-decisions:
 	PYTHONPATH=$(CURDIR) $(PY) evalgate run evals/suites/decisions.yaml --split test --out evals/reports/decisions.json
-	$(PY) evalgate check evals/reports/decisions.json --baseline evals/reports/baseline/decisions.json --max-regression-pp 1.0
+	$(PY) evalgate check evals/reports/decisions.json $(call baseline,decisions) --max-regression-pp 1.0
 
 eval-summary:
 	PYTHONPATH=$(CURDIR) FRAUD_SUMMARY_PROVIDER=fake $(PY) evalgate run evals/suites/summaries.yaml --split test --out evals/reports/summaries.json
-	$(PY) evalgate check evals/reports/summaries.json --baseline evals/reports/baseline/summaries.json --max-regression-pp 1.0
+	$(PY) evalgate check evals/reports/summaries.json $(call baseline,summaries) --max-regression-pp 1.0
 
 eval-live: ## Live evals with real models within LIVE_EVAL_BUDGET_USD
 	LIVE_EVAL_BUDGET_USD=$(LIVE_EVAL_BUDGET_USD) $(PY) python scripts/eval_live.py

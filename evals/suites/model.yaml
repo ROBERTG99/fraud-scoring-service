@@ -1,0 +1,13 @@
+# Model suite (spec §11). Not an `evalgate run` suite: `python -m training.evaluate` (make eval-model) scores
+# the temporal test split of the 2M-event eval data with the serving artifact and writes an
+# evalgate.report.v1 whose cases are 20 account shards, so `evalgate check` can pair them (D-033).
+schema: fraud.model_suite.v1
+name: model
+data: artifacts/data/eval
+max_fpr: 0.01
+metrics:
+  - { name: recall_at_1pct_fpr_combined, threshold: 0.80, direction: higher, gate: true }
+  - { name: pr_auc, threshold: 0.70, direction: higher, gate: true }
+  - { name: ece, threshold: 0.02, direction: lower, gate: true }
+  - { name: recall_at_1pct_fpr_model, direction: higher, gate: false } # reported only
+  - { name: recall_at_1pct_fpr_rules, direction: higher, gate: false } # reported only
