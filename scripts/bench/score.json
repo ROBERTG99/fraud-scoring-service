@@ -1,0 +1,15 @@
+{
+  "transaction": {
+    "transaction_id": "{{.UUID}}",
+    "account_id": "acc_{{printf `%08d` (randomInt 0 5000)}}",
+    "amount_minor": {{randomInt 100 60000}},
+    "currency": "USD",
+    "merchant_id": "m_{{printf `%05d` (randomInt 1 400)}}",
+    "merchant_name": "Bench Merchant",
+    "mcc": "{{index (list "5411" "5812" "5541" "5732" "5815") (randomInt 0 5)}}",
+    "channel": "{{index (list "CHANNEL_CARD_PRESENT" "CHANNEL_ECOMMERCE" "CHANNEL_P2P") (randomInt 0 3)}}",
+    "country": "US",
+    "ip_prefix": "203.0.113.0/24",
+    "device_id": "{{sha256sum (printf `dev-%d` (randomInt 0 9000))}}"
+  }
+}

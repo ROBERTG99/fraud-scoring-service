@@ -43,6 +43,13 @@ degraded 40% of decisions to rules-only (`MODEL_UNAVAILABLE`). The batching clie
 rate: 68 of 16,863 degraded on gen v1 data after the D-025 fix and 59 of 16,904 on gen v2 data
 (`scripts/seed_report.py`); a v1 run on a host already loaded by earlier runs measured 5% degraded. Higher rates (the 1,000 RPS load target) need more model-server workers or Triton.
 
+The NFR-1 laptop target (2,000 RPS, p95 < 50 ms, p99 < 90 ms) is not met in the 4-vCPU build container,
+where ghz, the scorer, BentoML, Postgres, Redis and Redpanda share the CPUs: `make bench BENCH_PROFILE=laptop`
+achieved 586 of 2,000 rps with p95 603.8 ms, p99 728.5 ms and 99.3% of decisions degraded (Redis reads miss
+the 8 ms budget, so features fall back). The CI profile on the same machine passes (`make bench`: 300 rps,
+p95 21.8 ms, 0.87% degraded). The laptop number must be measured on a machine with the load generator on
+separate cores; nothing here shows it is reachable.
+
 ## Device features under 90-day gaps
 
 `new_device` (spec v2) reads the device's first sighting on the account, kept in `fr:{acc}:devfirst` until
