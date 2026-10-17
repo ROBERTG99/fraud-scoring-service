@@ -2,20 +2,20 @@
   "accounts": 45,
   "days": 8,
   "events": 5000,
-  "events_sha256": "b701f23934e01add9c064331adb4712b73b725104eba4078b06203041143d807",
-  "fraud_rate": 0.008151382823871907,
+  "events_sha256": "3cae159be2f2d8f3172a439aa003a8e5bbab657149889fc5524494acd20b6475",
+  "fraud_rate": 0.00799543118218161,
   "fraud_transactions": 28,
-  "gen_version": 1,
-  "labels_sha256": "2657c5afde07a8b3a99906002a26d3ee1905b5ed8ed22273bb51ef7eb54151bd",
+  "gen_version": 2,
+  "labels_sha256": "81ce937c9b58fb17a5dc4a5fc552cd7f94b6118a1862c77f3d633abb888ab957",
   "seed": 7,
   "size": "parity",
   "split_counts": {
-    "test": 466,
-    "train": 2114,
-    "valid": 411,
-    "warmup": 444
+    "test": 418,
+    "train": 2166,
+    "valid": 462,
+    "warmup": 456
   },
   "start": "2026-09-01T00:00:00Z",
-  "transactions": 3435,
+  "transactions": 3502,
   "warmup_days": 1
 }

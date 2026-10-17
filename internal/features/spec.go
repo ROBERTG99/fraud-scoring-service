@@ -79,7 +79,7 @@ func ParseSpec(raw []byte) (*Spec, error) {
 	if err := dec.Decode(&s); err != nil {
 		return nil, fmt.Errorf("feature spec: %w", err)
 	}
-	if s.Version != "v1" || len(s.Features) != NumFeatures {
+	if s.Version != "v2" || len(s.Features) != NumFeatures {
 		return nil, fmt.Errorf("feature spec: want version v1 with %d features, got %s/%d", NumFeatures, s.Version, len(s.Features))
 	}
 	for i, f := range s.Features {

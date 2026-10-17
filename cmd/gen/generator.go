@@ -17,7 +17,7 @@ import (
 )
 
 // GenVersion changes whenever the output for a given seed and size changes.
-const GenVersion = 1
+const GenVersion = 2 // v2: legitimate look-alikes and low-and-slow fraud (docs/DECISIONS.md D-026)
 
 // Fraud patterns (cmd/gen/PATTERNS.md).
 const (
@@ -26,6 +26,18 @@ const (
 	PatternCardTesting = "card_testing"
 	PatternMule        = "mule_account"
 	PatternFriendly    = "friendly_fraud"
+)
+
+// Share of accounts with each legitimate look-alike sequence (v2), and of incidents that are low-and-slow.
+const (
+	lookalikeNewPhone   = 0.04
+	lookalikeEmailPhone = 0.02
+	lookalikeSplurge    = 0.04
+	lookalikeP2P        = 0.025
+	lookalikeMicro      = 0.02
+	quietATOShare       = 0.5
+	slowCardShare       = 0.35
+	slowMuleShare       = 0.35
 )
 
 // FraudRate is the target share of fraudulent transactions.
@@ -361,9 +373,8 @@ func (g *generator) legit() {
 		if g.r.Float64() < 0.04 {
 			ts := g.randomTime(g.live, g.end)
 			g.add(acc, events.Event{Kind: events.KindDevice, TSMillis: ts, DeviceID: acc.devices[0].id, Change: events.ChangePasswordChanged}, true, "")
-			if g.r.Float64() < 0.5 { // phone upgrade right after a reset: a legitimate R001 trigger
-				nd := g.bind(acc, ts+5*minute+g.r.Int64N(30*minute), true, "")
-				g.legitTx(acc, ts+40*minute+g.r.Int64N(15*minute), acc.favourites[g.r.IntN(len(acc.favourites))], 1, nd)
+			if g.r.Float64() < 0.5 { // new phone right after a reset: a legitimate R001 trigger
+				g.newPhonePurchases(acc, ts)
 			}
 		}
 		if g.r.Float64() < 0.01 {
@@ -385,6 +396,24 @@ func (g *generator) legit() {
 			}
 			g.legitTx(acc, ts, mi, 1, "")
 		}
+		// Look-alikes (v2): legitimate behaviour that shares the signals of a fraud pattern.
+		if g.r.Float64() < lookalikeNewPhone { // new phone, no reset, then a purchase or two (quiet-ATO-like)
+			g.newPhonePurchases(acc, g.randomTime(g.live, g.end-3*hour))
+		}
+		if g.r.Float64() < lookalikeEmailPhone { // new phone after an email change, then a few purchases (ATO-like)
+			ts := g.randomTime(g.live, g.end-3*hour)
+			g.add(acc, events.Event{Kind: events.KindDevice, TSMillis: ts, DeviceID: acc.devices[0].id, Change: events.ChangeEmailChanged}, true, "")
+			g.newPhonePurchases(acc, ts)
+		}
+		if g.r.Float64() < lookalikeSplurge { // gift or travel splurge: large purchases in electronics and jewellery
+			g.splurge(acc)
+		}
+		if g.r.Float64() < lookalikeP2P { // splitting a bill with friends from a new phone (mule-like P2P)
+			g.p2pSplit(acc)
+		}
+		if g.r.Float64() < lookalikeMicro { // in-app purchase burst in a game (card-testing-like)
+			g.microBurst(acc)
+		}
 		// Occasional rent-like P2P transfer and transit bursts.
 		if g.r.Float64() < 0.05 {
 			g.legitTx(acc, g.randomTime(g.start, g.end), g.merchantOfMCC("4829"), 4, "")
@@ -405,6 +434,69 @@ func (g *generator) legit() {
 				Country: acc.country.Code, Success: g.r.Float64() < 0.97, Method: loginMethods[pickWeighted(g.r, []float64{5, 2, 3})]}, false, PatternNone)
 		}
 	}
+}
+
+// newPhonePurchases binds a new device shortly after t and makes 1–3 purchases on it, some large.
+func (g *generator) newPhonePurchases(acc *account, t int64) {
+	nd := g.bind(acc, t+5*minute+g.r.Int64N(30*minute), true, "")
+	g.add(acc, events.Event{Kind: events.KindLogin, TSMillis: t + 36*minute, DeviceID: nd, IPPrefix: acc.homeIPs[0],
+		Country: acc.country.Code, Success: true, Method: "biometric"}, true, "")
+	ts := t + 40*minute
+	for k := 0; k < 1+g.r.IntN(3); k++ {
+		ts += minute + g.r.Int64N(25*minute)
+		mi := acc.favourites[g.r.IntN(len(acc.favourites))]
+		mul := 1.0
+		if g.r.Float64() < 0.5 {
+			mi = g.merchantOfMCC("5732", "5311", "5944")
+			mul = g.timesMedian(mi, 2+6*g.r.Float64())
+		}
+		g.legitProtectedTx(acc, ts, mi, mul, nd, events.ChannelEcommerce)
+	}
+}
+
+func (g *generator) splurge(acc *account) {
+	ts := g.randomTime(g.live, g.end-6*hour)
+	for k := 0; k < 1+g.r.IntN(3); k++ {
+		ts += 5*minute + g.r.Int64N(90*minute)
+		mi := g.merchantOfMCC("5732", "5944", "5311")
+		g.legitProtectedTx(acc, ts, mi, g.timesMedian(mi, 5+20*g.r.Float64()), acc.devices[0].id, events.ChannelEcommerce)
+	}
+}
+
+func (g *generator) p2pSplit(acc *account) {
+	ts := g.randomTime(g.live, g.end-4*hour)
+	nd := g.bind(acc, ts, true, "")
+	g.add(acc, events.Event{Kind: events.KindLogin, TSMillis: ts + 30_000, DeviceID: nd, IPPrefix: acc.homeIPs[0],
+		Country: acc.country.Code, Success: true, Method: "otp"}, true, "")
+	for k := 0; k < 3+g.r.IntN(4); k++ {
+		ts += 3*minute + g.r.Int64N(30*minute)
+		amount := float64((20+g.r.Int64N(280))*1000) / (acc.median * categories[catIndex("4829")].Factor)
+		g.legitProtectedTx(acc, ts, g.merchantOfMCC("4829"), amount, nd, events.ChannelP2P)
+	}
+}
+
+func (g *generator) microBurst(acc *account) {
+	ts := g.randomTime(g.live, g.end-hour)
+	mi := g.merchantOfMCC("5815", "5816")
+	for k := 0; k < 5+g.r.IntN(8); k++ {
+		ts += 20_000 + g.r.Int64N(90_000)
+		amount := float64(99+g.r.Int64N(400)) / (acc.median * categories[g.catalog[mi].Cat].Factor)
+		g.legitProtectedTx(acc, ts, mi, amount, acc.devices[0].id, events.ChannelEcommerce)
+	}
+}
+
+// timesMedian converts "x times the account median" into legitProtectedTx's category-relative multiplier.
+func (g *generator) timesMedian(mi int, x float64) float64 {
+	return x / categories[g.catalog[mi].Cat].Factor
+}
+
+// legitProtectedTx is a legitimate transaction that trim() never drops (part of a look-alike sequence).
+// Amounts follow amountMul × the account median × the category factor, without the usual noise.
+func (g *generator) legitProtectedTx(acc *account, ts int64, mi int, amountMul float64, dev, channel string) {
+	m := g.catalog[mi]
+	amt := min(int64(3_000_000), max(int64(50), int64(math.Round(acc.median*categories[m.Cat].Factor*amountMul))))
+	g.add(acc, events.Event{Kind: events.KindTransaction, TSMillis: ts, DeviceID: dev, IPPrefix: acc.homeIPs[0], Country: acc.country.Code,
+		AmountMinor: amt, Currency: acc.country.Currency, MerchantID: m.ID, MerchantName: m.Name, MCC: categories[m.Cat].MCC, Channel: channel}, true, PatternNone)
 }
 
 func (g *generator) pickAccount() *account {
@@ -435,6 +527,9 @@ func (g *generator) attackerCountry(acc *account) string {
 }
 
 func (g *generator) incidentATO() int {
+	if g.r.Float64() < quietATOShare {
+		return g.incidentQuietATO()
+	}
 	acc, t := g.pickAccount(), g.incidentStart()
 	dev, ip, ctry := g.newDevice(), g.ipPrefix(), g.attackerCountry(acc)
 	for k := 0; k < g.r.IntN(3); k++ {
@@ -460,7 +555,26 @@ func (g *generator) incidentATO() int {
 	return n
 }
 
+// incidentQuietATO is a low-and-slow takeover (v2): stolen credentials, no change of email or password,
+// one successful login from a new device in the home country, then 1–2 purchases at 2–5× the median.
+func (g *generator) incidentQuietATO() int {
+	acc, t := g.pickAccount(), g.incidentStart()
+	dev, ip := g.newDevice(), g.ipPrefix()
+	g.add(acc, events.Event{Kind: events.KindLogin, TSMillis: t, DeviceID: dev, IPPrefix: ip, Country: acc.country.Code, Success: true, Method: "password"}, true, PatternATO)
+	n := 1 + g.r.IntN(2)
+	for k := 0; k < n; k++ {
+		t += 3*minute + g.r.Int64N(40*minute)
+		amount := int64(acc.median * (2 + 3*g.r.Float64()))
+		mi := g.merchantOfMCC("5732", "5311", "5999", "5651")
+		g.fraudTx(acc, t, mi, amount, events.ChannelEcommerce, dev, ip, acc.country.Code, PatternATO)
+	}
+	return n
+}
+
 func (g *generator) incidentCardTesting() int {
+	if g.r.Float64() < slowCardShare {
+		return g.incidentSlowCardTesting()
+	}
 	acc, t := g.pickAccount(), g.incidentStart()
 	dev, ip, ctry := g.newDevice(), g.ipPrefix(), g.attackerCountry(acc)
 	n := 8 + g.r.IntN(18)
@@ -476,7 +590,28 @@ func (g *generator) incidentCardTesting() int {
 	return n
 }
 
+// incidentSlowCardTesting spreads 4–8 small tests over an hour or two, sometimes from the account's own
+// country, then (40%) one mid-size purchase (v2).
+func (g *generator) incidentSlowCardTesting() int {
+	acc, t := g.pickAccount(), g.incidentStart()
+	dev, ip, ctry := g.newDevice(), g.ipPrefix(), g.attackerCountry(acc)
+	n := 4 + g.r.IntN(5)
+	for k := 0; k < n; k++ {
+		t += 2*minute + g.r.Int64N(12*minute)
+		g.fraudTx(acc, t, g.merchantOfMCC("5815", "5999", "4816", "5814"), 100+g.r.Int64N(900), events.ChannelEcommerce, dev, ip, ctry, PatternCardTesting)
+	}
+	if g.r.Float64() < 0.4 {
+		t += 10*minute + g.r.Int64N(50*minute)
+		g.fraudTx(acc, t, g.merchantOfMCC("5732", "5311"), int64(acc.median*(3+5*g.r.Float64())), events.ChannelEcommerce, dev, ip, ctry, PatternCardTesting)
+		n++
+	}
+	return n
+}
+
 func (g *generator) incidentMule() int {
+	if g.r.Float64() < slowMuleShare {
+		return g.incidentSlowMule()
+	}
 	acc, t := g.pickAccount(), g.incidentStart()
 	devs := []string{}
 	for k := 0; k < 2+g.r.IntN(3); k++ {
@@ -491,6 +626,20 @@ func (g *generator) incidentMule() int {
 		t += 2*minute + g.r.Int64N(18*minute)
 		amount := (50 + g.r.Int64N(450)) * 1000
 		g.fraudTx(acc, t, g.merchantOfMCC("4829"), amount, events.ChannelP2P, devs[g.r.IntN(len(devs))], g.ipPrefix(), acc.country.Code, PatternMule)
+	}
+	return n
+}
+
+// incidentSlowMule uses one new device and moves money in 2–4 transfers of irregular amounts (v2).
+func (g *generator) incidentSlowMule() int {
+	acc, t := g.pickAccount(), g.incidentStart()
+	id := g.newDevice()
+	g.add(acc, events.Event{Kind: events.KindDevice, TSMillis: t, DeviceID: id, Change: events.ChangeDeviceBound}, true, PatternMule)
+	g.add(acc, events.Event{Kind: events.KindLogin, TSMillis: t + 30_000, DeviceID: id, IPPrefix: g.ipPrefix(), Country: acc.country.Code, Success: true, Method: "otp"}, true, PatternMule)
+	n := 2 + g.r.IntN(3)
+	for k := 0; k < n; k++ {
+		t += 15*minute + g.r.Int64N(60*minute)
+		g.fraudTx(acc, t, g.merchantOfMCC("4829"), 20_000+g.r.Int64N(180_000), events.ChannelP2P, id, g.ipPrefix(), acc.country.Code, PatternMule)
 	}
 	return n
 }

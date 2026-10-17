@@ -41,7 +41,7 @@ type Tx struct {
 // Raw holds the values read by score_tx.lua (-1 means "absent").
 type Raw struct {
 	Count10m, Count1h, Sum1h, Count24h, Sum24h, Distinct24h int64
-	DeviceSeen, MCCSeen, PwdChanged, EmailChanged           int64
+	DeviceFirst, MCCSeen, PwdChanged, EmailChanged          int64 // DeviceFirst: first sighting of the tx device, -1 if none
 }
 
 // Store reads and updates per-account feature state in Redis.
@@ -95,10 +95,10 @@ func NewUpdaterRedisClient(addr string) *redis.Client {
 // MaxPipeline bounds one pipelined round trip in ApplyEvents.
 const MaxPipeline = 500
 
-// Keys returns the four per-account keys; the {account} hash tag keeps them in one cluster slot.
+// Keys returns the five per-account keys; the {account} hash tag keeps them in one cluster slot.
 func (s *Store) Keys(account string) []string {
 	base := s.prefix + ":{" + account + "}:"
-	return []string{base + "tx", base + "dev", base + "mcc", base + "cred"}
+	return []string{base + "tx", base + "dev", base + "mcc", base + "cred", base + "devfirst"}
 }
 
 // Spec returns the store's feature spec.
@@ -136,7 +136,7 @@ func (s *Store) run(ctx context.Context, tx Tx, add bool) (Raw, error) {
 		return Raw{}, fmt.Errorf("%w: score_tx returned %d values", ErrUnavailable, len(res))
 	}
 	return Raw{Count10m: res[0], Count1h: res[1], Sum1h: res[2], Count24h: res[3], Sum24h: res[4], Distinct24h: res[5],
-		DeviceSeen: res[6], MCCSeen: res[7], PwdChanged: res[8], EmailChanged: res[9]}, nil
+		DeviceFirst: res[6], MCCSeen: res[7], PwdChanged: res[8], EmailChanged: res[9]}, nil
 }
 
 // Compute turns raw Redis values into the feature vector (must match training/features.py exactly).
@@ -149,8 +149,9 @@ func (s *Store) Compute(r Raw, tx Tx) Vector {
 	v[IdxAmountSum1h] = float64(r.Sum1h)
 	v[IdxAmountMinor] = float64(tx.AmountMinor)
 	v[IdxDistinctDevices24h] = float64(r.Distinct24h)
+	// Feature spec v2: a device is new until 24 h after its first sighting on the account.
 	v[IdxNewDevice] = 1
-	if r.DeviceSeen >= 0 && r.DeviceSeen < t && r.DeviceSeen >= t-Ms90d {
+	if r.DeviceFirst >= 0 && r.DeviceFirst < t-Ms24h {
 		v[IdxNewDevice] = 0
 	}
 	v[IdxMinutesSincePwd] = minutesSince(r.PwdChanged, t)

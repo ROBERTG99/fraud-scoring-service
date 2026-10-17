@@ -25,7 +25,7 @@ COPY --from=build /app/.venv /app/.venv
 COPY serving/__init__.py serving/__init__.py
 COPY serving/bentoml serving/bentoml
 COPY training/__init__.py training/registry.py training/
-ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONPATH=/app FRAUD_MODEL_CACHE=/var/cache/fraud-model \
+ENV PATH=/app/.venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONPATH=/app BENTOML_DO_NOT_TRACK=true FRAUD_MODEL_CACHE=/var/cache/fraud-model \
     BENTOML_HOME=/tmp/bentoml MLFLOW_HTTP_REQUEST_MAX_RETRIES=1 MLFLOW_HTTP_REQUEST_TIMEOUT=5
 USER 10001
 EXPOSE 8514

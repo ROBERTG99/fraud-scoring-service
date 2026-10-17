@@ -62,7 +62,7 @@ def log_and_register(model_dir: Path, meta: dict[str, Any]) -> dict[str, Any]:
     with mlflow.start_run(run_name=str(meta["model_version"])) as run:
         mlflow.log_params({k: v for k, v in meta.get("params", {}).items()})
         mlflow.log_param("backend", meta.get("backend"))
-        mlflow.log_param("feature_spec", meta.get("feature_spec", "v1"))
+        mlflow.log_param("feature_spec", meta["feature_spec"])
         for split in ("valid", "test"):
             for key, value in meta.get(split, {}).items():
                 mlflow.log_metric(f"{split}_{key}", float(value))

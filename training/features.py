@@ -35,8 +35,13 @@ I64 = npt.NDArray[np.int64]
 @lru_cache(maxsize=1)
 def load_spec(path: Path = SPEC_PATH) -> dict[str, Any]:
     spec = yaml.safe_load(path.read_text(encoding="utf-8"))
-    assert spec["version"] == "v1"
+    assert spec["version"] == "v2"
     return spec  # type: ignore[no-any-return]
+
+
+def spec_version() -> str:
+    """The feature spec version models are trained against (recorded in model metadata)."""
+    return str(load_spec()["version"])
 
 
 def feature_names() -> list[str]:
@@ -131,7 +136,10 @@ def _account_features(ev: Events, s: int, e: int, t: I64, amt: I64, tx_pos: I64,
         seen = last >= 0
         distinct += (seen & (last >= t - MS_24H)).astype(np.int64)
         mine = tx_dev == d
-        new_device[mine & seen & (last >= t - MS_90D)] = 0
+        # Spec v2: known once first seen more than 24 h before the transaction (d_times is sorted, so
+        # d_times[0] is the first sighting). Online retention forgets devices idle for 90 days; the
+        # demo data spans 24 days, so that never applies here (KNOWN_LIMITATIONS).
+        new_device[mine & (d_times[0] < t - MS_24H)] = 0
 
     # Credential changes.
     def minutes_since(code: int) -> I64:
@@ -199,7 +207,7 @@ def features_naive(history: list[dict[str, Any]], tx: dict[str, Any]) -> list[fl
     sum24 = sum(int(h["amount"]) for h in c24)
     amount = int(tx["amount"])
     ratio = amount / (float(sum24) / float(len(c24))) if c24 else 1.0
-    dev_last = last_seen.get(tx["device"], -1)
+    dev_first = min((int(h["ts"]) for h in sightings if h["device"] == tx["device"]), default=-1)
     return [
         float(sum(1 for h in txs if in_window(h, MS_10M))),
         float(sum(1 for h in txs if in_window(h, MS_1H))),
@@ -207,7 +215,7 @@ def features_naive(history: list[dict[str, Any]], tx: dict[str, Any]) -> list[fl
         float(sum(int(h["amount"]) for h in txs if in_window(h, MS_1H))),
         float(amount),
         float(sum(1 for ls in last_seen.values() if t - MS_24H <= ls)),
-        0.0 if dev_last >= 0 and dev_last >= t - MS_90D else 1.0,
+        0.0 if 0 <= dev_first < t - MS_24H else 1.0,
         float(mins("password_changed")),
         float(mins("email_changed")),
         0.0 if mcc_seen else 1.0,

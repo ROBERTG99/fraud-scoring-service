@@ -135,14 +135,20 @@ func (w *GroupWriter) Commit(ctx context.Context, rec DecisionRecord) (*fraudv1.
 		return w.spoolOne(rec)
 	}
 	p := &pending{rec: rec, done: make(chan commitResult, 1)}
-	enqueue := time.NewTimer(w.cfg.EnqueueWait)
-	defer enqueue.Stop()
+	// Enqueue without a timer first: if the goroutine was descheduled past EnqueueWait, a select over a
+	// free queue slot and an expired timer would pick at random and report a spurious overload.
 	select {
 	case w.queue <- p:
-	case <-enqueue.C:
-		return nil, ErrOverloaded
-	case <-ctx.Done():
-		return w.spoolOne(rec)
+	default:
+		enqueue := time.NewTimer(w.cfg.EnqueueWait)
+		defer enqueue.Stop()
+		select {
+		case w.queue <- p:
+		case <-enqueue.C:
+			return nil, ErrOverloaded
+		case <-ctx.Done():
+			return w.spoolOne(rec)
+		}
 	}
 	select {
 	case r := <-p.done:

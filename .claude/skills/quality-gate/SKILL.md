@@ -5,6 +5,7 @@ description: Run the quality gates in order and report pass/fail per gate. Use b
 # Quality gate
 
 Run, in order, stopping to fix at the first failure:
+
 1. `make check-fast`
 2. `make lint`
 3. `make typecheck`

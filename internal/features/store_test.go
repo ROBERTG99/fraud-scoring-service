@@ -12,7 +12,7 @@ func TestSpecLoadsAndMatchesOrder(t *testing.T) {
 	if s.ChannelCode("P2P") != 3 {
 		t.Fatal("P2P must map to 3")
 	}
-	if _, err := ParseSpec([]byte("version: v2\n")); err == nil {
+	if _, err := ParseSpec([]byte("version: v1\n")); err == nil {
 		t.Fatal("expected error for wrong version")
 	}
 }
@@ -20,23 +20,27 @@ func TestSpecLoadsAndMatchesOrder(t *testing.T) {
 func TestComputeEdgeCases(t *testing.T) {
 	s := NewStore(nil, "", nil)
 	tx := Tx{TSMillis: 1_788_000_000_000, AmountMinor: 900, Channel: "ECOMMERCE"}
-	none := Raw{DeviceSeen: -1, MCCSeen: -1, PwdChanged: -1, EmailChanged: -1}
+	none := Raw{DeviceFirst: -1, MCCSeen: -1, PwdChanged: -1, EmailChanged: -1}
 	v := s.Compute(none, tx)
 	if v[IdxNewDevice] != 1 || v[IdxMCCNovel30d] != 1 || v[IdxMinutesSincePwd] != MinutesCap || v[IdxAmountRatio24h] != 1 {
 		t.Fatalf("empty history: %v", v)
 	}
 	// A credential change at or after as_of never counts (point in time).
-	future := Raw{DeviceSeen: tx.TSMillis, MCCSeen: tx.TSMillis + 5, PwdChanged: tx.TSMillis, EmailChanged: tx.TSMillis + 1}
+	future := Raw{DeviceFirst: tx.TSMillis, MCCSeen: tx.TSMillis + 5, PwdChanged: tx.TSMillis, EmailChanged: tx.TSMillis + 1}
 	v = s.Compute(future, tx)
 	if v[IdxNewDevice] != 1 || v[IdxMCCNovel30d] != 1 || v[IdxMinutesSincePwd] != MinutesCap || v[IdxMinutesSinceEmail] != MinutesCap {
 		t.Fatalf("future sightings must not count: %v", v)
 	}
-	recent := Raw{Count24h: 3, Sum24h: 900, DeviceSeen: tx.TSMillis - 1, MCCSeen: tx.TSMillis - Ms30d, PwdChanged: tx.TSMillis - 119_999, EmailChanged: tx.TSMillis - 100*Ms24h}
+	// A device first seen less than 24 h ago is still new (spec v2); seen before that, it is known.
+	if v := s.Compute(Raw{DeviceFirst: tx.TSMillis - Ms24h + 1, MCCSeen: -1, PwdChanged: -1, EmailChanged: -1}, tx); v[IdxNewDevice] != 1 {
+		t.Fatalf("first seen 24 h - 1 ms ago must still be new: %v", v)
+	}
+	recent := Raw{Count24h: 3, Sum24h: 900, DeviceFirst: tx.TSMillis - Ms24h - 1, MCCSeen: tx.TSMillis - Ms30d, PwdChanged: tx.TSMillis - 119_999, EmailChanged: tx.TSMillis - 100*Ms24h}
 	v = s.Compute(recent, tx)
 	if v[IdxNewDevice] != 0 || v[IdxMCCNovel30d] != 0 || v[IdxMinutesSincePwd] != 1 || v[IdxMinutesSinceEmail] != MinutesCap || v[IdxAmountRatio24h] != 3 {
 		t.Fatalf("recent history: %v", v)
 	}
-	stale := Raw{DeviceSeen: tx.TSMillis - Ms90d - 1, MCCSeen: tx.TSMillis - Ms30d - 1, PwdChanged: -1, EmailChanged: -1}
+	stale := Raw{DeviceFirst: -1, MCCSeen: tx.TSMillis - Ms30d - 1, PwdChanged: -1, EmailChanged: -1}
 	v = s.Compute(stale, tx)
 	if v[IdxNewDevice] != 1 || v[IdxMCCNovel30d] != 1 {
 		t.Fatalf("stale sightings must not count: %v", v)

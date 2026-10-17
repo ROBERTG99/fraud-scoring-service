@@ -205,7 +205,7 @@ func TestGatewayAuthAndLimits(t *testing.T) {
 	var rs struct {
 		Version string `json:"version"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&rs); err != nil || rs.Version != "2026.10.1" {
+	if err := json.NewDecoder(resp.Body).Decode(&rs); err != nil || rs.Version != "2026.10.2" {
 		t.Fatalf("rule set %+v %v", rs, err)
 	}
 	// 20 req/s per user: a burst beyond that is rejected with 429.

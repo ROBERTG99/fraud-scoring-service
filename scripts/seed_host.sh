@@ -18,7 +18,7 @@ export FRAUD_SERVICE_TOKEN=seed-host-token
 echo "$DB" > $S/db
 $S/bin/scorer migrate
 # Model server on the trained demo artifact (no MLflow).
-FRAUD_MODEL_DIR=$PWD/artifacts/model FRAUD_MODEL_CACHE=$S/model-cache MLFLOW_TRACKING_URI= \
+BENTOML_DO_NOT_TRACK=true FRAUD_MODEL_DIR=$PWD/artifacts/model FRAUD_MODEL_CACHE=$S/model-cache MLFLOW_TRACKING_URI= \
   setsid .venv/bin/python -m bentoml serve serving.bentoml.service:FraudModel --host 127.0.0.1 --port 18514 > $S/model.log 2>&1 &
 echo $! > $S/model.pid
 FRAUD_UPDATER_HTTP_ADDR=127.0.0.1:18512 setsid $S/bin/feature-updater > $S/updater.log 2>&1 &

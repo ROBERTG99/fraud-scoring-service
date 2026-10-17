@@ -1,6 +1,6 @@
 -- score_tx.lua: read point-in-time features strictly before as_of, then (optionally) add the transaction.
 -- One script call = one atomic step: nothing interleaves between the read and the add.
--- KEYS[1]=fr:{acc}:tx  KEYS[2]=fr:{acc}:dev  KEYS[3]=fr:{acc}:mcc  KEYS[4]=fr:{acc}:cred
+-- KEYS[1]=fr:{acc}:tx  KEYS[2]=fr:{acc}:dev  KEYS[3]=fr:{acc}:mcc  KEYS[4]=fr:{acc}:cred  KEYS[5]=fr:{acc}:devfirst
 -- ARGV: as_of_ms, event_id, amount_minor, device_id, mcc, add(0|1)
 local as_of = tonumber(ARGV[1])
 local excl = '(' .. ARGV[1]
@@ -30,7 +30,7 @@ local c1h = window(KEYS[1], 3600000)
 local sum1h = sum_window(KEYS[1], 3600000)
 local sum24, c24 = sum_window(KEYS[1], 86400000)
 local distinct = redis.call('ZCOUNT', KEYS[2], as_of - 86400000, excl)
-local dev = score_or_neg(KEYS[2], ARGV[4])
+local dev_first = score_or_neg(KEYS[5], ARGV[4])
 local mcc = score_or_neg(KEYS[3], ARGV[5])
 -- Credential fields hold up to 16 change times (apply_event.lua); take the latest strictly before as_of.
 local function latest_before(list)
@@ -52,11 +52,18 @@ if ARGV[6] == '1' then
   redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', '(' .. (as_of - 87000000))
   redis.call('PEXPIRE', KEYS[1], 90000000)
   redis.call('ZADD', KEYS[2], 'GT', as_of, ARGV[4])
-  redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', '(' .. (as_of - 7776000000))
+  redis.call('ZADD', KEYS[5], 'LT', as_of, ARGV[4])
+  local cut = '(' .. (as_of - 7776000000)
+  local old = redis.call('ZRANGEBYSCORE', KEYS[2], '-inf', cut)
+  if #old > 0 then
+    redis.call('ZREM', KEYS[5], unpack(old))
+    redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', cut)
+  end
   redis.call('PEXPIRE', KEYS[2], 7862400000)
+  redis.call('PEXPIRE', KEYS[5], 7862400000)
   redis.call('ZADD', KEYS[3], 'GT', as_of, ARGV[5])
   redis.call('ZREMRANGEBYSCORE', KEYS[3], '-inf', '(' .. (as_of - 2592000000))
   redis.call('PEXPIRE', KEYS[3], 2678400000)
 end
 
-return {c10, c1h, sum1h, c24, sum24, distinct, dev, mcc, pwd, email}
+return {c10, c1h, sum1h, c24, sum24, distinct, dev_first, mcc, pwd, email}

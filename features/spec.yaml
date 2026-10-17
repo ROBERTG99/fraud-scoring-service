@@ -1,13 +1,14 @@
-# Feature spec v1 — read by Go (internal/features) and Python (training/features.py).
+# Feature spec v2 — read by Go (internal/features) and Python (training/features.py).
 # Order of `features` is the model input order (13 float32 columns).
 # Every feature is point-in-time: computed from events with event_ts strictly before the transaction's
 # event_ts (as_of), then the transaction itself is added (score_tx.lua / offline replay).
 schema: fraud.features.v1
-version: v1
+version: v2
 
 sources:
   tx: transactions (ZSET fr:{acc}:tx, member "event_id|amount_minor", score event_ts_ms)
-  dev: device_id of successful logins, device_bound events and transactions (ZSET fr:{acc}:dev, ZADD GT)
+  dev: device_id of successful logins, device_bound events and transactions (ZSET fr:{acc}:dev, last sighting, ZADD GT)
+  devfirst: first sighting of each device in dev (ZSET fr:{acc}:devfirst, ZADD LT; trimmed with dev)
   mcc: mcc of transactions (ZSET fr:{acc}:mcc, ZADD GT)
   cred: password_changed / email_changed device events (HASH fr:{acc}:cred, last 16 change times per field)
 
@@ -26,7 +27,7 @@ features:
   - { name: amount_sum_1h_minor, kind: tx_amount_sum, window_ms: 3600000 }
   - { name: amount_minor, kind: current_amount }
   - { name: distinct_devices_24h, kind: distinct_devices, window_ms: 86400000 }
-  - { name: new_device, kind: new_device, window_ms: 7776000000 }
+  - { name: new_device, kind: new_device, window_ms: 86400000 }
   - { name: minutes_since_pwd_change, kind: minutes_since, field: pwd_changed_ms, cap: 43200 }
   - { name: minutes_since_email_change, kind: minutes_since, field: email_changed_ms, cap: 43200 }
   - { name: mcc_novel_30d, kind: mcc_novel, window_ms: 2592000000 }
@@ -38,7 +39,8 @@ features:
 #   tx_count       = number of transactions in the window
 #   tx_amount_sum  = sum of amount_minor in the window
 #   distinct_devices = devices whose last sighting is in the window
-#   new_device     = 1 if the transaction's device has no sighting in the window, else 0
+#   new_device     = 1 unless the device's first sighting on the account (within the 90 d retention)
+#                    is before as_of - window_ms (24 h); v1 counted any earlier sighting (D-026)
 #   minutes_since  = floor((as_of - latest change before as_of) / 60000), capped; cap when none
 #   mcc_novel      = 1 if the transaction's MCC was not seen in the window, else 0
 #   amount_ratio   = amount_minor / (sum_24h / count_24h), 1.0 when count_24h = 0
@@ -49,7 +51,7 @@ fallback_defaults:
   tx_count_10m: 0
   tx_count_1h: 1
   tx_count_24h: 5
-  amount_sum_1h_minor: 928
+  amount_sum_1h_minor: 1156
   distinct_devices_24h: 2
   new_device: 0
   minutes_since_pwd_change: 43200

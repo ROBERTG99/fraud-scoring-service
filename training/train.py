@@ -25,7 +25,7 @@ from sklearn.isotonic import IsotonicRegression
 from training import metrics
 from training.dataset import load_events, load_labels
 from training.export_onnx import export, run_onnx
-from training.features import SPEC_PATH, compute_features, feature_names
+from training.features import SPEC_PATH, compute_features, feature_names, spec_version
 
 log = logging.getLogger("training")
 
@@ -228,7 +228,7 @@ def train(data_dir: Path, out_dir: Path, tiny: bool = False) -> dict[str, Any]:
     meta = {
         "model_version": version,
         "onnx_sha256": onnx_sha,
-        "feature_spec": "v1",
+        "feature_spec": spec_version(),
         "calibration": {"method": "isotonic, slope <= 10", "x": cal.x.tolist(), "y": cal.y.tolist()},
         "golden": {"features": golden_vector(), "probability": golden_score},
         "data_dir": str(data_dir),

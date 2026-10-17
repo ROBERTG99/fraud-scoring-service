@@ -17,6 +17,6 @@ def test_offline_features_match_golden() -> None:
         rows = list(csv.reader(fh))
     assert rows[0][1:] == feature_names()
     golden = {r[0]: [float(v) for v in r[1:]] for r in rows[1:]}
-    assert len(golden) == len(fm.transaction_id) == 3435
+    assert len(golden) == len(fm.transaction_id) == 3502
     for tx_id, values in zip(fm.transaction_id, fm.values, strict=True):
         assert golden[tx_id] == [float(v) for v in values], tx_id

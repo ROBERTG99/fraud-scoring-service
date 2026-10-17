@@ -149,5 +149,28 @@ def test_card_testing_burst_counts() -> None:
     fm = compute_features(events_from_dicts(to_rows(history)))
     assert fm.values[9, 0] == 9  # nine earlier transactions within 10 minutes
     assert fm.values[0, 6] == 1  # first sighting of the device
-    assert fm.values[1, 6] == 0
+    assert fm.values[1, 6] == 1  # spec v2: still new 30 s after its first sighting
+
+
+def test_device_is_known_24h_after_first_sighting() -> None:
+    def tx(i: int, ts: int) -> dict[str, object]:
+        return {
+            "kind": "tx",
+            "ts": ts,
+            "device": DEVICES[0],
+            "success": True,
+            "change": "",
+            "amount": 100,
+            "mcc": "5411",
+            "channel": "ECOMMERCE",
+            "id": f"0192f000-0000-7000-8000-{i:012d}",
+        }
+
+    day = 86_400_000
+    fm = compute_features(events_from_dicts(to_rows([tx(0, BASE), tx(1, BASE + day), tx(2, BASE + day + 1)])))
+    assert fm.values[:, 6].tolist() == [
+        1,
+        1,
+        0,
+    ]  # first seen exactly 24 h earlier is not yet "before as_of - 24 h"
     assert fm.values[0, 12] == 1.0

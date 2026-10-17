@@ -179,7 +179,7 @@ func TestTimelineAndShadowValidation(t *testing.T) {
 func TestActiveRuleSetMatchesEngine(t *testing.T) {
 	s, _ := newCaseServer(t)
 	rs, err := s.GetActiveRuleSet(analystCtx(), &fraudv1.GetActiveRuleSetRequest{})
-	if err != nil || rs.Version != "2026.10.1" || len(rs.Rules) == 0 || rs.Sha256 == "" || rs.Thresholds.Decline <= rs.Thresholds.Review {
+	if err != nil || rs.Version != "2026.10.2" || len(rs.Rules) == 0 || rs.Sha256 == "" || rs.Thresholds.Decline <= rs.Thresholds.Review {
 		t.Fatalf("rule set %v %v", rs, err)
 	}
 }

@@ -4,6 +4,7 @@ package replay
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -82,7 +83,8 @@ func leakFixture(t *testing.T) (*features.Store, *explaining, []events.Event, []
 	srv := api.NewScorerServer(api.ScorerDeps{Features: fs, Model: lowModel{}, Rules: eng, Idempotency: mem, Decisions: mem})
 
 	const acc = "acc_00000777"
-	devD, devE := "d0000000000000000000000000000000000000000000000000000000000000dd", "e0000000000000000000000000000000000000000000000000000000000000ee"
+	dev := func(c string) string { return c + strings.Repeat("0", 62) + c } // salted-hash shaped IDs
+	devD, devE, devF := dev("d"), dev("e"), dev("f")
 	t0 := time.Date(2026, 9, 20, 8, 0, 0, 0, time.UTC).UnixMilli()
 	login := func(id string, ts int64, dev string) events.Event {
 		return events.Event{Kind: events.KindLogin, EventID: id, AccountID: acc, TSMillis: ts, DeviceID: dev, IPPrefix: "203.0.113.0/24",
@@ -93,11 +95,14 @@ func leakFixture(t *testing.T) (*features.Store, *explaining, []events.Event, []
 		e.EventID, e.DeviceID = id, dev
 		return e
 	}
-	warm := []events.Event{login("login-warm", t0, devD)}
+	warm := []events.Event{
+		login("login-d", t0-3*86_400_000, devD), // known device: first seen 3 days earlier
+		login("login-f", t0-2*3_600_000, devF),  // another device, seen 2 h earlier
+	}
 	live := []events.Event{
-		tx("0192f000-0000-7000-8000-0000000000a1", t0+3_600_000, devD), // device seen an hour ago
-		login("login-later", t0+7_200_000, devD),                       // the same device again, later
-		tx("0192f000-0000-7000-8000-0000000000a2", t0+7_300_000, devE), // a device never seen
+		tx("0192f000-0000-7000-8000-0000000000a1", t0, devD),           // new_device=0, distinct_devices_24h=1 (F)
+		login("login-f-later", t0+3_600_000, devF),                     // F again, after the transaction
+		tx("0192f000-0000-7000-8000-0000000000a2", t0+7_200_000, devE), // a device never seen: new_device=1
 	}
 	return fs, &explaining{s: srv, feats: map[string]map[string]float64{}}, warm, live
 }
@@ -115,15 +120,19 @@ func TestReplayDoesNotLeakLaterEventsIntoFeatures(t *testing.T) {
 	if err != nil || st.Scored != 2 || st.Applied != 1 {
 		t.Fatalf("run %+v %v", st, err)
 	}
-	if got := sc.feats[live[0].EventID]["new_device"]; got != 0 {
-		t.Fatalf("transaction on a device seen an hour earlier scored new_device=%v; a later sighting leaked in", got)
+	first := sc.feats[live[0].EventID]
+	if first["new_device"] != 0 || first["distinct_devices_24h"] != 1 {
+		t.Fatalf("transaction on a known device: new_device=%v distinct_devices_24h=%v, want 0 and 1 (a later sighting leaked in?)",
+			first["new_device"], first["distinct_devices_24h"])
 	}
 	if got := sc.feats[live[2].EventID]["new_device"]; got != 1 {
 		t.Fatalf("unseen device scored new_device=%v", got)
 	}
 }
 
-// The order the first replay used (all live account events first) shows the leak this test guards.
+// The order the first replay used (all live account events first) shows the leak this test guards: the
+// later sighting of F moves its last-seen time past the transaction (ZADD GT), so F drops out of
+// distinct_devices_24h. new_device (spec v2, first sighting, ZADD LT) is immune to the order.
 func TestLoadingTheWindowFirstLeaks(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -136,7 +145,11 @@ func TestLoadingTheWindowFirstLeaks(t *testing.T) {
 	if _, err := sc.Score(ctx, &fraudv1.ScoreRequest{Transaction: Transaction(&live[0])}); err != nil {
 		t.Fatal(err)
 	}
-	if got := sc.feats[live[0].EventID]["new_device"]; got != 1 {
-		t.Fatalf("expected the ZADD GT overwrite to make the device look new (new_device=1), got %v", got)
+	got := sc.feats[live[0].EventID]
+	if got["distinct_devices_24h"] != 0 {
+		t.Fatalf("expected the ZADD GT overwrite to hide F (distinct_devices_24h=0), got %v", got["distinct_devices_24h"])
+	}
+	if got["new_device"] != 0 {
+		t.Fatalf("new_device must not depend on arrival order, got %v", got["new_device"])
 	}
 }

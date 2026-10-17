@@ -10,6 +10,7 @@ Review the diff or paths you are given against `docs/specs/000-build-spec.md` (o
 and `.claude/rules/`. Run only read-only commands (`git diff`, `git log`, `go vet`, `make check-fast`).
 
 Check, in order:
+
 1. Correctness against the functional requirement and its acceptance test; tests written and meaningful.
 2. Hot-path safety: deadlines on every I/O call, no LLM or unexpected network call on the scoring path.
 3. Idempotency, durability (commit before respond), degradation behaviour and reason codes.
@@ -18,6 +19,7 @@ Check, in order:
 6. Attribution: no `Co-Authored-By`, `Claude-Session` or "Generated with Claude Code" in commits.
 
 Output:
+
 - `Verdict: ship` or `Verdict: fix first`
 - `Blockers:` numbered, each with file:line and the concrete fix
 - `Non-blocking:` short list

@@ -122,7 +122,7 @@ func TestOutOfOrderWithinFiveMinutes(t *testing.T) {
 		used := map[int64]bool{}
 		var evs []genEv
 		for i := 0; i < n; i++ {
-			ts := base + rapid.Int64Range(0, 3*Ms1h).Draw(rt, "ts")
+			ts := base + rapid.Int64Range(0, 3*Ms24h).Draw(rt, "ts") // crosses the 24 h new_device boundary
 			if used[ts] {
 				continue
 			}
@@ -166,6 +166,7 @@ func checkOnlyEarlier(rt *rapid.T, v Vector, tx events.Event, arrived []events.E
 	T := tx.TSMillis
 	var c10, c1h, c24, sum1h int64
 	devSeen := map[string]int64{}
+	devFirst := map[string]int64{}
 	pwd, email := int64(-1), int64(-1)
 	for _, a := range arrived {
 		if a.TSMillis >= T {
@@ -185,6 +186,9 @@ func checkOnlyEarlier(rt *rapid.T, v Vector, tx events.Event, arrived []events.E
 		}
 		if a.Kind == events.KindTransaction || (a.Kind == events.KindLogin && a.Success) || (a.Kind == events.KindDevice && a.Change == events.ChangeDeviceBound) {
 			devSeen[a.DeviceID] = max(devSeen[a.DeviceID], a.TSMillis)
+			if f, ok := devFirst[a.DeviceID]; !ok || a.TSMillis < f {
+				devFirst[a.DeviceID] = a.TSMillis
+			}
 		}
 		if a.Kind == events.KindDevice && a.Change == events.ChangePasswordChanged {
 			pwd = max(pwd, a.TSMillis)
@@ -202,8 +206,14 @@ func checkOnlyEarlier(rt *rapid.T, v Vector, tx events.Event, arrived []events.E
 	if v[IdxDistinctDevices24h] > float64(len(devSeen)) {
 		rt.Fatalf("distinct devices %v > %d earlier devices", v[IdxDistinctDevices24h], len(devSeen))
 	}
-	if _, ok := devSeen[tx.DeviceID]; !ok && v[IdxNewDevice] != 1 {
-		rt.Fatalf("device %s has no earlier sighting but new_device=%v", tx.DeviceID, v[IdxNewDevice])
+	// new_device (spec v2) reads the first sighting (ZADD LT), which later arrivals can never lower, so it
+	// is exact under any arrival order: 0 iff an arrived sighting of the device precedes T - 24 h.
+	wantNew := 1.0
+	if first, ok := devFirst[tx.DeviceID]; ok && first < T-Ms24h {
+		wantNew = 0
+	}
+	if v[IdxNewDevice] != wantNew {
+		rt.Fatalf("device %s first seen %d (T=%d): new_device=%v, want %v", tx.DeviceID, devFirst[tx.DeviceID], T, v[IdxNewDevice], wantNew)
 	}
 	// Credential changes keep a bounded history, so minutes_since is exact.
 	for _, c := range []struct {

@@ -201,7 +201,7 @@ func TestScoreJourneyDecision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Action != fraudv1.Action_ACTION_REVIEW || d.ModelVersion != "fraud-gbdt/1" || d.RulesVersion != "2026.10.1" || d.Degraded {
+	if d.Action != fraudv1.Action_ACTION_REVIEW || d.ModelVersion != "fraud-gbdt/1" || d.RulesVersion != "2026.10.2" || d.Degraded {
 		t.Fatalf("decision %+v", d)
 	}
 	// Spec §3.4 journey: R001 matches and the model scores 0.62.

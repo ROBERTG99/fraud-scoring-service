@@ -14,6 +14,8 @@ import numpy.typing as npt
 import onnx
 from onnx import TensorProto, helper, numpy_helper
 
+from training.features import spec_version
+
 N_FEATURES = 13
 INPUT = "features"
 OUTPUT = "probability"
@@ -98,7 +100,7 @@ def export(
     graph.name = "fraud_gbdt"
     m.doc_string = f"fraud-gbdt {version}: {backend} + isotonic calibration, feature spec v1"
     del m.metadata_props[:]
-    for k, v in {"model_version": version, "feature_spec": "v1", "backend": backend}.items():
+    for k, v in {"model_version": version, "feature_spec": spec_version(), "backend": backend}.items():
         m.metadata_props.append(onnx.StringStringEntryProto(key=k, value=v))
     onnx.checker.check_model(m)
     return m

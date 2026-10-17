@@ -57,7 +57,7 @@ func startModelServer() (string, *exec.Cmd, error) {
 	cmd := exec.Command("uv", "run", "--frozen", "python", "-m", "bentoml", "serve", "serving.bentoml.service:FraudModel", // #nosec G204 -- fixed command
 		"--host", "127.0.0.1", "--port", fmt.Sprint(port))
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "FRAUD_MODEL_DIR="+dir, "FRAUD_MODEL_CACHE="+filepath.Join(dir, "cache"), "MLFLOW_TRACKING_URI=")
+	cmd.Env = append(os.Environ(), "FRAUD_MODEL_DIR="+dir, "BENTOML_DO_NOT_TRACK=true", "FRAUD_MODEL_CACHE="+filepath.Join(dir, "cache"), "MLFLOW_TRACKING_URI=")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		return "", nil, err
