@@ -139,8 +139,18 @@ func TestProxyLimitsBodiesAndGivesUpOnSlowUpstreams(t *testing.T) {
 	if code, body := post(1000); code != 200 || body != "read 1000" {
 		t.Fatalf("small body: %d %q", code, body)
 	}
-	if code, _ := post(maxBody + 1); code != http.StatusRequestEntityTooLarge {
-		t.Fatalf("oversized body: %d, want 413", code)
+	if code, body := post(maxBody + 1); code != http.StatusRequestEntityTooLarge || !strings.Contains(body, `"code":8`) {
+		t.Fatalf("oversized body: %d %q, want a JSON 413", code, body)
+	}
+	// Without Content-Length (chunked), the limit trips while the proxy streams the body upstream.
+	chunked, err := http.Post(srv.URL+"/api/v1/rules:test", "application/json", io.MultiReader(strings.NewReader(strings.Repeat("x", maxBody+1))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(chunked.Body)
+	_ = chunked.Body.Close()
+	if chunked.StatusCode != http.StatusRequestEntityTooLarge || !strings.Contains(string(b), `"code":8`) {
+		t.Fatalf("oversized chunked body: %d %q, want a JSON 413", chunked.StatusCode, b)
 	}
 	start := time.Now()
 	resp, body := get(t, srv.URL+"/api/v1/slow")

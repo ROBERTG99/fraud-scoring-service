@@ -36,7 +36,7 @@ describe("case detail", () => {
     expect(row).toHaveAttribute("aria-current", "true");
     // The cited fact may be off-screen (stacked layout): bring it into view and move focus to it.
     expect(scrolled).toContain(row);
-    expect(scrollOptions).toEqual({ block: "center" });
+    expect(scrollOptions).toEqual({ block: "nearest" }); // no jump when it is already visible
     expect(row).toHaveFocus();
     expect(row).toHaveAttribute("tabindex", "-1");
     expect(screen.getByRole("button", { name: /new device/ })).toHaveAttribute("aria-pressed", "true");

@@ -55,7 +55,7 @@ func proxy(target, prefix string, timeout time.Duration, log *slog.Logger) (http
 		FlushInterval: -1, // stream /v1/metrics/live without buffering
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			if tooLarge := new(http.MaxBytesError); errors.As(err, &tooLarge) {
-				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				tooLargeResponse(w)
 				return
 			}
 			log.Warn("upstream unavailable", "prefix", prefix, "path", r.URL.Path, "err", err)
@@ -66,12 +66,19 @@ func proxy(target, prefix string, timeout time.Duration, log *slog.Logger) (http
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.ContentLength > maxBody {
-			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			tooLargeResponse(w)
 			return
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 		rp.ServeHTTP(w, r)
 	}), nil
+}
+
+// tooLargeResponse answers 413 in the gateway's error shape (code 8: RESOURCE_EXHAUSTED).
+func tooLargeResponse(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusRequestEntityTooLarge)
+	_, _ = w.Write([]byte(`{"code":8,"message":"request body too large"}`))
 }
 
 func securityHeaders(next http.Handler) http.Handler {

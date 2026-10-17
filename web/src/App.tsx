@@ -91,7 +91,7 @@ export function Layout() {
           </button>
         </div>
       </header>
-      <main id="main">
+      <main id="main" tabIndex={-1} className="focus:outline-none">
         <Outlet />
       </main>
     </div>

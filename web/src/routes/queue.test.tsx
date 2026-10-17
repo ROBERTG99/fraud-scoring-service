@@ -44,6 +44,32 @@ describe("review queue", () => {
     );
   });
 
+  it("keeps the cursor on the same case when a refetch reorders the list", async () => {
+    signedIn("analyst");
+    const newer = sampleCase({ case_id: "0192f000-0000-7000-8000-0000000000cc", amount_minor: "5000" });
+    let list = two;
+    vi.stubGlobal(
+      "fetch",
+      stubApi({ "GET /api/v1/cases": () => json({ cases: list, total_open: list.length }) }).fetchMock,
+    );
+    const { qc } = renderRoutes(routes, "/queue");
+    await screen.findByText("USD 940.00");
+    screen.getByRole("link", { name: "Open case 000000aa" }).focus();
+    await userEvent.keyboard("j");
+    const bb = screen.getByRole("link", { name: "Open case 000000bb" });
+    expect(bb).toHaveFocus();
+    // A higher-priority case arrives at the top: rows shift, the cursor must stay on 000000bb.
+    list = [newer, ...two];
+    await qc.refetchQueries({ queryKey: ["cases"] });
+    await screen.findByText("USD 50.00");
+    expect(bb).toHaveFocus();
+    expect(bb).toHaveAttribute("tabindex", "0");
+    expect(bb.closest("tr")).toHaveClass("outline-accent");
+    expect(screen.getByRole("link", { name: "Open case 000000cc" })).toHaveAttribute("tabindex", "-1");
+    await userEvent.keyboard("k");
+    expect(screen.getByRole("link", { name: "Open case 000000aa" })).toHaveFocus();
+  });
+
   it("shows the distinct end of UUIDv7 ids, not their shared timestamp prefix", async () => {
     signedIn("analyst");
     vi.stubGlobal(

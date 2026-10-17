@@ -17,8 +17,9 @@ export default function CaseDetail() {
   const query = useCase(caseId, watching !== null);
   const summaryAt = query.data?.summary?.created_at;
   useEffect(() => {
-    if (watching && (summaryAt !== watching.from || query.dataUpdatedAt > watching.until)) setWatching(null);
-  }, [watching, summaryAt, query.dataUpdatedAt]);
+    // A fixed deadline: failed refetches during an outage must not keep the 3 s polling alive.
+    if (watching && (summaryAt !== watching.from || Date.now() > watching.until)) setWatching(null);
+  }, [watching, summaryAt, query.dataUpdatedAt, query.errorUpdatedAt]);
   const session = getSession();
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const [labelling, setLabelling] = useState(false);
@@ -46,7 +47,7 @@ export default function CaseDetail() {
     setHighlighted(key);
     const rows = factPanel.current?.querySelectorAll<HTMLElement>("[data-fact]") ?? [];
     const row = [...rows].find((r) => r.dataset.fact === key);
-    row?.scrollIntoView({ block: "center" });
+    row?.scrollIntoView({ block: "nearest" });
     row?.focus({ preventScroll: true });
   };
   return (

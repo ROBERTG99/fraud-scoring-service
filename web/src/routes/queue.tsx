@@ -10,8 +10,9 @@ const SUMMARY_STATES = ["", "pending", "ok", "fallback", "unfaithful"] as const;
 export default function Queue() {
   const [params, setParams] = useSearchParams();
   const [tokens, setTokens] = useState<string[]>([]); // page tokens of the pages before the current one
-  const [cursor, setCursor] = useState(0);
-  const links = useRef<(HTMLAnchorElement | null)[]>([]);
+  // The cursor is a case ID, not a row number: the list refetches every 15 s and can reorder.
+  const [cursor, setCursor] = useState<string | null>(null);
+  const links = useRef(new Map<string, HTMLAnchorElement>());
   const filters: CaseFilters = {
     status: params.get("status") === "labelled" ? "CASE_STATUS_LABELLED" : "CASE_STATUS_OPEN",
     reason_code: params.get("reason") ?? "",
@@ -27,23 +28,24 @@ export default function Queue() {
     else next.delete(k);
     setParams(next, { replace: true });
     setTokens([]);
-    setCursor(0);
+    setCursor(null);
   };
 
   // Roving tabindex: the list is one Tab stop (the current row's case link); arrows or j/k move it and
   // focus follows, so screen readers announce the row. Enter is the link's own activation.
-  const onKey = (e: KeyboardEvent<HTMLTableSectionElement>, n: number) => {
+  const onKey = (e: KeyboardEvent<HTMLTableSectionElement>, ids: string[], current: number) => {
     let next: number;
-    if (e.key === "ArrowDown" || e.key === "j") next = Math.min(n - 1, cursor + 1);
-    else if (e.key === "ArrowUp" || e.key === "k") next = Math.max(0, cursor - 1);
+    if (e.key === "ArrowDown" || e.key === "j") next = Math.min(ids.length - 1, current + 1);
+    else if (e.key === "ArrowUp" || e.key === "k") next = Math.max(0, current - 1);
     else return;
     e.preventDefault();
-    setCursor(next);
-    links.current[next]?.focus();
+    const id = ids[next]!;
+    setCursor(id);
+    links.current.get(id)?.focus();
   };
   const page = (t: string[]) => {
     setTokens(t);
-    setCursor(0);
+    setCursor(null);
   };
 
   return (
@@ -105,7 +107,9 @@ export default function Queue() {
         >
           {(d) => {
             const list = d.cases ?? [];
-            const current = Math.min(cursor, list.length - 1);
+            const ids = list.map((c) => c.case_id ?? "");
+            // A case that left the list (labelled elsewhere) falls back to the first row.
+            const current = Math.max(0, ids.indexOf(cursor ?? ""));
             return (
               <table className="w-full text-sm">
                 <caption className="sr-only">Cases by priority. Arrow keys or j/k move, Enter opens.</caption>
@@ -119,7 +123,7 @@ export default function Queue() {
                     <th className="px-3 py-2">Summary</th>
                   </tr>
                 </thead>
-                <tbody onKeyDown={(e) => onKey(e, list.length)} aria-label="Cases">
+                <tbody onKeyDown={(e) => onKey(e, ids, current)} aria-label="Cases">
                   {list.map((c, i) => (
                     <tr
                       key={c.case_id}
@@ -128,11 +132,12 @@ export default function Queue() {
                       <td className="px-3 py-1">
                         <Link
                           ref={(el) => {
-                            links.current[i] = el;
+                            if (el) links.current.set(ids[i]!, el);
+                            else links.current.delete(ids[i]!);
                           }}
                           to={`/cases/${c.case_id}`}
                           tabIndex={i === current ? 0 : -1}
-                          onFocus={() => setCursor(i)}
+                          onFocus={() => setCursor(ids[i]!)}
                           aria-label={`Open case ${shortId(c.case_id)}`}
                           className="num text-accent underline"
                         >
