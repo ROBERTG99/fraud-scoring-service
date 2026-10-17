@@ -103,16 +103,35 @@ func TestCheckOnlyAllowsAMissingReport(t *testing.T) {
 func TestBenchreportFailsWhenMostDecisionsDegrade(t *testing.T) {
 	in := ghzJSON(t, 3000, 10, func(int) float64 { return 3 }, 0)
 	out := filepath.Join(t.TempDir(), "latency.json")
-	err := run(options{in: in, out: out, profile: "ci", decisions: 3000, degraded: 2910})
+	err := run(options{in: in, out: out, profile: "ci", decisionsKnown: true, decisions: 3000, degraded: 2910})
 	if err == nil || !strings.Contains(err.Error(), "degraded_rate") {
 		t.Fatalf("fast answers that are 97%% degraded must fail, got %v", err)
 	}
-	if err := run(options{in: in, out: out, profile: "ci", decisions: 3000, degraded: 45}); err != nil {
+	if err := run(options{in: in, out: out, profile: "ci", decisionsKnown: true, decisions: 3000, degraded: 45}); err != nil {
 		t.Fatalf("1.5%% degraded is within the 5%% limit: %v", err)
 	}
 	var rep Report
 	raw, _ := os.ReadFile(out)
 	if err := json.Unmarshal(raw, &rep); err != nil || rep.Metrics["degraded_rate"].Value != 0.015 {
 		t.Fatalf("degraded_rate %+v (%v)", rep.Metrics["degraded_rate"], err)
+	}
+}
+
+func TestBenchreportFailsWhenDecisionsAreMissing(t *testing.T) {
+	in := ghzJSON(t, 3000, 10, func(int) float64 { return 3 }, 0)
+	for _, n := range []int{0, 2000} {
+		err := run(options{in: in, out: filepath.Join(t.TempDir(), "r.json"), profile: "ci", decisionsKnown: true, decisions: n})
+		if err == nil || !strings.Contains(err.Error(), "decisions persisted") {
+			t.Fatalf("%d decisions for 3000 successful requests must fail, got %v", n, err)
+		}
+	}
+}
+
+func TestDirtyTreeIsStamped(t *testing.T) {
+	if got := stampSHA("abc123", true); got != "abc123-dirty" {
+		t.Fatalf("got %q", got)
+	}
+	if got := stampSHA("abc123", false); got != "abc123" {
+		t.Fatalf("got %q", got)
 	}
 }

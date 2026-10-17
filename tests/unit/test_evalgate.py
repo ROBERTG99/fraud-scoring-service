@@ -121,5 +121,17 @@ def test_invalid_input_exits_2(tmp_path: Path) -> None:
 
 
 def test_existing_reports_follow_the_contract() -> None:
+    # evals/reports/*.json holds report.v1 files only; calibration output lives in evals/reports/calibration/.
     for path in Path("evals/reports").glob("*.json"):
         Report.model_validate_json(path.read_text())
+    for path in Path("evals/reports/calibration").glob("*.json"):
+        doc = json.loads(path.read_text())
+        assert doc["schema"] == "evalgate.calibration.v1" and {"agreement", "passed", "n"} <= set(doc), path
+
+
+def test_calibration_output_is_outside_the_report_glob() -> None:
+    from evals.graders import judge
+    from scripts import eval_live
+
+    assert judge.DEFAULT_OUT.parent.name == "calibration"
+    assert eval_live.CALIBRATION_OUT.parent.name == "calibration"

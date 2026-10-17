@@ -105,8 +105,9 @@ type options struct {
 	in, out, profile        string
 	checkOnly, allowMissing bool
 	report                  string
-	// decisions and degraded count the decisions persisted during the measured window (0: not known).
+	// decisions and degraded count the decisions persisted during the measured window (when decisionsKnown).
 	decisions, degraded int
+	decisionsKnown      bool
 }
 
 // percentile is the nearest-rank percentile of sorted values.
@@ -120,6 +121,14 @@ func percentile(sorted []float64, q float64) float64 {
 
 func ptr(v float64) *float64 { return &v }
 
+// stampSHA marks a commit measured with uncommitted changes, so a report never names a commit it did not run.
+func stampSHA(sha string, dirty bool) string {
+	if dirty {
+		return sha + "-dirty"
+	}
+	return sha
+}
+
 func gitSHA() *string {
 	if v := os.Getenv("GITHUB_SHA"); v != "" {
 		return &v
@@ -128,11 +137,13 @@ func gitSHA() *string {
 	if err != nil {
 		return nil
 	}
-	s := strings.TrimSpace(string(out))
+	dirty := exec.Command("git", "diff", "--quiet", "HEAD", "--").Run() != nil
+	s := stampSHA(strings.TrimSpace(string(out)), dirty)
 	return &s
 }
 
-func build(g ghzReport, name string, p Profile, decisions, degraded int) (Report, []string) {
+func build(g ghzReport, name string, p Profile, o options) (Report, []string) {
+	decisions, degraded := o.decisions, o.degraded
 	lat := make([]float64, 0, len(g.Details))
 	ok := 0
 	type window struct {
@@ -208,7 +219,12 @@ func build(g ghzReport, name string, p Profile, decisions, degraded int) (Report
 	}
 
 	degradedRate := -1.0
-	if decisions > 0 {
+	// Every successful request persists one decision; far fewer means the count missed the window or the
+	// writer lost them, and the degraded share would be measured on the wrong population.
+	if o.decisionsKnown && float64(decisions) < minRateShare*float64(ok) {
+		failures = append(failures, fmt.Sprintf("%d decisions persisted for %d successful requests", decisions, ok))
+	}
+	if o.decisionsKnown && decisions > 0 {
 		degradedRate = float64(degraded) / float64(decisions)
 		if degradedRate > maxDegradedRate {
 			failures = append(failures, fmt.Sprintf("degraded_rate %.4f > %.2f (%d of %d decisions)", degradedRate, maxDegradedRate, degraded, decisions))
@@ -314,7 +330,7 @@ func run(o options) error {
 	if err := json.Unmarshal(raw, &g); err != nil {
 		return fmt.Errorf("%s: %w", o.in, err)
 	}
-	rep, failures := build(g, o.profile, p, o.decisions, o.degraded)
+	rep, failures := build(g, o.profile, p, o)
 	out, err := json.MarshalIndent(rep, "", "  ")
 	if err != nil {
 		return err
@@ -343,9 +359,10 @@ func main() {
 	flag.BoolVar(&o.checkOnly, "check-only", false, "only check an existing report against its budget")
 	flag.StringVar(&o.report, "report", "evals/reports/latency.json", "report to check with -check-only")
 	flag.BoolVar(&o.allowMissing, "allow-missing", false, "with -check-only, pass when the report does not exist")
-	flag.IntVar(&o.decisions, "decisions", 0, "decisions persisted during the measured window (from Postgres)")
+	flag.IntVar(&o.decisions, "decisions", -1, "decisions persisted during the measured window (from Postgres)")
 	flag.IntVar(&o.degraded, "degraded", 0, "of those, degraded decisions")
 	flag.Parse()
+	o.decisionsKnown = o.decisions >= 0
 	if err := run(o); err != nil {
 		fmt.Fprintln(os.Stderr, "benchreport:", err)
 		os.Exit(1)

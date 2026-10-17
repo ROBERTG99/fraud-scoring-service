@@ -22,6 +22,9 @@ from evalgate.gate import check  # noqa: E402
 from fraud_summarizer.pipeline import PROMPT_VERSION, load_prompt, prompt_hash  # noqa: E402
 
 REPORTS = ROOT / "evals" / "reports"
+# make eval runs these; a missing report or baseline fails the gate. latency (make bench) is optional there
+# and the Gate line says when it did not run.
+REQUIRED = ("model", "decisions", "summaries")
 SUITES = [
     ("model", "make eval-model", "2M-event eval data, temporal test split; serving ONNX artifact + Go rules"),
     ("decisions", "make eval-decisions", "150 golden transactions (test 90), real scorer via cmd/evaldecide"),
@@ -35,6 +38,11 @@ def _load(path: Path) -> tuple[Report, str] | None:
         return None
     raw = path.read_bytes()
     return Report.model_validate(json.loads(raw)), hashlib.sha256(raw).hexdigest()
+
+
+def _int(v: object) -> str:
+    """Thousands-separated integer, or the value as is (e.g. '?' when a report lacks the field)."""
+    return f"{v:,}" if isinstance(v, int) else str(v)
 
 
 def _num(name: str, v: float) -> str:
@@ -64,9 +72,9 @@ def _details(name: str, r: Report) -> list[str]:
         data = ext.get("data", {})
         op = ext.get("operating_point_from_valid", {})
         return [
-            f"Data: {data.get('events', '?'):,} events, gen v{data.get('gen_version', '?')}, seed {data.get('seed', '?')}, "
-            f"sha256 {str(data.get('events_sha256', ''))[:12]}; test split {ext.get('n_transactions', 0):,} transactions, "
-            f"{ext.get('n_fraud', 0):,} fraud.",
+            f"Data: {_int(data.get('events', '?'))} events, gen v{data.get('gen_version', '?')}, seed {data.get('seed', '?')}, "
+            f"sha256 {str(data.get('events_sha256', ''))[:12]}; test split {_int(ext.get('n_transactions', 0))} transactions, "
+            f"{_int(ext.get('n_fraud', 0))} fraud.",
             f"Model {', '.join(r.models)} (feature spec {ext.get('feature_spec')}, onnx sha256 {str(ext.get('onnx_sha256', ''))[:12]}); "
             f"rules alone flag {ext.get('rules_fpr', 0) * 100:.2f}% of legitimate transactions.",
             f"Threshold chosen on valid: test recall {op.get('test_recall', 0):.4f} at FPR {op.get('test_fpr', 0) * 100:.2f}%.",
@@ -79,7 +87,9 @@ def _details(name: str, r: Report) -> list[str]:
             f"p99 {ext.get('p99_ms', 0):.1f} ms (budget p95 {ext.get('budget', {}).get('max_p95_ms', '?')} ms).",
         ]
         if "decisions" in ext:
-            lines.append(f"Degraded decisions in the window: {ext['degraded']:,} of {ext['decisions']:,}.")
+            lines.append(
+                f"Degraded decisions in the window: {_int(ext['degraded'])} of {_int(ext['decisions'])}."
+            )
         return lines
     lines = [
         f"{r.n_cases} cases ({ext.get('split', '?')} split), dataset sha256 {str(ext.get('dataset_sha256', ''))[:12]}; "
@@ -103,11 +113,15 @@ def render(reports_dir: Path, baseline_dir: Path) -> str:
         f"Commit {next((r.git_sha[:10] for r in present.values() if r.git_sha), 'unknown')}.",
         "",
     ]
-    rows, sections, verdicts = [], [], []
+    rows, sections, verdicts, not_run = [], [], [], []
     for name, command, data in SUITES:
         item = loaded[name]
         if item is None:
             sections += [f"## {name}", "", f"{name}: not run (`{command}`).", ""]
+            if name in REQUIRED:
+                verdicts.append(False)
+            else:
+                not_run.append(name)
             continue
         rep, sha = item
         base_item = _load(baseline_dir / f"{name}.json")
@@ -119,7 +133,8 @@ def render(reports_dir: Path, baseline_dir: Path) -> str:
             baseline_sha256=base_item[1] if base_item else None,
             max_regression_pp=1.0,
         )
-        verdicts.append(result.passed)
+        passed = result.passed and base is not None  # no baseline: regressions cannot be checked
+        verdicts.append(passed)
         for metric, s in rep.metrics.items():
             b = base.metrics.get(metric) if base else None
             status = "pass" if s.passed else "**FAIL**"
@@ -129,10 +144,13 @@ def render(reports_dir: Path, baseline_dir: Path) -> str:
             )
         sections += [f"## {name}", "", f"Command: `{command}`. {data}.", ""]
         sections += [f"- {line}" for line in _details(name, rep)]
-        gate = "PASS" if result.passed else "FAIL"
-        reasons = "; ".join(f"{f.metric} {f.reason}" for f in result.failures)
+        gate = "PASS" if passed else "FAIL"
+        reasons = "; ".join(
+            [f"{f.metric} {f.reason}" for f in result.failures]
+            + ([] if base else [f"no baseline at evals/reports/baseline/{name}.json"])
+        )
         sections += [
-            f"- `evalgate check` {'against the baseline' if base else 'without a baseline'}: **{gate}**"
+            f"- `evalgate check` against the baseline: **{gate}**"
             + (f" ({reasons})" if reasons else "")
             + ".",
             "",
@@ -153,20 +171,25 @@ def render(reports_dir: Path, baseline_dir: Path) -> str:
             )
             + "."
         )
-    calib_path = reports_dir / "judge_calibration.json"
+    calib_path = reports_dir / "calibration" / "judge.json"
     if calib_path.is_file():
         c = json.loads(calib_path.read_text(encoding="utf-8"))
         verdicts.append(bool(c["passed"]))
+        offline_note = (
+            " (offline: the rule-based FakeLLM judge, whose pattern test reuses FakeLLM's classifier)"
+        )
         judge_line = (
-            f"Judge calibration (`make eval-judge`): {c['mode']}, {', '.join(c['models']) or 'no model'}, "
+            f"Judge calibration (`make eval-judge`){offline_note if c['mode'] == 'offline' else ''}: "
+            f"{c['mode']}, {', '.join(c['models']) or 'no model'}, "
             f"{c['n']} {c['split']} labels: agreement {c['agreement']:.3f} "
             f"(min {c['thresholds']['agreement_min']:g}), kappa {c['kappa']:.3f}: {'PASS' if c['passed'] else 'FAIL'}."
         )
     else:
         judge_line = "Judge calibration (`make eval-judge`): not run."
     gate_all = "PASS" if verdicts and all(verdicts) else "FAIL"
+    skipped = "".join(f", {n} not run" for n in not_run)
     out += [
-        f"Gate: **{gate_all}** ({sum(verdicts)} of {len(verdicts)} checks pass; thresholds from spec §11, "
+        f"Gate: **{gate_all}** ({sum(verdicts)} of {len(verdicts)} checks pass{skipped}; thresholds from spec §11, "
         "regressions over 1 pp with a 95% paired-bootstrap interval excluding 0).",
         "",
         live_line,

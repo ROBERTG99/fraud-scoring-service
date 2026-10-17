@@ -73,6 +73,11 @@ generator v3.
   pattern accuracy 0.9028 (65/72, 95% CI 0.833–0.958, `evals/reports/summaries.json`), so the lower bound of
   the interval is under the 0.85 threshold. Faithfulness is 1.0 by construction, since FakeLLM quotes fact
   values verbatim. A real model's numbers come only from `make eval-live` (needs a provider key).
+- **`pii_to_provider = 0` covers the planted formats only.** The summaries set plants seven formats in
+  merchant names (`PII_FORMATS` in `scripts/gen_eval_sets.py`: an email, two phone layouts, a 10-digit
+  phone, and a test card number with spaces, dashes or dots), and the redactor was extended on dev until
+  all seven were removed. The grader is an exact substring match against what the provider receives. Other
+  formats (names, street addresses, IBANs, non-US phone layouts) are not measured.
 - **A hard subset is indistinguishable from the facts.** Legitimate splurges look like friendly fraud, and a
   first purchase of the day has no 24-hour baseline (`amount_ratio_24h = 1`); these cases are labelled with
   the generating scenario and count as misses for any summarizer that reads only the facts.

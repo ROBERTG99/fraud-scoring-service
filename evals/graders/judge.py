@@ -26,6 +26,8 @@ from fraud_summarizer.llm.routes import load
 ROOT = Path(__file__).resolve().parents[2]
 LABELS = ROOT / "evals" / "datasets" / "judge_calibration"
 AGREEMENT_MIN = 0.8
+# Outside evals/reports/*.json, which holds report.v1 files only.
+DEFAULT_OUT = ROOT / "evals" / "reports" / "calibration" / "judge.json"
 
 
 def cohen_kappa(labels: list[str], preds: list[str]) -> float:
@@ -100,7 +102,7 @@ def calibrate_rows(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Calibrate the summary-usefulness judge")
     parser.add_argument("--split", choices=["dev", "test"], default="test")
-    parser.add_argument("--out", type=Path, default=ROOT / "evals" / "reports" / "judge_calibration.json")
+    parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     args = parser.parse_args(argv)
     env = dict(os.environ)
     env.setdefault("FRAUD_JUDGE_PROVIDER", "fake")

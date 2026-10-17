@@ -160,8 +160,8 @@ sagemaker-dry-run: ## Print the CreateTrainingJob request
 	env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN -u AWS_PROFILE $(PY) python -m training.sagemaker_launch --dry-run
 
 # ---------------------------------------------------------------- evals and bench
-# Regression gating against evals/reports/baseline/<suite>.json once the baseline exists (T-40).
-baseline = $(if $(wildcard evals/reports/baseline/$(1).json),--baseline evals/reports/baseline/$(1).json)
+# Regression gating against evals/reports/baseline/<suite>.json; evalgate fails when the baseline is missing.
+baseline = --baseline evals/reports/baseline/$(1).json
 .PHONY: eval eval-model eval-summary eval-decisions eval-judge eval-live bench record-fixtures
 eval: eval-model eval-decisions eval-summary eval-judge ## Offline evals with thresholds, writes evals/REPORT.md
 	$(GO) run ./cmd/benchreport -check-only -report evals/reports/latency.json -allow-missing
@@ -181,7 +181,7 @@ eval-summary:
 	$(PY) evalgate check evals/reports/summaries.json $(call baseline,summaries) --max-regression-pp 1.0
 
 eval-judge:
-	PYTHONPATH=$(CURDIR) $(PY) python -m evals.graders.judge --split test --out evals/reports/judge_calibration.json
+	PYTHONPATH=$(CURDIR) $(PY) python -m evals.graders.judge --split test
 
 eval-live: ## Live evals with real models within LIVE_EVAL_BUDGET_USD
 	LIVE_EVAL_BUDGET_USD=$(LIVE_EVAL_BUDGET_USD) $(PY) python scripts/eval_live.py

@@ -6,8 +6,10 @@ table with the feature store and model stubbed by the case), one long-lived proc
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
+import select
 import subprocess
 import threading
 from pathlib import Path
@@ -22,11 +24,17 @@ DEGRADED_CODES = ("MODEL_UNAVAILABLE", "FEATURES_UNAVAILABLE")
 
 
 class _Decider:
-    """One `evaldecide` process; cases are written and read one line at a time under a lock."""
+    """One `evaldecide` process; cases are written and read one line at a time under a lock.
 
-    def __init__(self) -> None:
+    Each request carries a fresh id that the reply must echo, and a reply must arrive within `timeout_s`;
+    otherwise the process is killed, the case fails (scored worst) and the next case starts a new process.
+    """
+
+    def __init__(self, timeout_s: float = 30.0) -> None:
         self._lock = threading.Lock()
         self._proc: subprocess.Popen[str] | None = None
+        self._ids = itertools.count(1)
+        self._timeout_s = timeout_s
 
     def _start(self) -> subprocess.Popen[str]:
         env = {**os.environ, "GOTOOLCHAIN": "local"}
@@ -41,9 +49,20 @@ class _Decider:
                 self._proc = self._start()
             assert self._proc.stdin is not None
             assert self._proc.stdout is not None
-            self._proc.stdin.write(json.dumps({"id": "case", "input": row}) + "\n")
+            req_id = f"case-{next(self._ids)}"
+            self._proc.stdin.write(json.dumps({"id": req_id, "input": row}) + "\n")
             self._proc.stdin.flush()
-            out: dict[str, Any] = json.loads(self._proc.stdout.readline())
+            # One request is outstanding at a time, so no reply is left in the reader's buffer between calls.
+            ready, _, _ = select.select([self._proc.stdout], [], [], self._timeout_s)
+            line = self._proc.stdout.readline() if ready else ""
+            out: dict[str, Any] = json.loads(line) if line.strip() else {}
+            if out.get("id") != req_id:
+                self._proc.kill()
+                self._proc.wait()
+                self._proc = None
+                if not line:
+                    raise RuntimeError(f"evaldecide: no reply for {req_id} within {self._timeout_s:g} s")
+                raise RuntimeError(f"evaldecide: reply for {out.get('id')!r}, expected {req_id!r}")
         if out.get("error"):
             raise RuntimeError(out["error"])
         return out

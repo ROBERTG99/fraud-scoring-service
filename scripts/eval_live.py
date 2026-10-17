@@ -1,7 +1,7 @@
 """`make eval-live`: the summaries suite against a real model, within LIVE_EVAL_BUDGET_USD (spec §11).
 
 1. Calibrate the live usefulness judge on the judge calibration test split; its scores count only when
-   agreement is at least 0.8 (`evals/reports/judge_calibration_live.json`).
+   agreement is at least 0.8 (`evals/reports/calibration/judge_live.json`).
 2. Summarize the summaries test cases with the configured provider (`FRAUD_SUMMARY_PROVIDER`, default
    anthropic) and grade them like `make eval-summary`, plus judge usefulness and cost per case.
 3. Write `evals/reports/summaries_live.json` (evalgate.report.v1, mode live), which `scripts/build_report.py`
@@ -30,6 +30,7 @@ from evals.graders import summaries as grade  # noqa: E402
 from fraud_summarizer.judge import judge  # noqa: E402
 
 DATASETS = ROOT / "evals" / "datasets"
+CALIBRATION_OUT = ROOT / "evals" / "reports" / "calibration" / "judge_live.json"
 THRESHOLDS = {  # spec §11: summaries and summaries-live rows
     "schema_valid": (1.0, "higher"),
     "faithfulness": (0.95, "higher"),
@@ -48,9 +49,7 @@ def _rows(name: str, split: str) -> list[dict]:  # type: ignore[type-arg]
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Live summaries eval within a USD budget")
     parser.add_argument("--out", type=Path, default=ROOT / "evals" / "reports" / "summaries_live.json")
-    parser.add_argument(
-        "--calibration-out", type=Path, default=ROOT / "evals" / "reports" / "judge_calibration_live.json"
-    )
+    parser.add_argument("--calibration-out", type=Path, default=CALIBRATION_OUT)
     parser.add_argument("--budget", type=float, default=float(os.environ.get("LIVE_EVAL_BUDGET_USD", "2")))
     parser.add_argument("--split", choices=["dev", "test"], default="test")
     parser.add_argument("--limit", type=int, default=None, help="at most this many summary cases")

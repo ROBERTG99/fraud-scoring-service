@@ -142,12 +142,44 @@ def test_judge_calibration_is_reported(tmp_path: Path) -> None:
         "thresholds": {"agreement_min": 0.8},
         "passed": True,
     }
-    (reports / "judge_calibration.json").write_text(json.dumps(calib), encoding="utf-8")
+    (reports / "calibration").mkdir()
+    (reports / "calibration" / "judge.json").write_text(json.dumps(calib), encoding="utf-8")
     text = br.render(reports, tmp_path / "none")
     assert (
-        "Judge calibration (`make eval-judge`): offline, fake-judge-v1, 40 test labels: agreement 0.925 (min 0.8), kappa 0.850: PASS"
+        "FakeLLM's classifier): offline, fake-judge-v1, 40 test labels: agreement 0.925 (min 0.8), kappa 0.850: PASS"
         in text
     )
     calib["passed"] = False
-    (reports / "judge_calibration.json").write_text(json.dumps(calib), encoding="utf-8")
+    (reports / "calibration" / "judge.json").write_text(json.dumps(calib), encoding="utf-8")
     assert "Gate: **FAIL**" in br.render(reports, tmp_path / "none")
+
+
+def _all_required(reports: Path, baseline: Path | None) -> None:
+    for name in ("model", "decisions", "summaries"):
+        rep = report(name, {"m": (1.0, 1.0, "higher")})
+        write(reports, name, rep)
+        if baseline is not None:
+            write(baseline, name, rep)
+
+
+def test_missing_required_suite_fails_the_gate(tmp_path: Path) -> None:
+    reports, baseline = tmp_path / "r", tmp_path / "b"
+    _all_required(reports, baseline)
+    (reports / "summaries.json").unlink()
+    text = br.render(reports, baseline)
+    assert "Gate: **FAIL**" in text and "summaries: not run" in text
+
+
+def test_missing_baseline_fails_the_gate(tmp_path: Path) -> None:
+    reports, baseline = tmp_path / "r", tmp_path / "b"
+    _all_required(reports, baseline)
+    (baseline / "decisions.json").unlink()
+    text = br.render(reports, baseline)
+    assert "Gate: **FAIL**" in text and "no baseline" in text
+
+
+def test_latency_not_run_is_stated_in_the_gate_line(tmp_path: Path) -> None:
+    reports, baseline = tmp_path / "r", tmp_path / "b"
+    _all_required(reports, baseline)
+    gate = next(line for line in br.render(reports, baseline).splitlines() if line.startswith("Gate:"))
+    assert gate.startswith("Gate: **PASS**") and "latency not run" in gate
