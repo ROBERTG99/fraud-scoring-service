@@ -50,7 +50,7 @@ func (r *Relay) RunOnce(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	rows, err := tx.Query(ctx, `SELECT id, payload FROM decision_outbox WHERE sent_at IS NULL ORDER BY id LIMIT $1 FOR UPDATE SKIP LOCKED`, r.batchSize)
+	rows, err := tx.Query(ctx, `SELECT id, payload, coalesce(traceparent, '') FROM decision_outbox WHERE sent_at IS NULL ORDER BY id LIMIT $1 FOR UPDATE SKIP LOCKED`, r.batchSize)
 	if err != nil {
 		return 0, err
 	}
@@ -59,7 +59,8 @@ func (r *Relay) RunOnce(ctx context.Context) (int, error) {
 	for rows.Next() {
 		var id int64
 		var payload []byte
-		if err := rows.Scan(&id, &payload); err != nil {
+		var traceparent string
+		if err := rows.Scan(&id, &payload, &traceparent); err != nil {
 			rows.Close()
 			return 0, err
 		}
@@ -71,7 +72,12 @@ func (r *Relay) RunOnce(ctx context.Context) (int, error) {
 			return 0, fmt.Errorf("outbox row %d: %w", id, err)
 		}
 		ids = append(ids, id)
-		recs = append(recs, &kgo.Record{Topic: TopicDecisions, Key: []byte(msg.AccountID), Value: payload})
+		rec := &kgo.Record{Topic: TopicDecisions, Key: []byte(msg.AccountID), Value: payload}
+		if traceparent != "" {
+			// W3C trace context over Kafka: the case summarizer continues the Score trace (spec §14).
+			rec.Headers = []kgo.RecordHeader{{Key: "traceparent", Value: []byte(traceparent)}}
+		}
+		recs = append(recs, rec)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {

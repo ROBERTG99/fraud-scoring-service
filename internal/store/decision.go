@@ -19,6 +19,7 @@ type DecisionRecord struct {
 	Currency    string
 	Tx          TxAttrs       // decisions.tx: attributes the rule environment and case detail need
 	Event       *events.Event // the transaction event published to events.transaction
+	TraceParent string        // W3C traceparent of the Score span; the outbox relay sends it as a Kafka header
 }
 
 // TxAttrs are the request attributes stored in decisions.tx (no PII: synthetic tokens, /24 prefixes).

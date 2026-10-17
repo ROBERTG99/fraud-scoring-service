@@ -15,6 +15,9 @@ import (
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc/filters"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -41,6 +44,17 @@ type serverConfig struct {
 	Cases    fraudv1.CaseServiceServer
 	Ready    func(ctx context.Context) error
 	Log      *slog.Logger
+	// TracerProvider for gRPC server spans; nil uses the global provider (telemetry.InitTracing).
+	TracerProvider trace.TracerProvider
+}
+
+// gatewayHeader forwards W3C trace context to the gRPC server in addition to the gateway's defaults.
+func gatewayHeader(key string) (string, bool) {
+	switch strings.ToLower(key) {
+	case "traceparent", "tracestate":
+		return strings.ToLower(key), true
+	}
+	return runtime.DefaultHeaderMatcher(key)
 }
 
 // servers is the running gRPC server (:8510) and its HTTP/JSON gateway (:8511).
@@ -54,8 +68,14 @@ type servers struct {
 }
 
 func newServers(ctx context.Context, cfg serverConfig) (*servers, error) {
+	traceOpts := []otelgrpc.Option{otelgrpc.WithFilter(filters.Not(filters.HealthCheck())), otelgrpc.WithPropagators(telemetry.Propagator())}
+	if cfg.TracerProvider != nil {
+		traceOpts = append(traceOpts, otelgrpc.WithTracerProvider(cfg.TracerProvider))
+	}
 	gs := grpc.NewServer(
 		grpc.MaxRecvMsgSize(maxBody),
+		// Server spans continue a W3C traceparent from gRPC metadata (forwarded by the gateway from HTTP).
+		grpc.StatsHandler(otelgrpc.NewServerHandler(traceOpts...)),
 		grpc.ChainUnaryInterceptor(api.UnaryRecover(cfg.Log), cfg.Auth.UnaryAuth(), cfg.Limiter.Unary()),
 		grpc.ChainStreamInterceptor(cfg.Auth.StreamAuth(), cfg.Limiter.Stream()),
 	)
@@ -82,7 +102,7 @@ func newServers(ctx context.Context, cfg serverConfig) (*servers, error) {
 		_ = httpLis.Close()
 		return nil, err
 	}
-	gw := runtime.NewServeMux(runtime.WithRoutingErrorHandler(routingError), runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{
+	gw := runtime.NewServeMux(runtime.WithRoutingErrorHandler(routingError), runtime.WithIncomingHeaderMatcher(gatewayHeader), runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{
 		// Canonical proto3 JSON: zero values are omitted (no nulls for unset messages), snake_case names.
 		MarshalOptions:   protojson.MarshalOptions{UseProtoNames: true},
 		UnmarshalOptions: protojson.UnmarshalOptions{DiscardUnknown: false},

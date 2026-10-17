@@ -13,7 +13,7 @@ func NewLogger(service string) *slog.Logger {
 	if os.Getenv("FRAUD_LOG_LEVEL") == "debug" {
 		level = slog.LevelDebug
 	}
-	return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})).With("service", service)
+	return slog.New(TraceHandler(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))).With("service", service)
 }
 
 // Healthcheck probes url and returns a process exit code (used by distroless HEALTHCHECK).

@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	fraudv1 "github.com/ROBERTG99/fraud-scoring-service/gen/go/fraud/v1"
@@ -72,6 +75,11 @@ type testStack struct {
 // startStack runs the real gRPC server, interceptors and HTTP gateway with in-memory dependencies.
 func startStack(t *testing.T) testStack {
 	t.Helper()
+	return startTracedStack(t, nil)
+}
+
+func startTracedStack(t *testing.T, tp trace.TracerProvider) testStack {
+	t.Helper()
 	spec, err := features.LoadSpec("../../features/spec.yaml")
 	if err != nil {
 		t.Fatal(err)
@@ -91,17 +99,22 @@ func startStack(t *testing.T) testStack {
 	mem := &memStore{m: map[string]*fraudv1.Decision{}}
 	log := slog.New(slog.DiscardHandler)
 	live := api.NewLiveStats(nil)
-	scorer := api.NewScorerServer(api.ScorerDeps{Features: fixedFeatures{spec}, Model: downModel{}, Rules: eng, Idempotency: mem, Decisions: mem,
-		Live: live, Log: log})
+	deps := api.ScorerDeps{Features: fixedFeatures{spec}, Model: downModel{}, Rules: eng, Idempotency: mem, Decisions: mem,
+		Live: live, Log: log}
+	if tp != nil {
+		deps.Tracer = tp.Tracer("test")
+	}
+	scorer := api.NewScorerServer(deps)
 	ctx, cancel := context.WithCancel(context.Background())
 	srv, err := newServers(ctx, serverConfig{
 		GRPCAddr: "127.0.0.1:0", HTTPAddr: "127.0.0.1:0",
 		Auth: api.AuthConfig{ServiceToken: "svc-token", Verifier: api.JWTVerifier{V: &auth.Verifier{Issuer: "http://issuer.test", Keys: keys}},
 			Authorize: api.RBAC},
-		Limiter: api.NewRateLimiter(20, nil),
-		Scorer:  scorer,
-		Cases:   &api.CaseServer{Rules: eng, Live: live, LiveEvery: 20 * time.Millisecond},
-		Log:     log,
+		Limiter:        api.NewRateLimiter(20, nil),
+		Scorer:         scorer,
+		Cases:          &api.CaseServer{Rules: eng, Live: live, LiveEvery: 20 * time.Millisecond},
+		Log:            log,
+		TracerProvider: tp,
 	})
 	if err != nil {
 		cancel()
@@ -273,5 +286,49 @@ func TestWrongMethodIs405WithAllow(t *testing.T) {
 	}
 	if resp := do(t, http.MethodGet, st.base+"/v1/cases?status=1", "svc-token", nil); resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("numeric enum: %d", resp.StatusCode)
+	}
+}
+
+func TestScoreContinuesTheCallersTrace(t *testing.T) {
+	rec := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(rec))
+	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
+	st := startTracedStack(t, tp)
+	const traceID = "4bf92f3577b34da6a3ce929d0e0e4736"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, st.base+"/v1/score", strings.NewReader(journeyBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer svc-token")
+	req.Header.Set("traceparent", "00-"+traceID+"-00f067aa0ba902b7-01")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d", resp.StatusCode)
+	}
+	if hr := do(t, http.MethodGet, st.base+"/readyz", "", nil); hr.StatusCode == 0 {
+		t.Fatal("readyz")
+	}
+	spans := map[string]sdktrace.ReadOnlySpan{}
+	for _, s := range rec.Ended() {
+		spans[s.Name()] = s
+		if strings.Contains(s.Name(), "grpc.health") {
+			t.Fatalf("health checks are traced: %s", s.Name())
+		}
+	}
+	server, ok := spans["fraud.v1.Scorer/Score"]
+	if !ok {
+		t.Fatalf("no gRPC server span among %v", spans)
+	}
+	if server.SpanKind() != trace.SpanKindServer || server.SpanContext().TraceID().String() != traceID {
+		t.Fatalf("server span kind %v trace %s, want the caller's trace %s", server.SpanKind(), server.SpanContext().TraceID(), traceID)
+	}
+	if score, ok := spans["fraud.score"]; !ok || score.Parent().SpanID() != server.SpanContext().SpanID() {
+		t.Fatal("fraud.score is not a child of the gRPC server span")
 	}
 }

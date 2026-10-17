@@ -94,6 +94,15 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if serviceToken == "" {
 		return errors.New("FRAUD_SERVICE_TOKEN is required")
 	}
+	shutdownTracing, err := telemetry.InitTracing(ctx, "scorer")
+	if err != nil {
+		return err
+	}
+	defer func() {
+		sctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTracing(sctx) // flush buffered spans
+	}()
 	spec, err := features.LoadSpec(envOr("FRAUD_FEATURE_SPEC", "features/spec.yaml"))
 	if err != nil {
 		return err

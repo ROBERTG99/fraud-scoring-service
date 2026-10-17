@@ -269,8 +269,8 @@ WITH ins AS (
   ON CONFLICT DO NOTHING
   RETURNING decision_id
 ), ob AS (
-  INSERT INTO decision_outbox (decision_id, payload, created_at)
-  SELECT decision_id, $13, $12 FROM ins
+  INSERT INTO decision_outbox (decision_id, payload, created_at, traceparent)
+  SELECT decision_id, $13, $12, NULLIF($17, '') FROM ins
 ), rc AS (
   INSERT INTO review_cases (case_id, decision_id, account_id, status, priority, created_at)
   SELECT $14, decision_id, $3, 'open', $15, $12 FROM ins WHERE $4 = 'REVIEW'
@@ -306,7 +306,7 @@ func (w *GroupWriter) insertBatch(ctx context.Context, recs []DecisionRecord) ([
 		}
 		b.Queue(insertDecisionSQL, d.DecisionId, d.TransactionId, r.AccountID, ActionName(d.Action), score, codes, d.ModelVersion,
 			d.RulesVersion, d.Degraded, string(feats), d.LatencyMs, d.DecidedAt.AsTime(), string(r.OutboxPayload()), uuid.NewString(), r.Priority(),
-			string(attrs))
+			string(attrs), r.TraceParent)
 	}
 	br := tx.SendBatch(ctx, b)
 	inserted := make([]bool, len(recs))

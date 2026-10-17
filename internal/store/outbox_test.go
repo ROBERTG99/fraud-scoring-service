@@ -22,7 +22,7 @@ import (
 // (processed_messages) processes each decision once.
 func TestRelayCrashProducesDuplicatesWithSameDecisionID(t *testing.T) {
 	pool := newPool(t, migratedDB(t))
-	w, err := NewGroupWriter(pool, WriterConfig{SpoolDir: t.TempDir()}, quiet)
+	w, err := NewGroupWriter(pool, relayWriterConfig(t), quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestRelayCrashProducesDuplicatesWithSameDecisionID(t *testing.T) {
 
 func TestShadowStoreInsert(t *testing.T) {
 	pool := newPool(t, migratedDB(t))
-	w, err := NewGroupWriter(pool, WriterConfig{SpoolDir: t.TempDir()}, quiet)
+	w, err := NewGroupWriter(pool, relayWriterConfig(t), quiet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,4 +131,88 @@ func TestShadowStoreInsert(t *testing.T) {
 	if err := s.InsertComparison(ctx, c); err == nil {
 		t.Fatal("comparison for an unknown decision must fail")
 	}
+}
+
+func TestRelaySendsTheScoreTraceparent(t *testing.T) {
+	pool := newPool(t, migratedDB(t))
+	w, err := NewGroupWriter(pool, relayWriterConfig(t), quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	const tp = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	traced := record(3100, fraudv1.Action_ACTION_REVIEW)
+	traced.TraceParent = tp
+	for _, r := range []DecisionRecord{traced, record(3101, fraudv1.Action_ACTION_REVIEW)} {
+		if _, err := w.Commit(ctx, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w.Close()
+	cluster, err := kfake.NewCluster(kfake.NumBrokers(1), kfake.SeedTopics(stream.Partitions, stream.AllTopics...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cluster.Close()
+	prod, err := kgo.NewClient(kgo.SeedBrokers(cluster.ListenAddrs()...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prod.Close()
+	if sent, err := NewRelay(pool, prod, quiet, 100).RunOnce(ctx); err != nil || sent != 2 {
+		t.Fatalf("sent %d, %v", sent, err)
+	}
+	cons, err := kgo.NewClient(kgo.SeedBrokers(cluster.ListenAddrs()...), kgo.ConsumeTopics(TopicDecisions), kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cons.Close()
+	headers := map[string]string{}
+	for len(headers) < 2 && ctx.Err() == nil {
+		cons.PollFetches(ctx).EachRecord(func(r *kgo.Record) {
+			var m DecisionMessage
+			_ = json.Unmarshal(r.Value, &m)
+			headers[m.TransactionID] = ""
+			for _, h := range r.Headers {
+				if h.Key == "traceparent" {
+					headers[m.TransactionID] = string(h.Value)
+				}
+			}
+		})
+	}
+	if headers[traced.Decision.TransactionId] != tp {
+		t.Fatalf("traceparent header %q, want %q", headers[traced.Decision.TransactionId], tp)
+	}
+	for id, h := range headers {
+		if id != traced.Decision.TransactionId && h != "" {
+			t.Fatalf("untraced decision %s got header %q", id, h)
+		}
+	}
+}
+
+func TestSpoolKeepsTheTraceparent(t *testing.T) {
+	s, err := OpenSpool(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	r := record(3200, fraudv1.Action_ACTION_APPROVE)
+	r.TraceParent = "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	if err := s.Append([]DecisionRecord{r}); err != nil {
+		t.Fatal(err)
+	}
+	var got []DecisionRecord
+	if _, err := s.Drain(func(recs []DecisionRecord) error { got = append(got, recs...); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].TraceParent != r.TraceParent {
+		t.Fatalf("spooled record lost its traceparent: %+v", got)
+	}
+}
+
+// relayWriterConfig gives batches a deadline far above the 200 ms default: these tests need every commit in
+// the outbox, and under package-wide -race load a slow first batch would otherwise be spooled.
+func relayWriterConfig(t *testing.T) WriterConfig {
+	return WriterConfig{SpoolDir: t.TempDir(), BatchTimeout: 10 * time.Second}
 }

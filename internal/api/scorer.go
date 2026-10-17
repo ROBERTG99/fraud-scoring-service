@@ -8,6 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	otelcodes "go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -73,6 +76,7 @@ type ScorerDeps struct {
 	Live        *LiveStats
 	Log         *slog.Logger
 	Now         func() time.Time
+	Tracer      trace.Tracer // nil: telemetry.Tracer() (a no-op unless tracing is configured)
 }
 
 // ScorerServer implements fraud.v1.Scorer.
@@ -88,6 +92,9 @@ func NewScorerServer(d ScorerDeps) *ScorerServer {
 	}
 	if d.Now == nil {
 		d.Now = time.Now
+	}
+	if d.Tracer == nil {
+		d.Tracer = telemetry.Tracer()
 	}
 	return &ScorerServer{d: d}
 }
@@ -108,8 +115,12 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 	ctx, cancel := context.WithTimeout(ctx, ScoreTimeout)
 	defer cancel()
 	tx := req.GetTransaction()
+	ctx, span := s.d.Tracer.Start(ctx, "fraud.score")
+	defer span.End()
 
 	if d := s.lookup(ctx, tx.TransactionId); d != nil {
+		span.SetAttributes(attribute.Bool("app.idempotent_replay", true))
+		decisionAttributes(span, d)
 		return d, nil
 	}
 
@@ -122,7 +133,9 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 		DeviceID: tx.DeviceId, MCC: tx.Mcc, Channel: channel}
 
 	fctx, fcancel := context.WithTimeout(ctx, RedisTimeout)
+	fctx, fspan := s.d.Tracer.Start(fctx, "features.score_tx")
 	vec, _, ferr := s.d.Features.ScoreTx(fctx, ftx)
+	endSpan(fspan, ferr)
 	fcancel()
 	featuresOK := ferr == nil
 	if !featuresOK {
@@ -135,7 +148,12 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 	modelOK := false
 	if featuresOK {
 		mctx, mcancel := context.WithTimeout(ctx, ModelTimeout)
+		mctx, mspan := s.d.Tracer.Start(mctx, "model.predict", trace.WithAttributes(attribute.String("app.model_alias", model.AliasProduction)))
 		pred, merr := s.d.Model.Predict(mctx, model.AliasProduction, [][]float32{vec.Float32()})
+		if merr == nil && len(pred.Scores) != 1 {
+			merr = errors.New("model returned no score")
+		}
+		endSpan(mspan, merr)
 		mcancel()
 		if merr == nil && len(pred.Scores) == 1 {
 			score, modelVersion, modelOK = pred.Scores[0], pred.Version, true
@@ -145,9 +163,12 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 	}
 
 	rs := s.d.Rules.Active()
+	_, rspan := s.d.Tracer.Start(ctx, "rules.evaluate")
 	env := rules.EnvFromVector(&vec, tx.Mcc, channel, tx.Country, tx.Currency)
 	matches := rs.Evaluate(&env)
 	res := decide.Combine(rs, decide.Input{Matches: matches, Score: float64(score), ModelOK: modelOK || !featuresOK, FeaturesOK: featuresOK, AmountMinor: tx.AmountMinor})
+	rspan.SetAttributes(attribute.Int("app.rules.matched", len(matches)))
+	rspan.End()
 
 	featureMap := vec.Map()
 	decision := &fraudv1.Decision{
@@ -166,9 +187,13 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 		Tx: store.TxAttrs{AmountMinor: tx.AmountMinor, Currency: tx.Currency, MerchantID: defaultMerchant(tx.MerchantId), MerchantName: tx.MerchantName,
 			MCC: tx.Mcc, Channel: channel, Country: tx.Country, IPPrefix: tx.IpPrefix, DeviceID: tx.DeviceId, EventTS: asOf.UTC().Format(time.RFC3339Nano)}}
 	decision.LatencyMs = float32(time.Since(start).Seconds() * 1000)
+	decisionAttributes(span, decision)
+	rec.TraceParent = telemetry.Traceparent(ctx) // carried by the outbox to the decisions topic header
 
 	pctx, pcancel := context.WithTimeout(ctx, PostgresTimeout)
+	pctx, pspan := s.d.Tracer.Start(pctx, "postgres.commit")
 	stored, err := s.d.Decisions.Commit(pctx, rec)
+	endSpan(pspan, err)
 	pcancel()
 	if errors.Is(err, store.ErrOverloaded) {
 		return nil, status.Error(codes.ResourceExhausted, "decision queue full")
@@ -210,6 +235,29 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 }
 
 // lookup returns a stored decision for a replayed transaction_id: Redis first, Postgres when Redis fails.
+// decisionAttributes records the decision on the Score span (identifiers are synthetic; no account, device
+// or merchant attributes).
+func decisionAttributes(span trace.Span, d *fraudv1.Decision) {
+	span.SetAttributes(
+		attribute.String("app.decision.id", d.DecisionId),
+		attribute.String("app.transaction_id", d.TransactionId),
+		attribute.String("app.decision.action", store.ActionName(d.Action)),
+		attribute.Float64("app.decision.score", float64(d.Score)),
+		attribute.Bool("app.decision.degraded", d.Degraded),
+		attribute.StringSlice("app.decision.reason_codes", d.ReasonCodes),
+		attribute.String("app.model_version", d.ModelVersion),
+		attribute.String("app.rules_version", d.RulesVersion),
+	)
+}
+
+func endSpan(span trace.Span, err error) {
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(otelcodes.Error, err.Error())
+	}
+	span.End()
+}
+
 func (s *ScorerServer) lookup(ctx context.Context, txID string) *fraudv1.Decision {
 	ictx, icancel := context.WithTimeout(ctx, RedisTimeout)
 	d, err := s.d.Idempotency.Get(ictx, txID)
