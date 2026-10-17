@@ -1,0 +1,56 @@
+# promtool test rules deploy/prometheus/alerts_test.yml (run from deploy/prometheus by `make obs-check`).
+rule_files: [alerts.yml]
+evaluation_interval: 1m
+
+tests:
+  # 100 decisions/s; all under 20 ms for 10 minutes, then all at 75 ms: p95 crosses 50 ms and fires after 5m.
+  - interval: 1m
+    input_series:
+      - series: fraud_score_latency_seconds_bucket{le="0.02"}
+        values: 0+6000x10 60000+0x15
+      - series: fraud_score_latency_seconds_bucket{le="0.05"}
+        values: 0+6000x10 60000+0x15
+      - series: fraud_score_latency_seconds_bucket{le="0.075"}
+        values: 0+6000x25
+      - series: fraud_score_latency_seconds_bucket{le="+Inf"}
+        values: 0+6000x25
+    alert_rule_test:
+      - { eval_time: 9m, alertname: ScoreLatencyHigh, exp_alerts: [] }
+      - eval_time: 24m
+        alertname: ScoreLatencyHigh
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: Score p95 latency above 50 ms over 5 minutes
+              runbook: docs/runbook.md#scorelatencyhigh
+
+  # 100 decisions/s, 0.5% degraded for 20 minutes (no alert), then 3% degraded (fires after 10m).
+  - interval: 1m
+    input_series:
+      - series: fraud_decisions_total{action="APPROVE"}
+        values: 0+6000x50
+      - series: fraud_degraded_total{reason="model"}
+        values: 0+30x20 600+180x30
+    alert_rule_test:
+      - { eval_time: 20m, alertname: DegradedDecisions, exp_alerts: [] }
+      - eval_time: 45m
+        alertname: DegradedDecisions
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: More than 1% of decisions degraded (model or features unavailable) over 10 minutes
+              runbook: docs/runbook.md#degradeddecisions
+
+  - interval: 1m
+    input_series:
+      - series: fraud_outbox_oldest_unsent_age_seconds
+        values: 5 30 59 61 120 180
+    alert_rule_test:
+      - { eval_time: 2m, alertname: OutboxUnsentAge, exp_alerts: [] }
+      - eval_time: 4m
+        alertname: OutboxUnsentAge
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: Oldest unsent decision in the outbox is older than 60 s
+              runbook: docs/runbook.md#outboxunsentage

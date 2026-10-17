@@ -43,7 +43,7 @@ def test_context_from_kafka_headers() -> None:
     assert not trace.get_current_span(telemetry.context_from_headers(None)).get_span_context().is_valid
 
 
-async def test_decision_span_continues_the_score_trace(spans: InMemorySpanExporter) -> None:
+async def test_step_record_otel_mapping(spans: InMemorySpanExporter) -> None:
     repo = MemoryRepo({DECISION_ID: journey_case()})
     handler = DecisionHandler(pipeline(FakeLLM(), repo), Processed())
     result = await handler.handle(decision_msg(), headers=[("traceparent", TRACEPARENT.encode())])

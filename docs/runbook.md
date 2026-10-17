@@ -1,0 +1,46 @@
+# Runbook
+
+What each alert means and what to check first. Alerts are defined in `deploy/prometheus/alerts.yml`
+(unit-tested with `make obs-check`) and shown on the Grafana dashboard **Fraud scoring**
+(`deploy/grafana/fraud.json`, profile `observability`, <http://localhost:8590>). Traces are in Jaeger
+(<http://localhost:8592>): every decision has a `fraud.score` span, and a REVIEW decision's trace continues
+into the case summarizer through the Kafka `traceparent` header.
+
+A degraded or slow scorer never blocks a decision: Score answers within 45 ms with the rules-only fallback
+(spec §4.7). The alerts say the system is working in a worse mode, not that it stopped deciding.
+
+## ScoreLatencyHigh
+
+**Fires when** the `Score` p95 is above 50 ms over 5 minutes, for 5 minutes (critical).
+
+1. Dashboard **Score latency**: is p50 up too (the whole path is slow) or only p95/p99 (a dependency stalls)?
+2. Jaeger, service `scorer`, operation `fraud.score`, sorted by duration: which child span is long?
+   - `features.score_tx` (Redis, budget 8 ms): Redis latency or CPU on the Redis host.
+   - `model.predict` (model server, budget 20 ms): model-server CPU or worker count; see
+     `docs/KNOWN_LIMITATIONS.md`, "Model server throughput on a shared host".
+   - `postgres.commit` (budget 30 ms): Postgres; the writer's breaker spools when commits fail (D-027).
+3. Host load: the CI bench degrades on a busy host (`docs/KNOWN_LIMITATIONS.md`); compare with
+   `make bench` on an idle machine.
+
+## DegradedDecisions
+
+**Fires when** more than 1% of decisions are degraded (rules only) over 10 minutes, for 10 minutes (warning).
+
+1. Dashboard **Degraded decisions by reason**: `model` (model server unavailable or past its 20 ms
+   deadline) or `features` (Redis unavailable or past 8 ms).
+2. `model`: check the model server's `/readyz` (port 8514) and its log; the scorer recovers on its own
+   once `/predict` answers within the deadline again.
+3. `features`: check Redis (port 8530) and the **Feature updater lag** panel; a lagging updater does not
+   degrade decisions by itself, but Redis timeouts do.
+4. A burst at start-up is expected while caches warm (the seed's first seconds); a sustained rate is not.
+
+## OutboxUnsentAge
+
+**Fires when** the oldest unsent row of `decision_outbox` is older than 60 s, for 1 minute (warning).
+
+1. Dashboard **Outbox and spool backlog**: a growing `outbox unsent` means the relay cannot publish to
+   Kafka; a growing `spool depth` means Postgres commits are failing and decisions wait on disk.
+2. Kafka (Redpanda, port 8540): broker health and the `decisions` topic. The relay retries every interval
+   and counts attempts per row (`decision_outbox.attempts`).
+3. Decisions are not lost: they are committed in Postgres (or the spool) before the response, and the relay
+   publishes them (at least once) when Kafka is back; consumers deduplicate on `decision_id`.

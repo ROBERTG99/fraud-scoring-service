@@ -74,6 +74,16 @@ The CI profile's degraded share depends on how busy the host is: 0.94% on a quie
 f9ab2a5, load 0.5) but 6.28% with a concurrent `go build` (load 8.5, M5 review), where p95 was still 42.0 ms.
 `cmd/benchreport` fails over 5% degraded, so run the bench on an otherwise idle machine.
 
+## Observability
+
+- Jaeger in the `observability` profile keeps traces in memory (100,000 traces, the all-in-one default) and
+  loses them on restart. The summarizer creates one trace per `decisions` message (APPROVE ones included),
+  so a long backlog evicts older scorer spans: in a host run that consumed a topic shared with earlier runs,
+  the scorer's spans were evicted before the check (`scripts/obs_host.sh`, then fresh infrastructure).
+- The T-41 evidence ran the profile's images on host networking against `scripts/seed_host.sh`; the same
+  check against the full compose stack after `make demo` waits on T-43 and T-46.
+- The dashboard's DLQ and rule-error series are absent until the first such event (labelled counters).
+
 ## Device features under 90-day gaps
 
 `new_device` (spec v2) reads the device's first sighting on the account, kept in `fr:{acc}:devfirst` until

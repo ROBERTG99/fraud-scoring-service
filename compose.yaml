@@ -20,3 +20,63 @@ services:
       FRAUD_SUMMARY_PROVIDER: fake
     ports: ["8513:8513"]
     restart: unless-stopped
+
+  # ---- profile observability (spec §14): collector 8580/8581, Grafana 8590, Prometheus 8591, Jaeger 8592.
+  # Services export with OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 (scorer, gRPC) or
+  # http://otel-collector:4318 (summarizer, HTTP).
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.120.0
+    profiles: [observability]
+    command: ["--config=/etc/otelcol/collector.yaml"]
+    volumes: ["./deploy/otel/collector.yaml:/etc/otelcol/collector.yaml:ro"]
+    ports: ["8580:4317", "8581:4318"]
+    depends_on: [jaeger]
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/jaeger:2.3.0
+    profiles: [observability]
+    ports: ["8592:16686"]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    profiles: [observability]
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--web.enable-lifecycle"]
+    volumes: ["./deploy/prometheus:/etc/prometheus:ro"]
+    ports: ["8591:9090"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/-/ready"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    profiles: [observability]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/fraud.json
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/fraud.json:/var/lib/grafana/dashboards/fraud.json:ro
+    ports: ["8590:3000"]
+    depends_on: [prometheus, jaeger]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 5s
+      retries: 30
+    restart: unless-stopped
+
+  # ---- profile datadog (spec §14): the collector exporting to Datadog instead (needs DD_API_KEY).
+  otel-collector-datadog:
+    image: otel/opentelemetry-collector-contrib:0.120.0
+    profiles: [datadog]
+    command: ["--config=/etc/otelcol/collector.yaml"]
+    environment:
+      DD_API_KEY: ${DD_API_KEY:-}
+      DD_SITE: ${DD_SITE:-datadoghq.com}
+    volumes: ["./deploy/otel/collector.datadog.yaml:/etc/otelcol/collector.yaml:ro"]
+    ports: ["8580:4317", "8581:4318"]
+    restart: unless-stopped

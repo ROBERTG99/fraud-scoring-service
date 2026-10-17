@@ -64,7 +64,7 @@ triton-up: ## Start the optional Triton profile
 	$(COMPOSE) --profile triton up -d --wait triton
 
 # ---------------------------------------------------------------- quality
-.PHONY: lint lint-go lint-py lint-web lint-proto lint-md lint-tf typecheck security check-fast
+.PHONY: lint lint-go lint-py lint-web lint-proto lint-md lint-tf typecheck security check-fast obs-check
 lint: lint-go lint-py lint-web lint-proto lint-md lint-tf ## gofmt, goimports, golangci-lint, ruff, eslint, prettier, buf, terraform fmt, markdownlint
 
 lint-go:
@@ -95,6 +95,15 @@ typecheck: ## mypy --strict on src/ and training/, tsc --noEmit
 	$(PY) mypy --strict src training serving
 	$(PNPM) -C web typecheck
 	$(PNPM) -C web exec tsc -p ../tests/e2e
+
+OBS_PROM_IMAGE := $(shell sed -n 's/^    image: \(prom\/prometheus:.*\)/\1/p' compose.yaml)
+OBS_OTEL_IMAGE := $(shell sed -n 's/^    image: \(otel\/opentelemetry-collector-contrib:.*\)/\1/p' compose.yaml | head -1)
+obs-check: ## Validate the observability profile: promtool config + alert unit tests, collector configs
+	docker run --rm -v $(CURDIR)/deploy/prometheus:/p:ro -w /p --entrypoint promtool $(OBS_PROM_IMAGE) check config prometheus.yml
+	docker run --rm -v $(CURDIR)/deploy/prometheus:/p:ro -w /p --entrypoint promtool $(OBS_PROM_IMAGE) test rules alerts_test.yml
+	for f in collector.yaml collector.datadog.yaml; do \
+	  docker run --rm -e DD_API_KEY=00000000000000000000000000000000 -e DD_SITE=datadoghq.com \
+	    -v $(CURDIR)/deploy/otel/$$f:/c.yaml:ro $(OBS_OTEL_IMAGE) validate --config=/c.yaml || exit 1; done
 
 security: ## gitleaks, gosec, govulncheck, bandit, pip-audit, pnpm audit, hadolint, trivy, checkov, tflint, actionlint, licences
 	./scripts/security.sh

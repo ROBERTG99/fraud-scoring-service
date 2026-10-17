@@ -1,0 +1,26 @@
+# SLO alerts (spec §14). Unit-tested by deploy/prometheus/alerts_test.yml (`make obs-check`).
+groups:
+  - name: fraud-slo
+    rules:
+      - alert: ScoreLatencyHigh
+        expr: histogram_quantile(0.95, sum by (le) (rate(fraud_score_latency_seconds_bucket[5m]))) > 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: Score p95 latency above 50 ms over 5 minutes
+          runbook: docs/runbook.md#scorelatencyhigh
+      - alert: DegradedDecisions
+        expr: >-
+          sum(rate(fraud_degraded_total[10m])) / clamp_min(sum(rate(fraud_decisions_total[10m])), 1e-9) > 0.01
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: More than 1% of decisions degraded (model or features unavailable) over 10 minutes
+          runbook: docs/runbook.md#degradeddecisions
+      - alert: OutboxUnsentAge
+        expr: fraud_outbox_oldest_unsent_age_seconds > 60
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: Oldest unsent decision in the outbox is older than 60 s
+          runbook: docs/runbook.md#outboxunsentage

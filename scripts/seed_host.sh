@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Host run of the seed path against compose.test.yaml (PG 8521, Redis 8531, Redpanda 8543): fresh database,
 # BentoML on artifacts/model, feature-updater, scorer, then `seed`. Used for the D-024 / T-31 measurements.
-# Env: RATE, WINDOW, MINCASES, SHADOW (true|false), SCORER_MODEL_URL. FULL=1 also runs the dev-issuer (18515),
+# Env: RATE, WINDOW, MINCASES, SHADOW (true|false), SCORER_MODEL_URL; SCORER_OTLP / SUMMARIZER_OTLP set each
+# service's OTEL_EXPORTER_OTLP_ENDPOINT (gRPC for the scorer, HTTP for the summarizer; scripts/obs_host.sh). FULL=1 also runs the dev-issuer (18515),
 # the case-summarizer (18513; SUMMARY_PROVIDER, default fake, so it stays offline) and webserve on web/dist
 # (18500): the stack `make e2e` drives with E2E_BASE_URL=http://127.0.0.1:18500. Stop the services with:
 #   for p in web summarizer issuer scorer updater model; do kill -TERM -- -$(cat "$SEED_HOST_DIR/$p.pid"); done
@@ -29,7 +30,8 @@ if [ "${FULL:-}" = 1 ]; then
   export FRAUD_ISSUER=http://127.0.0.1:18515 FRAUD_JWKS_URL=http://127.0.0.1:18515/.well-known/jwks.json
   FRAUD_ISSUER_ADDR=127.0.0.1:18515 setsid $S/bin/dev-issuer > $S/issuer.log 2>&1 &
   echo $! > $S/issuer.pid
-  FRAUD_SUMMARIZER_PG_DSN=$FRAUD_PG_DSN FRAUD_SUMMARY_PROVIDER=${SUMMARY_PROVIDER:-fake} setsid .venv/bin/python -m uvicorn fraud_summarizer.app:app \
+  FRAUD_SUMMARIZER_PG_DSN=$FRAUD_PG_DSN FRAUD_SUMMARY_PROVIDER=${SUMMARY_PROVIDER:-fake} \
+    setsid env ${SUMMARIZER_OTLP:+OTEL_EXPORTER_OTLP_ENDPOINT=$SUMMARIZER_OTLP} .venv/bin/python -m uvicorn fraud_summarizer.app:app \
     --host 127.0.0.1 --port 18513 > $S/summarizer.log 2>&1 &
   echo $! > $S/summarizer.pid
 fi
@@ -37,7 +39,7 @@ FRAUD_UPDATER_HTTP_ADDR=127.0.0.1:18512 setsid $S/bin/feature-updater > $S/updat
 echo $! > $S/updater.pid
 FRAUD_GRPC_ADDR=127.0.0.1:18510 FRAUD_HTTP_ADDR=127.0.0.1:18511 FRAUD_MODEL_URL=${SCORER_MODEL_URL:-http://127.0.0.1:18514} \
   FRAUD_SPOOL_DIR=$S/spool FRAUD_RULES_DIR=rules FRAUD_FEATURE_SPEC=features/spec.yaml FRAUD_SHADOW_ENABLED=${SHADOW:-true} \
-  setsid $S/bin/scorer > $S/scorer.log 2>&1 &
+  setsid env ${SCORER_OTLP:+OTEL_EXPORTER_OTLP_ENDPOINT=$SCORER_OTLP} $S/bin/scorer > $S/scorer.log 2>&1 &
 echo $! > $S/scorer.pid
 for i in $(seq 1 180); do
   curl -sf http://127.0.0.1:18514/readyz >/dev/null && curl -sf http://127.0.0.1:18511/readyz >/dev/null && break
