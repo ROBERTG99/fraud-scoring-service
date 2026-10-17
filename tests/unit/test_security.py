@@ -26,6 +26,8 @@ PII = [
     "4111.1111.1111.1111",
     "4111111111111111",
     "078-05-1120",
+    # Adjacent items (M6 review): joined with a single space, so a card follows a phone directly.
+    "+33 1 42 68 53 00 4012 8888 8888 1881",
 ]
 
 
@@ -42,7 +44,11 @@ def leaks(requests: list[ProviderRequest]) -> list[str]:
     sent = "\n".join(r.system + "\n" + r.user for r in requests)
     found = [p for p in PII if p in sent]
     # Card digits in any separator layout, and the subscriber part of each phone, must not survive either.
-    found += [d for d in ("4111111111111111", "79460958", "0142398") if d in re.sub(r"[^0-9]", "", sent)]
+    found += [
+        d
+        for d in ("4111111111111111", "4012888888881881", "79460958", "0142398", "42685300")
+        if d in re.sub(r"[^0-9]", "", sent)
+    ]
     return found
 
 
@@ -55,7 +61,7 @@ def gateway(provider: Recording) -> LLMGateway:
 async def test_no_pii_reaches_provider(route: str) -> None:
     """Every route goes through the gateway, which redacts the system and user text before any provider."""
     provider = Recording()
-    text = "Contact: " + "; ".join(PII)
+    text = "Contact: " + " ".join(PII)  # single spaces: every item is adjacent to the next
     with pytest.raises(Exception):  # noqa: B017 (FakeLLM's answer need not match this ad-hoc schema)
         await gateway(provider).complete(
             route,
