@@ -72,26 +72,45 @@ def _num(facts: dict[str, str], key: str, default: float = 0.0) -> float:
         return default
 
 
+def _events(facts: dict[str, str], kind: str, field: str) -> list[str]:
+    return [v for k, v in facts.items() if k.startswith(f"event.{kind}.") and k.endswith(f".{field}")]
+
+
 def classify(facts: dict[str, str]) -> str:
+    """Pattern from the facts, following the distinctions of cmd/gen/PATTERNS.md (tuned on dev splits only)."""
     codes = set(filter(None, facts.get("decision.reason_codes", "").split(",")))
     f = {k.removeprefix("feature."): _num(facts, k) for k in facts if k.startswith("feature.")}
-    if "CARD_TESTING_BURST" in codes or (f.get("tx_count_10m", 0) >= 5 and f.get("amount_minor", 1e9) <= 300):
-        return "card_testing"
-    if "P2P_DEVICE_CHURN" in codes or (f.get("channel") == 3 and f.get("distinct_devices_24h", 0) >= 3):
-        return "mule_account"
+    new_device = f.get("new_device") == 1
+    amount = f.get("amount_minor", 0)
+    ratio = f.get("amount_ratio_24h", 0)
+    # A phone the customer bound (device_bound) differs from a device that only logged in.
+    bound = "device_bound" in _events(facts, "device", "change")
+    tx_device = facts.get("event.transaction.0.device")
+    login_from_tx_device = tx_device is not None and tx_device in _events(facts, "login", "device")
     recent_change = (
         min(f.get("minutes_since_pwd_change", 43200), f.get("minutes_since_email_change", 43200)) < 1440
     )
-    if codes & {"NEW_DEVICE_AFTER_CREDENTIAL_CHANGE", "LARGE_AMOUNT_NEW_DEVICE"} or (
-        f.get("new_device") == 1 and recent_change
+    # Card testing comes from a device new to the account: a burst, or a run of small tests within the hour.
+    if new_device and (f.get("tx_count_10m", 0) >= 5 or (f.get("tx_count_1h", 0) >= 4 and amount <= 1000)):
+        return "card_testing"
+    # Many small purchases on the home device are in-app spending, not testing.
+    if f.get("tx_count_10m", 0) >= 5:
+        return "unclear"
+    # Mules: P2P with device churn, or from a freshly bound device at mule-size amounts.
+    if f.get("channel") == 3 and (
+        "P2P_DEVICE_CHURN" in codes or f.get("distinct_devices_24h", 0) >= 3 or (bound and amount >= 30000)
     ):
+        return "mule_account"
+    takeover_codes = codes & {"NEW_DEVICE_AFTER_CREDENTIAL_CHANGE", "LARGE_AMOUNT_NEW_DEVICE"}
+    if takeover_codes or (new_device and recent_change):
+        # A reset followed by binding a new phone and an ordinary purchase is the legitimate twin.
+        if bound and ratio < 3 and "LARGE_AMOUNT_NEW_DEVICE" not in codes:
+            return "unclear"
         return "account_takeover"
-    if (
-        f.get("channel") == 2
-        and f.get("new_device", 1) == 0
-        and not recent_change
-        and f.get("amount_ratio_24h", 0) >= 1.5
-    ):
+    # Quiet takeover: a device that logged in but was never bound by the customer, then buys online.
+    if new_device and not bound and login_from_tx_device and f.get("channel") == 2:
+        return "account_takeover"
+    if f.get("channel") == 2 and not new_device and not recent_change and ratio >= 1.5:
         return "friendly_fraud"
     return "unclear"
 
