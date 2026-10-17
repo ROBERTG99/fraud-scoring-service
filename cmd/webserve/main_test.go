@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,12 +20,24 @@ func setup(t *testing.T) (*httptest.Server, *httptest.Server) {
 	if err := os.MkdirAll(filepath.Join(dist, "assets"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	for name, body := range map[string]string{"index.html": "<html>console</html>", "assets/app-123.js": "js", "favicon.svg": "<svg/>"} {
+	for name, body := range map[string]string{"index.html": "<html>console</html>", "assets/app-123.js": "js", "assets/app-123.js.map": "{}", "favicon.svg": "<svg/>"} {
 		if err := os.WriteFile(filepath.Join(dist, name), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/slow" {
+			select { // answers only after the proxy has given up
+			case <-time.After(2 * time.Second):
+			case <-r.Context().Done():
+			}
+			return
+		}
+		if r.Method == http.MethodPost {
+			n, _ := io.Copy(io.Discard, r.Body)
+			_, _ = io.WriteString(w, "read "+strconv.FormatInt(n, 10))
+			return
+		}
 		if r.URL.Path == "/v1/metrics/live" {
 			fl := w.(http.Flusher)
 			_, _ = w.Write([]byte("{\"result\":1}\n"))
@@ -35,7 +48,7 @@ func setup(t *testing.T) (*httptest.Server, *httptest.Server) {
 		_, _ = io.WriteString(w, r.Method+" "+r.URL.RequestURI()+" auth="+r.Header.Get("Authorization"))
 	}))
 	t.Cleanup(upstream.Close)
-	h, err := newHandler(config{Dist: dist, API: upstream.URL, Issuer: upstream.URL, Summarizer: "http://127.0.0.1:1"}, slog.New(slog.DiscardHandler))
+	h, err := newHandler(config{Dist: dist, API: upstream.URL, Issuer: upstream.URL, Summarizer: "http://127.0.0.1:1", UpstreamTimeout: 200 * time.Millisecond}, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,5 +122,39 @@ func TestLiveMetricsStreamIsNotBuffered(t *testing.T) {
 	line, err := bufio.NewReader(resp.Body).ReadString('\n')
 	if err != nil || line != "{\"result\":1}\n" {
 		t.Fatalf("first streamed line %q %v", line, err)
+	}
+}
+
+func TestProxyLimitsBodiesAndGivesUpOnSlowUpstreams(t *testing.T) {
+	srv, _ := setup(t)
+	post := func(n int) (int, string) {
+		resp, err := http.Post(srv.URL+"/api/v1/rules:test", "application/json", strings.NewReader(strings.Repeat("x", n)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+	if code, body := post(1000); code != 200 || body != "read 1000" {
+		t.Fatalf("small body: %d %q", code, body)
+	}
+	if code, _ := post(maxBody + 1); code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized body: %d, want 413", code)
+	}
+	start := time.Now()
+	resp, body := get(t, srv.URL+"/api/v1/slow")
+	if resp.StatusCode != http.StatusBadGateway || !strings.Contains(body, "upstream unavailable") {
+		t.Fatalf("slow upstream: %d %q", resp.StatusCode, body)
+	}
+	if took := time.Since(start); took > time.Second {
+		t.Fatalf("slow upstream answered after %v; the proxy must give up after its timeout", took)
+	}
+}
+
+func TestSourceMapsAreNotServed(t *testing.T) {
+	srv, _ := setup(t)
+	if resp, body := get(t, srv.URL+"/assets/app-123.js.map"); resp.StatusCode != http.StatusNotFound || body == "{}" {
+		t.Fatalf("source map: %d %q", resp.StatusCode, body)
 	}
 }
