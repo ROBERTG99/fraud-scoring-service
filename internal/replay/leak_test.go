@@ -4,6 +4,7 @@ package replay
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -58,6 +59,10 @@ type explaining struct {
 func (e *explaining) Score(ctx context.Context, in *fraudv1.ScoreRequest, _ ...grpc.CallOption) (*fraudv1.Decision, error) {
 	in.Explain = true
 	d, err := e.s.Score(ctx, in)
+	if err == nil && d.Degraded {
+		// Fallback defaults are not the store's features: report the timeout, never a "leak".
+		return nil, fmt.Errorf("transaction %s scored in degraded mode %v (Redis slower than the 8 ms budget)", in.Transaction.TransactionId, d.ReasonCodes)
+	}
 	if err == nil {
 		e.mu.Lock()
 		e.feats[in.Transaction.TransactionId] = d.Features
@@ -79,6 +84,16 @@ func leakFixture(t *testing.T) (*features.Store, *explaining, []events.Event, []
 	rdb := features.NewRedisClient(testutil.RedisAddr(t))
 	t.Cleanup(func() { _ = rdb.Close() })
 	fs := features.NewStore(rdb, testutil.UniqueName("leak"), spec)
+	// Load the Lua scripts and open a connection first, so the first Score is not slowed past the 8 ms
+	// Redis budget by EVALSHA falling back to EVAL on a cold connection.
+	wctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, _, err := fs.ReadAsOf(wctx, features.Tx{AccountID: "acc_warmup0", EventID: "warm", TSMillis: 1, DeviceID: "w", MCC: "5411", Channel: "ECOMMERCE"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := fs.ApplyEvent(wctx, &events.Event{Kind: events.KindLogin, EventID: "warm-login", AccountID: "acc_warmup0", TSMillis: 1, DeviceID: "w", Success: true}); err != nil {
+		t.Fatal(err)
+	}
 	mem := &memDecisions{m: map[string]*fraudv1.Decision{}}
 	srv := api.NewScorerServer(api.ScorerDeps{Features: fs, Model: lowModel{}, Rules: eng, Idempotency: mem, Decisions: mem})
 

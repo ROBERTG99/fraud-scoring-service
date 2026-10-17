@@ -38,6 +38,9 @@ var (
 	SpoolDepth = register(prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "fraud_spool_depth", Help: "Decisions waiting in the disk spool.",
 	}))
+	WriterDegraded = register(prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "fraud_writer_degraded", Help: "1 while the decision writer spools every commit because Postgres failed (breaker open).",
+	}))
 	OutboxUnsent = register(prometheus.NewGauge(prometheus.GaugeOpts{
 		Name: "fraud_outbox_unsent", Help: "Unsent decision_outbox rows.",
 	}))

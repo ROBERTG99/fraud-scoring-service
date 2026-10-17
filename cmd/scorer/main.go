@@ -106,6 +106,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if got := eng.Active().FeatureSpec; got != spec.Version {
 		return fmt.Errorf("rule set %s targets feature spec %s, scorer uses %s", eng.Active().Version, got, spec.Version)
 	}
+	eng.RequireFeatureSpec(spec.Version) // hot reloads too
 
 	rdb := features.NewRedisClient(envOr("FRAUD_REDIS_ADDR", "127.0.0.1:8530"))
 	defer func() { _ = rdb.Close() }()

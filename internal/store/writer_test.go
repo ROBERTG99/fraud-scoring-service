@@ -305,3 +305,93 @@ func TestHungPostgresSpoolsInsteadOfOverloading(t *testing.T) {
 		t.Fatal("Close hung behind the unresponsive Postgres")
 	}
 }
+
+func TestBreakerClosesUnderContinuousTraffic(t *testing.T) {
+	dsn := migratedDB(t)
+	u, _ := url.Parse(dsn)
+	proxy := testutil.NewProxy(t, u.Host)
+	u.Host = proxy.Addr()
+	pool := newPool(t, u.String())
+	w, err := NewGroupWriter(pool, WriterConfig{SpoolDir: t.TempDir(), ReplayInterval: 100 * time.Millisecond}, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	var next atomic.Int64
+	var committed, failed atomic.Int64
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+				_, err := w.Commit(ctx, record(int(20_000+next.Add(1)), fraudv1.Action_ACTION_APPROVE))
+				cancel()
+				if err != nil {
+					failed.Add(1)
+				} else {
+					committed.Add(1)
+				}
+				time.Sleep(2 * time.Millisecond) // about 4,000 commits/s across the workers
+			}
+		}()
+	}
+	proxy.Cut()
+	deadline := time.Now().Add(5 * time.Second)
+	for !w.Degraded() && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !w.Degraded() {
+		close(stop)
+		wg.Wait()
+		t.Fatal("breaker did not open during the outage")
+	}
+	proxy.Restore()
+	restored := time.Now()
+	for w.Degraded() && time.Since(restored) < 3*time.Second {
+		time.Sleep(10 * time.Millisecond)
+	}
+	closedAfter := time.Since(restored)
+	rowsAtClose := w.Stats().Rows
+	time.Sleep(300 * time.Millisecond) // traffic keeps flowing with the breaker closed
+	close(stop)
+	wg.Wait()
+	if w.Degraded() {
+		t.Fatalf("breaker still open %v after Postgres recovered under continuous traffic", closedAfter)
+	}
+	if w.Stats().Rows <= rowsAtClose {
+		t.Fatal("commits after recovery must go to Postgres, not the spool")
+	}
+	// Everything committed reaches Postgres exactly once.
+	direct := newPool(t, dsn)
+	end := time.Now().Add(15 * time.Second)
+	for time.Now().Before(end) && (w.SpoolDepth() > 0 || count(t, direct, "SELECT count(*) FROM decisions") < int(committed.Load())) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if got := count(t, direct, "SELECT count(*) FROM decisions"); got != int(committed.Load()) || failed.Load() != 0 {
+		t.Fatalf("decisions %d, committed %d, failed %d", got, committed.Load(), failed.Load())
+	}
+}
+
+func TestCommitAfterCloseFailsFast(t *testing.T) {
+	w, err := NewGroupWriter(newPool(t, migratedDB(t)), WriterConfig{SpoolDir: t.TempDir()}, quiet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Close()
+	w.Close() // idempotent
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	start := time.Now()
+	if _, err := w.Commit(ctx, record(3000, fraudv1.Action_ACTION_APPROVE)); !errors.Is(err, ErrWriterClosed) || time.Since(start) > 100*time.Millisecond {
+		t.Fatalf("commit after close: %v after %v", err, time.Since(start))
+	}
+}

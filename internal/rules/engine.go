@@ -32,6 +32,15 @@ type Engine struct {
 	lastSeen atomic.Value // string: fingerprint of the directory
 	mu       sync.Mutex   // serialises Reload and OnLoad
 	onLoad   func(*RuleSet)
+	spec     string // required feature_spec for reloads ("" = any)
+}
+
+// RequireFeatureSpec makes later reloads reject a rule set written for another feature spec (the active
+// set stays). The caller checks the set loaded by NewEngine itself.
+func (e *Engine) RequireFeatureSpec(version string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.spec = version
 }
 
 // NewEngine loads the highest-versioned rules.v*.yaml in dir.
@@ -116,6 +125,8 @@ func (e *Engine) Reload() error {
 	if err == nil {
 		if want := fileRE.FindStringSubmatch(filepath.Base(path))[1]; rs.Version != want {
 			err = fmt.Errorf("rules: %s declares version %q", filepath.Base(path), rs.Version)
+		} else if e.spec != "" && rs.FeatureSpec != e.spec {
+			err = fmt.Errorf("rules: %s targets feature spec %s, scorer uses %s", filepath.Base(path), rs.FeatureSpec, e.spec)
 		}
 	}
 	if err != nil {

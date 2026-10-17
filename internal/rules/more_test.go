@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/ROBERTG99/fraud-scoring-service/internal/features"
@@ -113,5 +114,23 @@ func TestFileVersionMustMatchYAML(t *testing.T) {
 	writeRules(t, dir, "2026.10.9", validYAML) // file says 2026.10.9, YAML says 2026.10.1
 	if err := eng.Reload(); err == nil || eng.Active().Version != "2026.10.1" {
 		t.Fatalf("mismatched version accepted: %v", err)
+	}
+}
+
+func TestReloadRejectsOtherFeatureSpec(t *testing.T) {
+	dir := t.TempDir()
+	writeRules(t, dir, "2026.10.1", validYAML) // feature_spec v1
+	eng, err := NewEngine(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eng.RequireFeatureSpec("v1")
+	v2 := strings.Replace(strings.Replace(validYAML, `"2026.10.1"`, `"2026.10.2"`, 1), "feature_spec: v1", "feature_spec: v2", 1)
+	writeRules(t, dir, "2026.10.2", v2)
+	if err := eng.Reload(); err == nil || !strings.Contains(err.Error(), "feature spec v2") {
+		t.Fatalf("reload of a v2 rule set into a v1 scorer: %v", err)
+	}
+	if eng.Active().Version != "2026.10.1" {
+		t.Fatalf("active set changed to %s", eng.Active().Version)
 	}
 }

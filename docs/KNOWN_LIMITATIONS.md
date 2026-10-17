@@ -40,8 +40,8 @@ What is not done, approximate or out of scope. Each entry names where it shows u
 The Python model server (BentoML) is the scorer's throughput limit when everything runs on one 4-CPU
 machine. Measurements in docs/DECISIONS.md D-024: without request batching, 250 tx/s with shadow scoring
 degraded 40% of decisions to rules-only (`MODEL_UNAVAILABLE`). The batching client fixed that for the seed
-rate (68 of 16,863 degraded in the run after the D-025 fix); a run on a host already loaded by earlier runs
-measured 5% degraded. Higher rates (the 1,000 RPS load target) need more model-server workers or Triton.
+rate: 68 of 16,863 degraded on gen v1 data after the D-025 fix and 59 of 16,904 on gen v2 data
+(`scripts/seed_report.py`); a v1 run on a host already loaded by earlier runs measured 5% degraded. Higher rates (the 1,000 RPS load target) need more model-server workers or Triton.
 
 ## Device features under 90-day gaps
 
@@ -51,3 +51,10 @@ sighting in the data; the two only differ for a device idle for more than 90 day
 synthetic data never contains. `distinct_devices_24h` still keeps only each device's latest sighting
 (`ZADD GT`), so a sighting that arrives before an earlier transaction is scored hides that device for it;
 replay avoids this by scoring in per-account event order (D-025).
+
+## Look-alike amounts carry no noise
+
+`legitProtectedTx` (the v2 look-alike sequences in `cmd/gen`) sets amounts at an exact multiple of the
+account median, without the lognormal noise ordinary transactions get. No feature reads the pattern, but a
+model could in principle learn the exact ratios; adding noise changes the dataset, so it is left for a
+generator v3.

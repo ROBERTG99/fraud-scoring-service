@@ -62,6 +62,20 @@ def _version_from_meta(model_dir: Path) -> str:
     return str(meta.get("model_version", model_dir.name))
 
 
+# The feature spec the scorer computes (features/spec.yaml `version`). A model trained on another spec would
+# score the wrong inputs, so it is refused: the server stays not-ready and the scorer degrades to rules-only.
+EXPECTED_FEATURE_SPEC = os.environ.get("FRAUD_FEATURE_SPEC_VERSION", "v2")
+
+
+def _check_feature_spec(model_dir: Path) -> None:
+    meta_path = model_dir / "model_meta.json"
+    if not meta_path.is_file():
+        return  # bare test fixtures carry no metadata
+    spec = json.loads(meta_path.read_text(encoding="utf-8")).get("feature_spec")
+    if spec != EXPECTED_FEATURE_SPEC:
+        raise ModelNotReadyError(f"model trained on feature spec {spec!r}, server expects {EXPECTED_FEATURE_SPEC!r}")
+
+
 class ModelRuntime:
     def __init__(
         self, model_dir: str | None = None, cache_dir: str | None = None, use_mlflow: bool | None = None
@@ -107,6 +121,7 @@ class ModelRuntime:
         raise ModelNotReadyError("; ".join(errors) or "no model source configured")
 
     def _install(self, alias: str, model_dir: Path, source: str) -> LoadedModel:
+        _check_feature_spec(model_dir)
         loaded = LoadedModel(
             alias=alias,
             version=_version_from_meta(model_dir),

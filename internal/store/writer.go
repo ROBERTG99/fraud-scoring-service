@@ -91,8 +91,12 @@ type GroupWriter struct {
 	stats struct{ batches, rows, spooled, replayed atomic.Int64 }
 	// down is the breaker: after a failed batch every Commit spools directly (no queueing behind a hung
 	// Postgres) until the replay loop reaches Postgres and drains the spool.
-	down atomic.Bool
+	down   atomic.Bool
+	closed atomic.Bool
 }
+
+// ErrWriterClosed is returned by Commit after Close.
+var ErrWriterClosed = errors.New("decision writer closed")
 
 // NewGroupWriter starts the flusher and the spool replayer.
 func NewGroupWriter(pool *pgxpool.Pool, cfg WriterConfig, log *slog.Logger) (*GroupWriter, error) {
@@ -114,6 +118,9 @@ func NewGroupWriter(pool *pgxpool.Pool, cfg WriterConfig, log *slog.Logger) (*Gr
 
 // Close stops background work after flushing queued decisions.
 func (w *GroupWriter) Close() {
+	if w.closed.Swap(true) {
+		return
+	}
 	close(w.stop)
 	w.wg.Wait()
 	_ = w.spool.Close()
@@ -131,6 +138,9 @@ func (w *GroupWriter) SpoolDepth() int { return w.spool.Depth() }
 // or the earlier decision for the same transaction_id. On Postgres failure or when ctx expires the
 // decision is spooled and returned (the caller responds; replay persists it later).
 func (w *GroupWriter) Commit(ctx context.Context, rec DecisionRecord) (*fraudv1.Decision, error) {
+	if w.closed.Load() {
+		return nil, ErrWriterClosed
+	}
 	if w.down.Load() {
 		return w.spoolOne(rec)
 	}
@@ -229,6 +239,7 @@ func (w *GroupWriter) flush(all []*pending) {
 	}
 	if err != nil {
 		if !errors.Is(err, errBreakerOpen) && !w.down.Swap(true) {
+			telemetry.WriterDegraded.Set(1)
 			w.log.Warn("group commit failed; spooling until Postgres recovers", "rows", len(recs), "err", err)
 		}
 		if serr := w.spool.Append(recs); serr != nil {
@@ -401,9 +412,13 @@ func (w *GroupWriter) replayLoop() {
 				if err != nil {
 					continue
 				}
+				// Postgres answers: resume group commit now and let this loop drain the backlog in the
+				// background. Waiting for an empty spool would never happen under traffic, because every
+				// Commit spools while the breaker is open. Inserts are idempotent on transaction_id, so new
+				// commits and replayed rows can overlap safely; a failing batch simply opens it again.
+				w.closeBreaker()
 			}
 			if w.spool.Depth() == 0 {
-				w.closeBreaker()
 				continue
 			}
 			n, err := w.spool.Drain(func(recs []DecisionRecord) error {
@@ -421,15 +436,13 @@ func (w *GroupWriter) replayLoop() {
 			if n > 0 {
 				w.log.Info("spool replayed", "decisions", n)
 			}
-			if w.spool.Depth() == 0 {
-				w.closeBreaker()
-			}
 		}
 	}
 }
 
 func (w *GroupWriter) closeBreaker() {
 	if w.down.Swap(false) {
+		telemetry.WriterDegraded.Set(0)
 		w.log.Info("postgres reachable again; group commit resumed")
 	}
 }

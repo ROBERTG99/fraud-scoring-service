@@ -21,7 +21,7 @@ def model_dir(tmp_path: Path) -> Path:
     d.mkdir()
     shutil.copyfile(FIXTURES / "tiny.onnx", d / "model.onnx")
     meta = json.loads((FIXTURES / "golden.json").read_text(encoding="utf-8"))
-    (d / "model_meta.json").write_text(json.dumps({"model_version": meta["model_version"]}), encoding="utf-8")
+    (d / "model_meta.json").write_text(json.dumps({"model_version": meta["model_version"], "feature_spec": "v2"}), encoding="utf-8")
     return d
 
 
@@ -87,3 +87,12 @@ def test_http_predict(model_dir: Path, monkeypatch: pytest.MonkeyPatch, tmp_path
         assert body["scores"][0] == pytest.approx(v["probability"], abs=1e-6)
         assert client.get("/readyz").status_code == 200
         assert client.post("/predict", json={"inputs": [[1.0] * 5]}).status_code == 400
+
+
+def test_refuses_model_trained_on_another_feature_spec(model_dir: Path, tmp_path: Path) -> None:
+    meta = json.loads((model_dir / "model_meta.json").read_text(encoding="utf-8"))
+    (model_dir / "model_meta.json").write_text(json.dumps({**meta, "feature_spec": "v1"}), encoding="utf-8")
+    rt = ModelRuntime(model_dir=str(model_dir), cache_dir=str(tmp_path / "cache"), use_mlflow=False)
+    status = rt.load_all()
+    assert not rt.ready()
+    assert "feature spec 'v1'" in status["production"]

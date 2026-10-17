@@ -80,7 +80,7 @@ func ParseSpec(raw []byte) (*Spec, error) {
 		return nil, fmt.Errorf("feature spec: %w", err)
 	}
 	if s.Version != "v2" || len(s.Features) != NumFeatures {
-		return nil, fmt.Errorf("feature spec: want version v1 with %d features, got %s/%d", NumFeatures, s.Version, len(s.Features))
+		return nil, fmt.Errorf("feature spec: want version v2 with %d features, got %s/%d", NumFeatures, s.Version, len(s.Features))
 	}
 	for i, f := range s.Features {
 		if f.Name != expectedNames[i] {

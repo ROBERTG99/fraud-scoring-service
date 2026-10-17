@@ -35,3 +35,4 @@ curl -sf http://127.0.0.1:18514/readyz && curl -sf http://127.0.0.1:18511/readyz
 start=$(date +%s)
 FRAUD_MODEL_URL=http://127.0.0.1:18514 $S/bin/seed -data artifacts/data/demo -scorer 127.0.0.1:18510 -min-cases ${MINCASES:-50} ${RATE:+-rate $RATE} ${WINDOW:+-window $WINDOW} 2> $S/seed.log
 echo "seed wall time: $(( $(date +%s) - start ))s"
+.venv/bin/python scripts/seed_report.py --db "$DB"
