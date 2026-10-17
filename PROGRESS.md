@@ -45,6 +45,40 @@ Data is generator v2 with feature spec v2 (D-026). Branch `feat/friendly-johnson
 
 - M4 review: `reviewer` and `ux-reviewer` on T-32..T-35 (web/, cmd/webserve, tests/e2e), fix blockers,
   record the M4 row. Then M5 (T-36 eval datasets).
+- M5 starting facts (analysed, nothing written yet):
+  - `third_party/evalgate/src/evalgate/__init__.py` is **empty**: `evalgate run|check|calibrate` (CLI entry
+    `evalgate.cli:main`) must be implemented first (D-002 scope). The report shape already in use is
+    `evals/reports/model_latency.json` (`scripts/bench_model.py`): schema, suite, run_id, created_at, git_sha,
+    mode, models, prompt_hashes, n_cases, metrics{name: value, threshold, direction, passed, ci_low, ci_high},
+    cost_usd_total, cost_usd_per_case, latency_p50_ms, latency_p95_ms, cases[], extensions. Makefile targets
+    `eval-model`, `eval-decisions`, `eval-summary` already call `evalgate run/check` with these paths.
+  - T-36 plan (`scripts/gen_eval_sets.py`, seed 7, `random.Random(f"7/<set>")`, sorted-key JSONL; test first
+    `tests/unit/test_eval_sets.py::test_splits_disjoint_and_counts` plus a byte-identical regeneration test):
+    - `evals/datasets/decisions/{dev,test}.jsonl`, 60/90: 15 templates x (4 dev, 6 test), labels by
+      construction from `rules/rules.v2026.10.2.yaml` and the combination table (§4.4): clean low score →
+      APPROVE; elevated → REVIEW `MODEL_SCORE_ELEVATED`; high → DECLINE `MODEL_SCORE_HIGH`; exact band edges
+      0.30/0.85/0.2999; R001, R001+high, R002 (+elevated), R003, R004, R005, R009 (+model code); near misses
+      (minutes=60, ratio 7.99, tx_count_10m 7 or amount 301, distinct 2 or amount 49,999, tx_count_1h 19) →
+      APPROVE; model unavailable (floor 20,000; with rules); features unavailable (floor 5,000, R009 still
+      fires on the fallback vector: `internal/features/fallback.go` keeps amount/channel/hour, ratio 1,
+      new_device 0, distinct 2, so no other rule can fire). Background features must stay below every rule.
+      Case = {id, split, template, transaction, features (13 names, consistent with the transaction) | null,
+      model {score} | {unavailable}, expected {action, reason_codes (set), degraded}}.
+    - Target for the decisions suite: a small Go command (e.g. `cmd/evaldecide`) that runs the real
+      `api.ScorerServer` with a stub feature store (case features or error), stub model (case score or
+      error), the real rules engine and in-memory decisions; JSONL in, JSONL out; graders in `evals/graders/`
+      (`test_reason_code_set_grader`, T-38).
+    - `evals/datasets/summaries/{dev,test}.jsonl`, 48/72: CaseContext-shaped cases (decision, features,
+      events; see `src/fraud_summarizer/pipeline.py::build_facts`) with the expected pattern by construction
+      from `cmd/gen/PATTERNS.md`: ATO 12/18, card testing 8/12, mule 8/12, friendly fraud 8/12, unclear
+      (legit look-alikes) 12/18; include low-and-slow variants that FakeLLM's heuristics miss (honest
+      accuracy), MODEL_UNAVAILABLE cases, planted synthetic PII in merchant names (example.com e-mails,
+      555 numbers, 4111 test cards) listed per case for the "PII to provider = 0" metric, and a few injection
+      strings. Tune FakeLLM on dev only if pattern accuracy < 0.85.
+    - `evals/datasets/judge_calibration.v1.jsonl`, 80 (40 useful / 40 not): good summaries written from the
+      template facts vs corrupted ones (wrong pattern, wrong numbers, absent fact keys, generic checks).
+    - The PreToolUse guard blocks edits of `evals/datasets/**/test*.jsonl` after generation: get the
+      generator right before the first commit.
 - E2E needs the whole stack: `FULL=1 scripts/seed_host.sh` (adds dev-issuer 18515, summarizer on the fake
   LLM 18513, webserve 18500), then `E2E_BASE_URL=http://127.0.0.1:18500 make e2e`; `make docs` style
   screenshots with `E2E_SCREENSHOTS=1` (see `tests/e2e/playwright.config.ts`). `docs/images/live.png` shows
