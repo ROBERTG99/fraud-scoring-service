@@ -18,7 +18,7 @@ esac
 DURATION=${BENCH_DURATION:-60s}
 B=$PWD/artifacts/bench
 mkdir -p "$B/bin"
-export GOTOOLCHAIN=local
+export GOTOOLCHAIN=auto
 PY=${PY:-.venv/bin/python}
 
 docker compose -f compose.test.yaml -p fraudtest up -d --wait >/dev/null 2>&1

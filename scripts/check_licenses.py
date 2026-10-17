@@ -165,7 +165,7 @@ def python_packages() -> list[tuple[str, str, str | None]]:
 
 
 def go_modules() -> list[tuple[str, str, str | None]]:
-    env = {**os.environ, "GOTOOLCHAIN": "local"}
+    env = {**os.environ, "GOTOOLCHAIN": "auto"}
     fmt = "{{with .Module}}{{if not .Main}}{{.Path}}@{{.Version}}\t{{.Dir}}{{end}}{{end}}"
     listed = subprocess.run(
         ["go", "list", "-deps", "-f", fmt, "./cmd/...", "./internal/..."],

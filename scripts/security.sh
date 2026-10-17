@@ -7,7 +7,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 OUT=artifacts/security
 mkdir -p "$OUT"
-export GOTOOLCHAIN=local PATH="$PATH:$HOME/go/bin:$PWD/.cache/bin:$PWD/.venv/bin"
+export GOTOOLCHAIN=auto PATH="$PATH:$HOME/go/bin:$PWD/.cache/bin:$PWD/.venv/bin"
 declare -a ROWS
 FAILED=0
 

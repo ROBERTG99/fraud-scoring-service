@@ -12,7 +12,7 @@ S=${SEED_HOST_DIR:-$PWD/artifacts/seed-host}
 mkdir -p "$S/bin"
 BINS="scorer feature-updater seed"
 [ "${FULL:-}" = 1 ] && BINS="$BINS dev-issuer webserve"
-for b in $BINS; do GOTOOLCHAIN=local go build -o "$S/bin/$b" "./cmd/$b"; done
+for b in $BINS; do GOTOOLCHAIN=auto go build -o "$S/bin/$b" "./cmd/$b"; done
 DB=seedhost_$(date +%s)
 psql_admin='postgres://fraud:fraud@127.0.0.1:8521/fraud?sslmode=disable'
 .venv/bin/python -c "import psycopg;c=psycopg.connect('$psql_admin',autocommit=True);c.execute('CREATE DATABASE $DB')"

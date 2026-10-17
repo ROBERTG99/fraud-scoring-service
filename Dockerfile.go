@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # One image target per Go binary: docker build -f Dockerfile.go --target scorer .
-ARG GO_IMAGE=golang:1.24
+ARG GO_IMAGE=golang:1.26.9
 ARG RUNTIME_IMAGE=gcr.io/distroless/static-debian12:nonroot
 
 # checkov:skip=CKV_DOCKER_7: the base image is a build arg whose default is a version tag, never latest

@@ -83,7 +83,7 @@ def stack(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, Any]]:
     redis_addr = _env("FRAUD_TEST_REDIS_ADDR")
     brokers = _env("FRAUD_TEST_KAFKA_BROKERS")
     work = tmp_path_factory.mktemp("contract")
-    env = {**os.environ, "GOTOOLCHAIN": "local"}
+    env = {**os.environ, "GOTOOLCHAIN": "auto"}
     for name in ("scorer", "dev-issuer"):
         subprocess.run(
             ["go", "build", "-o", str(work / name), f"./cmd/{name}"], cwd=ROOT, env=env, check=True

@@ -9,7 +9,7 @@ GOBIN ?= $(shell go env GOPATH 2>/dev/null)/bin
 export PATH := $(GOBIN):$(HOME)/.local/bin:$(CURDIR)/.cache/bin:$(PATH)
 
 GO ?= go
-export GOTOOLCHAIN := local
+export GOTOOLCHAIN := auto
 # Root holds Dockerfile.go (spec §16), so Go package trees are listed explicitly.
 GO_PKGS := ./cmd/... ./internal/... ./gen/... ./schemas/... ./features/... ./migrations/... ./tests/... ./scripts/gocover/...
 UV ?= uv

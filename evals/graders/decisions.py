@@ -37,7 +37,7 @@ class _Decider:
         self._timeout_s = timeout_s
 
     def _start(self) -> subprocess.Popen[str]:
-        env = {**os.environ, "GOTOOLCHAIN": "local"}
+        env = {**os.environ, "GOTOOLCHAIN": "auto"}
         subprocess.run(["go", "build", "-o", str(BINARY), "./cmd/evaldecide"], cwd=ROOT, env=env, check=True)
         return subprocess.Popen(
             [str(BINARY)], cwd=ROOT, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1

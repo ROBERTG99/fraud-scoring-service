@@ -24,7 +24,7 @@ def env(name: str) -> str:
 
 def build_go(out_dir: Path, *names: str) -> dict[str, Path]:
     out = {}
-    go_env = {**os.environ, "GOTOOLCHAIN": "local"}
+    go_env = {**os.environ, "GOTOOLCHAIN": "auto"}
     for name in names:
         target = out_dir / name
         subprocess.run(["go", "build", "-o", str(target), f"./cmd/{name}"], cwd=ROOT, env=go_env, check=True)

@@ -16,11 +16,6 @@ Build progress for `fraud-scoring-service`, driven by `docs/specs/000-build-spec
   the first 15 of each split) and note disagreements; a live judge score counts only after `make eval-live`
   reports agreement >= 0.8.
 
-- **Go toolchain (security).** The scorer image is built with Go 1.24.13 (the spec pins Go 1.24, now out of
-  upstream support): `make security` → trivy reports 48 HIGH/CRITICAL in the scorer binary, 22 in the standard
-  library (fixed only in Go 1.25.9+ / 1.26.2+) and the rest in pgx (critical), OpenTelemetry,
-  `golang.org/x/{crypto,net,text}` and gRPC, whose fixed versions require Go 1.25 or 1.26. Decide whether to
-  move the toolchain to Go 1.26 (go.mod, `GOTOOLCHAIN`, `Dockerfile.go`, CI); see `docs/security.md`.
 - **govulncheck needs `vuln.go.dev`.** The build environment's network policy denies it, so `make security`
   reports govulncheck as not run. Allow the host in the environment's network settings (or run it in CI).
 
@@ -39,7 +34,8 @@ Data is generator v2 with feature spec v2 (D-026). Branch `feat/friendly-johnson
      The worker can restart and take dockerd down: check `docker info` and restart it plus the test stack.
    - Python image builds need the proxy CA: `docker build --network host --secret id=extra_ca,src=/root/.ccr/ca-bundle.crt ...` (D-023).
    - Tools: `make bootstrap` (idempotent). Shells in this environment do not source `~/.bashrc`, so prefix
-     commands with `export PATH=$PATH:/root/go/bin:$PWD/.cache/bin:/root/.local/bin GOTOOLCHAIN=local`.
+     commands with `export PATH=$PATH:/root/go/bin:$PWD/.cache/bin:/root/.local/bin GOTOOLCHAIN=auto` (go.mod
+     pins `toolchain go1.26.9`, fetched once from the Go module proxy; D-042).
    - Test infrastructure: `docker compose -f compose.test.yaml -p fraudtest up -d --wait` (Postgres 8521,
      Redis 8531, Redpanda 8543). Integration env: `FRAUD_TEST_PG_DSN=postgres://fraud:fraud@127.0.0.1:8521/fraud?sslmode=disable`,
      `FRAUD_TEST_REDIS_ADDR=127.0.0.1:8531`, `FRAUD_TEST_KAFKA_BROKERS=127.0.0.1:8543`.

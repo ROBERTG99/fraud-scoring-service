@@ -240,7 +240,7 @@ def _git_sha() -> str | None:
 def rule_flags(rows: list[dict[str, Any]]) -> npt.NDArray[np.bool_]:
     """Run each row through `cmd/evaldecide` with model score 0; REVIEW or DECLINE means a rule fired."""
     binary = ROOT / "artifacts" / "bin" / "evaldecide"
-    env = {**os.environ, "GOTOOLCHAIN": "local"}
+    env = {**os.environ, "GOTOOLCHAIN": "auto"}
     build = ["go", "build", "-o", str(binary), "./cmd/evaldecide"]
     subprocess.run(build, cwd=ROOT, env=env, check=True)  # noqa: S603 (fixed arguments)
     payload = "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in rows)
