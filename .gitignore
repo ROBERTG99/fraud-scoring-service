@@ -35,5 +35,6 @@ artifacts/
 mlruns/
 spool/
 evals/reports/*.json
+evals/reports/calibration/
 !evals/reports/baseline/
 serving/triton/model_repository/*/1/model.onnx
