@@ -20,6 +20,8 @@ export FRAUD_PG_MIGRATE_DSN="postgres://fraud:fraud@127.0.0.1:8521/$DB?sslmode=d
 export FRAUD_PG_DSN="postgres://fraud_app:fraud_app@127.0.0.1:8521/$DB?sslmode=disable"
 export FRAUD_REDIS_ADDR=127.0.0.1:8531 FRAUD_REDIS_PREFIX=$DB FRAUD_KAFKA_BROKERS=127.0.0.1:8543
 export FRAUD_SERVICE_TOKEN=seed-host-token
+# The seed replays weeks-old synthetic events with their own timestamps: lift Score's 24 h event_ts bound (D-041).
+export FRAUD_MAX_EVENT_AGE=0
 echo "$DB" > $S/db
 $S/bin/scorer migrate
 # Model server on the trained demo artifact (no MLflow).

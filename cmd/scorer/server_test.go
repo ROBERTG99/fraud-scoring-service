@@ -106,7 +106,7 @@ func startTracedStack(t *testing.T, tp trace.TracerProvider) testStack {
 	log := slog.New(slog.DiscardHandler)
 	live := api.NewLiveStats(nil)
 	deps := api.ScorerDeps{Features: fixedFeatures{spec}, Model: downModel{}, Rules: eng, Idempotency: mem, Decisions: mem,
-		Live: live, Log: log}
+		Live: live, Log: log, Now: func() time.Time { return time.Date(2026, 9, 20, 10, 5, 0, 0, time.UTC) }}
 	if tp != nil {
 		deps.Tracer = tp.Tracer("test")
 	}

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -181,6 +182,7 @@ func newHarness(t testing.TB) *harness {
 	}
 	h.srv = NewScorerServer(ScorerDeps{
 		Features: h.feats, Model: h.model, Rules: testRules(t), Idempotency: h.idem, Decisions: h.decisions, Publisher: h.pub,
+		Now: func() time.Time { return time.Date(2026, 9, 20, 10, 5, 0, 0, time.UTC) }, // journeyTx is 2 minutes old
 	})
 	return h
 }
@@ -346,5 +348,44 @@ func TestValidationRules(t *testing.T) {
 	}
 	if _, err := newHarness(t).srv.Score(context.Background(), &fraudv1.ScoreRequest{}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("nil transaction: %v", err)
+	}
+}
+
+// TestEventTimeIsBounded: security audit M6 H2. event_ts drives the feature windows: a far-future value
+// trimmed an account's history to zero, and a backdated one moved a device's first-seen time earlier.
+func TestEventTimeIsBounded(t *testing.T) {
+	h := newHarness(t)
+	now := h.srv.d.Now()
+	score := func(id string, ts time.Time) error {
+		tx := journeyTx(id)
+		tx.EventTs = timestamppb.New(ts)
+		_, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: tx})
+		return err
+	}
+	for name, ts := range map[string]time.Time{
+		"far future":         time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC),
+		"6 minutes ahead":    now.Add(6 * time.Minute),
+		"25 hours old":       now.Add(-25 * time.Hour),
+		"backdated by years": time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC),
+	} {
+		if err := score(fmt.Sprintf("0192f000-0000-7000-8000-0000000000f%d", len(name)%10), ts); status.Code(err) != codes.InvalidArgument {
+			t.Errorf("%s: %v, want InvalidArgument", name, err)
+		}
+	}
+	if h.feats.calls != 0 {
+		t.Fatalf("a rejected event_ts reached the feature store %d times", h.feats.calls)
+	}
+	for i, ts := range []time.Time{now.Add(4 * time.Minute), now.Add(-23 * time.Hour)} {
+		if err := score(fmt.Sprintf("0192f000-0000-7000-8000-0000000001a%d", i), ts); err != nil {
+			t.Errorf("event_ts %v within bounds rejected: %v", ts, err)
+		}
+	}
+	// A replay of historical data opts out of the past bound (MaxEventAge < 0); the future bound stays.
+	h.srv.d.MaxEventAge = -1
+	if err := score("0192f000-0000-7000-8000-0000000001b0", now.AddDate(0, -1, 0)); err != nil {
+		t.Fatalf("replay of month-old data: %v", err)
+	}
+	if err := score("0192f000-0000-7000-8000-0000000001b1", now.Add(time.Hour)); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("future event_ts with the past bound off: %v", err)
 	}
 }

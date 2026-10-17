@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	otelcodes "go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -76,7 +77,8 @@ type ScorerDeps struct {
 	Live        *LiveStats
 	Log         *slog.Logger
 	Now         func() time.Time
-	Tracer      trace.Tracer // nil: telemetry.Tracer() (a no-op unless tracing is configured)
+	MaxEventAge time.Duration // oldest accepted event_ts: 0 → DefaultMaxEventAge, < 0 → no bound (replays)
+	Tracer      trace.Tracer  // nil: telemetry.Tracer() (a no-op unless tracing is configured)
 }
 
 // ScorerServer implements fraud.v1.Scorer.
@@ -126,7 +128,11 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 
 	asOf := s.d.Now()
 	if tx.EventTs != nil {
-		asOf = tx.EventTs.AsTime()
+		ts := tx.EventTs.AsTime()
+		if err := s.checkEventTime(ts, asOf); err != nil {
+			return nil, err
+		}
+		asOf = ts
 	}
 	channel := channelNames[tx.Channel]
 	ftx := features.Tx{EventID: tx.TransactionId, AccountID: tx.AccountId, TSMillis: asOf.UnixMilli(), AmountMinor: tx.AmountMinor,
@@ -235,6 +241,21 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 }
 
 // lookup returns a stored decision for a replayed transaction_id: Redis first, Postgres when Redis fails.
+// checkEventTime rejects an event_ts outside [now - MaxEventAge, now + MaxEventSkew] (audit M6 H2).
+func (s *ScorerServer) checkEventTime(ts, now time.Time) error {
+	maxAge := s.d.MaxEventAge
+	if maxAge == 0 {
+		maxAge = DefaultMaxEventAge
+	}
+	switch {
+	case ts.After(now.Add(MaxEventSkew)):
+		return invalidArgument([]*errdetails.BadRequest_FieldViolation{{Field: "transaction.event_ts", Description: "more than 5 minutes in the future"}})
+	case maxAge > 0 && ts.Before(now.Add(-maxAge)):
+		return invalidArgument([]*errdetails.BadRequest_FieldViolation{{Field: "transaction.event_ts", Description: "older than the accepted window (" + maxAge.String() + ")"}})
+	}
+	return nil
+}
+
 // decisionAttributes records the decision on the Score span (identifiers are synthetic; no account, device
 // or merchant attributes).
 func decisionAttributes(span trace.Span, d *fraudv1.Decision) {

@@ -52,6 +52,22 @@ func main() {
 	}
 }
 
+// eventAge parses FRAUD_MAX_EVENT_AGE: unset → the 24 h default; "0" → no bound (only for replaying
+// historical synthetic data, as the seed and demo stacks do; D-041); otherwise a Go duration.
+func eventAge(v string) (time.Duration, error) {
+	switch v {
+	case "":
+		return 0, nil
+	case "0":
+		return -1, nil
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("FRAUD_MAX_EVENT_AGE: want a positive duration or 0, got %q", v)
+	}
+	return d, nil
+}
+
 func envOr(key, def string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -190,11 +206,16 @@ func run(ctx context.Context, log *slog.Logger) error {
 		shadowDropped = shadow.Dropped
 	}
 
+	maxEventAge, err := eventAge(os.Getenv("FRAUD_MAX_EVENT_AGE"))
+	if err != nil {
+		return err
+	}
 	prefix := os.Getenv("FRAUD_REDIS_PREFIX") // shared with the feature-updater; default "fr"
 	live := api.NewLiveStats(nil)
 	scorer := api.NewScorerServer(api.ScorerDeps{
 		Features: features.NewStore(rdb, prefix, spec), Model: mc, Rules: eng, Idempotency: store.NewRedisIdempotency(rdb, prefix),
 		Decisions: writer, Publisher: kafkaPublisher{cl: kcl}, Shadow: shadowSub, Live: live, Log: log,
+		MaxEventAge: maxEventAge,
 	})
 	caseSrv := &api.CaseServer{Backend: cases, Rules: eng, Live: live, ShadowDropped: shadowDropped, Log: log}
 

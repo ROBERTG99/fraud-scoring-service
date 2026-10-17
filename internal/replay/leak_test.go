@@ -95,7 +95,8 @@ func leakFixture(t *testing.T) (*features.Store, *explaining, []events.Event, []
 		t.Fatal(err)
 	}
 	mem := &memDecisions{m: map[string]*fraudv1.Decision{}}
-	srv := api.NewScorerServer(api.ScorerDeps{Features: fs, Model: lowModel{}, Rules: eng, Idempotency: mem, Decisions: mem})
+	// A replay of historical events: Score's 24 h event_ts bound is lifted, as in the seed stack (D-041).
+	srv := api.NewScorerServer(api.ScorerDeps{Features: fs, Model: lowModel{}, Rules: eng, Idempotency: mem, Decisions: mem, MaxEventAge: -1})
 
 	const acc = "acc_00000777"
 	dev := func(c string) string { return c + strings.Repeat("0", 62) + c } // salted-hash shaped IDs
