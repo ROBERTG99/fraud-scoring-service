@@ -70,6 +70,10 @@ the 8 ms budget, so features fall back). The CI profile on the same machine pass
 p95 21.8 ms, 0.87% degraded). The laptop number must be measured on a machine with the load generator on
 separate cores; nothing here shows it is reachable.
 
+The CI profile's degraded share depends on how busy the host is: 0.94% on a quiet host (`make bench` at
+f9ab2a5, load 0.5) but 6.28% with a concurrent `go build` (load 8.5, M5 review), where p95 was still 42.0 ms.
+`cmd/benchreport` fails over 5% degraded, so run the bench on an otherwise idle machine.
+
 ## Device features under 90-day gaps
 
 `new_device` (spec v2) reads the device's first sighting on the account, kept in `fr:{acc}:devfirst` until
