@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -63,6 +64,18 @@ func TestShadowWritesComparisons(t *testing.T) {
 	c := sink.rows[0]
 	if c.PrimaryBand != "REVIEW" || c.ShadowBand != "DECLINE" || c.Agree || c.ShadowVersion != "fraud-gbdt/2" {
 		t.Fatalf("comparison %+v", c)
+	}
+}
+
+// The console's "dropped (queue full)" figure reads Dropped(); a completed comparison is not a drop.
+func TestCompletedComparisonsAreNotCountedAsDropped(t *testing.T) {
+	r := NewShadowRunner(&stubClient{shadow: 0.9, version: "fraud-gbdt/2"}, &memSink{}, band, ShadowConfig{Workers: 2, Queue: 10}, nil)
+	for i := 0; i < 3; i++ {
+		r.Submit(ShadowJob{DecisionID: fmt.Sprint("d", i), Features: make([]float32, 13), PrimaryOK: true})
+	}
+	r.Close()
+	if done, _, _ := r.Stats(); done != 3 || r.Dropped() != 0 {
+		t.Fatalf("done %d dropped %d, want 3 and 0", done, r.Dropped())
 	}
 }
 

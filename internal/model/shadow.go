@@ -91,6 +91,9 @@ func (r *ShadowRunner) Close() {
 	r.wg.Wait()
 }
 
+// Dropped is the number of jobs dropped because the queue was full.
+func (r *ShadowRunner) Dropped() int64 { return r.dropped.Load() }
+
 // Stats returns (completed, failed, dropped).
 func (r *ShadowRunner) Stats() (int64, int64, int64) {
 	return r.done.Load(), r.failed.Load(), r.dropped.Load()

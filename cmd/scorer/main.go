@@ -178,7 +178,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 			model.ShadowConfig{}, log)
 		defer shadow.Close()
 		shadowSub = shadow
-		shadowDropped = func() int64 { d, _, _ := shadow.Stats(); return d }
+		shadowDropped = shadow.Dropped
 	}
 
 	prefix := os.Getenv("FRAUD_REDIS_PREFIX") // shared with the feature-updater; default "fr"
