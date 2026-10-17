@@ -58,3 +58,22 @@ replay avoids this by scoring in per-account event order (D-025).
 account median, without the lognormal noise ordinary transactions get. No feature reads the pattern, but a
 model could in principle learn the exact ratios; adding noise changes the dataset, so it is left for a
 generator v3.
+
+## Eval sets and offline summaries
+
+- **Offline pattern accuracy measures FakeLLM, not a real model.** `make eval-summary` runs the real pipeline
+  with FakeLLM, a rule-based stand-in tuned on the dev split only (`src/fraud_summarizer/llm/fake.py`): test
+  pattern accuracy 0.9028 (65/72, 95% CI 0.833–0.958, `evals/reports/summaries.json`), so the lower bound of
+  the interval is under the 0.85 threshold. Faithfulness is 1.0 by construction, since FakeLLM quotes fact
+  values verbatim. A real model's numbers come only from `make eval-live` (needs a provider key).
+- **A hard subset is indistinguishable from the facts.** Legitimate splurges look like friendly fraud, and a
+  first purchase of the day has no 24-hour baseline (`amount_ratio_24h = 1`); these cases are labelled with
+  the generating scenario and count as misses for any summarizer that reads only the facts.
+- **`new_device` is 0 on P2P cases from a recently bound device.** In `evals/datasets/summaries` (v1), the
+  mule (`churn`, `slow`) and `legit_bill_split` cases bind the device 30–300 minutes before the transfer but
+  carry `new_device = 0`; feature spec v2 would give 1. No label or reason code depends on it (R004 does not
+  read `new_device`). The test partition is not edited after generation; fix it in `scripts/gen_eval_sets.py`
+  when a v2 of the set is generated.
+- **Bare 10–11 digit numbers are redacted as phone numbers.** `redact.py` treats any standalone run of 10 or 11
+  digits as a phone number. No fact carries one today (amounts stop at 8 digits, timestamps are ISO 8601); a
+  future fact with such a value would be masked before reaching a provider.

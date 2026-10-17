@@ -1,0 +1,20 @@
+# Decisions suite (spec §11): 150 golden transactions decided by the real scorer (cmd/evaldecide).
+schema: evalgate.suite.v1
+name: decisions
+description: Exact action, reason-code set and degraded handling on transactions labelled by construction.
+dataset: ../datasets/decisions/cases.v1.jsonl
+target:
+  python: evals.graders.decisions:target
+plugins: [evals.graders.decisions]
+concurrency: 4
+metrics:
+  - name: action_exact
+    kind: exact
+    params: { actual: output.action, expected: expected.action }
+    threshold: 1.0
+  - name: reason_code_set
+    kind: custom
+    threshold: 1.0
+  - name: degraded_handling
+    kind: custom
+    threshold: 1.0

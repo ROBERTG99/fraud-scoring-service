@@ -171,11 +171,11 @@ eval-model:
 	$(PY) evalgate check evals/reports/model.json --baseline evals/reports/baseline/model.json --max-regression-pp 1.0
 
 eval-decisions:
-	$(PY) evalgate run evals/suites/decisions.yaml --split test --out evals/reports/decisions.json
+	PYTHONPATH=$(CURDIR) $(PY) evalgate run evals/suites/decisions.yaml --split test --out evals/reports/decisions.json
 	$(PY) evalgate check evals/reports/decisions.json --baseline evals/reports/baseline/decisions.json --max-regression-pp 1.0
 
 eval-summary:
-	$(PY) evalgate run evals/suites/summaries.yaml --split test --out evals/reports/summaries.json
+	PYTHONPATH=$(CURDIR) FRAUD_SUMMARY_PROVIDER=fake $(PY) evalgate run evals/suites/summaries.yaml --split test --out evals/reports/summaries.json
 	$(PY) evalgate check evals/reports/summaries.json --baseline evals/reports/baseline/summaries.json --max-regression-pp 1.0
 
 eval-live: ## Live evals with real models within LIVE_EVAL_BUDGET_USD
