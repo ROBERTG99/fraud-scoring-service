@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import copy
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,7 +25,9 @@ class CaseSummaryOutput(BaseModel):
 
     pattern: Pattern
     evidence: list[EvidenceItem] = Field(min_length=1, max_length=6)
-    recommended_checks: list[str] = Field(min_length=1, max_length=4)
+    recommended_checks: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        min_length=1, max_length=4
+    )
     confidence: float = Field(ge=0.0, le=1.0)
 
 

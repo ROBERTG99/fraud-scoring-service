@@ -51,6 +51,8 @@
     },
     "recommended_checks": {
       "items": {
+        "maxLength": 200,
+        "minLength": 1,
         "type": "string"
       },
       "maxItems": 4,
