@@ -130,3 +130,11 @@ generator v3.
 zero when the process restarts, so N replicas, or a crash loop, may spend more than the limit in one UTC day.
 The per-decision cap (`summary_attempts`, 3 paid attempts) is in Postgres and holds across restarts. A shared
 counter (a Postgres row per day) would make the daily cap global.
+
+## Audit log trust boundary
+
+The audit chain is keyed (D-050), so database access alone cannot extend it with entries that verify. The
+scorer holds the key, though: a compromised scorer process can append entries that verify, and the table
+owner (the migration role) or a superuser can still disable the append-only triggers. Anchors written outside
+the database (`scorer audit-anchor`) make removed or rewritten entries detectable up to the last anchor;
+entries after it are protected only by the key.

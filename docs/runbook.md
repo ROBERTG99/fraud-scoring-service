@@ -59,3 +59,17 @@ case, which the console shows without an AI summary.
    (migration role) before replaying, or regenerate the summary from the console.
 4. A spent daily LLM budget (`FRAUD_LLM_DAILY_BUDGET_USD`, default 25 USD) parks nothing: summaries are
    templated (`status = fallback`) until the next UTC day, and `fraud_llm_calls_total{outcome="budget"}` rises.
+
+## Audit log verification
+
+`make audit-verify` (`scorer audit-verify`) recomputes the `audit_log` chain under `FRAUD_AUDIT_KEY` (D-050)
+and exits 1 when it is broken, naming the first bad `seq`. Schedule `scorer audit-anchor` (hourly, say) with
+`FRAUD_AUDIT_ANCHORS` pointing at storage the database's operators cannot rewrite (an append-only bucket, a
+separate host): it verifies the chain and appends the head's `seq` and hash, signed with the key. Verify then
+also fails when anchored entries were removed or rewritten.
+
+1. `hash mismatch` or `prev_hash does not match`: an entry was changed or inserted outside the scorer. The
+   triggers stop every role but the table owner (the migration role) and superusers; check who used them.
+2. `unkeyed entry after keyed entries`: someone appended an old-format row to avoid the key.
+3. `entries were removed` or `missing from the chain`: rows after the last anchor's `seq` were cut off.
+4. `MAC does not match the audit key`: the anchor file was edited, or the key differs from the one that wrote it.

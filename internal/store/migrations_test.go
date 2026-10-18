@@ -60,8 +60,8 @@ func TestAuditLogRejectsUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = owner.Close(ctx) }()
-	if _, err := owner.Exec(ctx, `INSERT INTO audit_log (actor_sub, role, action, target, details, prev_hash, hash)
-		VALUES ('analyst-1', 'analyst', 'case.label', 'case/1', '{}', '', 'h1')`); err != nil {
+	if _, err := owner.Exec(ctx, `INSERT INTO audit_log (actor_sub, role, action, target, details, prev_hash, hash, alg)
+		VALUES ('analyst-1', 'analyst', 'case.label', 'case/1', '{}', '', 'h1', 2)`); err != nil {
 		t.Fatal(err)
 	}
 	// The trigger rejects changes even for the table owner.
@@ -77,8 +77,8 @@ func TestAuditLogRejectsUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = app.Close(ctx) }()
-	if _, err := app.Exec(ctx, `INSERT INTO audit_log (actor_sub, role, action, target, details, prev_hash, hash)
-		VALUES ('analyst-1', 'analyst', 'case.label', 'case/2', '{}', 'h1', 'h2')`); err != nil {
+	if _, err := app.Exec(ctx, `INSERT INTO audit_log (actor_sub, role, action, target, details, prev_hash, hash, alg)
+		VALUES ('analyst-1', 'analyst', 'case.label', 'case/2', '{}', 'h1', 'h2', 2)`); err != nil {
 		t.Fatalf("fraud_app insert: %v", err)
 	}
 	for _, stmt := range []string{"UPDATE audit_log SET actor_sub = 'x'", "DELETE FROM audit_log"} {

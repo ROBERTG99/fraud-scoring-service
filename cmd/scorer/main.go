@@ -2,7 +2,8 @@
 //
 //	scorer               run the service
 //	scorer healthcheck   probe /healthz (container HEALTHCHECK)
-//	scorer audit-verify  recompute the audit_log hash chain and exit non-zero when it is broken
+//	scorer audit-verify  recompute the audit_log hash chain (and check FRAUD_AUDIT_ANCHORS) and exit non-zero when it is broken
+//	scorer audit-anchor  verify the chain, then append its head to FRAUD_AUDIT_ANCHORS (storage outside the database)
 //	scorer migrate       apply goose migrations with FRAUD_PG_MIGRATE_DSN (owner role)
 package main
 
@@ -38,7 +39,9 @@ func main() {
 		case "healthcheck":
 			os.Exit(telemetry.Healthcheck(envOr("FRAUD_HEALTHCHECK_URL", "http://127.0.0.1:8511/healthz")))
 		case "audit-verify":
-			os.Exit(auditVerify())
+			os.Exit(auditVerify(false))
+		case "audit-anchor":
+			os.Exit(auditVerify(true))
 		case "migrate":
 			os.Exit(migrate())
 		}
@@ -177,7 +180,11 @@ func run(ctx context.Context, log *slog.Logger) error {
 	defer batcher.Close()
 	var mc model.Client = batcher
 
-	cases := store.NewCaseStore(pool)
+	auditKey, err := auditKeyFromEnv()
+	if err != nil {
+		return err
+	}
+	cases := store.NewCaseStore(pool, auditKey)
 	saveRules := func(rs *rules.RuleSet) {
 		sctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -253,24 +260,6 @@ func run(ctx context.Context, log *slog.Logger) error {
 	log.Info("scorer listening", "grpc", srv.grpcLis.Addr().String(), "http", srv.httpLis.Addr().String(),
 		"rules_version", eng.Active().Version, "shadow", shadow != nil)
 	return srv.serve(ctx)
-}
-
-func auditVerify() int {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	pool, err := openPool(ctx, envOr("FRAUD_PG_DSN", "postgres://fraud_app:fraud_app@127.0.0.1:8520/fraud?sslmode=disable"), 2)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "audit-verify:", err)
-		return 2
-	}
-	defer pool.Close()
-	n, err := store.VerifyAudit(ctx, pool)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "audit-verify: %v (after %d verified entries)\n", err, n)
-		return 1
-	}
-	fmt.Printf("audit chain intact: %d entries verified\n", n)
-	return 0
 }
 
 func migrate() int {

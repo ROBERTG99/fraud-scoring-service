@@ -34,6 +34,7 @@ export FRAUD_PG_MIGRATE_DSN="postgres://fraud:fraud@127.0.0.1:8521/$DB?sslmode=d
 export FRAUD_PG_DSN="postgres://fraud_app:fraud_app@127.0.0.1:8521/$DB?sslmode=disable"
 export FRAUD_REDIS_ADDR=127.0.0.1:8531 FRAUD_REDIS_PREFIX=$DB FRAUD_KAFKA_BROKERS=127.0.0.1:8543
 export FRAUD_SERVICE_TOKEN=bench-token
+export FRAUD_ENV=dev # a local stack: plain-HTTP JWKS and the development audit key (D-045, D-050)
 "$B/bin/scorer" migrate >/dev/null
 
 pids=()

@@ -26,10 +26,15 @@ var (
 )
 
 // CaseStore serves the analyst console (CaseService).
-type CaseStore struct{ pool *pgxpool.Pool }
+type CaseStore struct {
+	pool     *pgxpool.Pool
+	auditKey []byte
+}
 
-// NewCaseStore returns the store.
-func NewCaseStore(pool *pgxpool.Pool) *CaseStore { return &CaseStore{pool: pool} }
+// NewCaseStore returns the store; auditKey signs the audit_log entries labels write (D-050).
+func NewCaseStore(pool *pgxpool.Pool, auditKey []byte) *CaseStore {
+	return &CaseStore{pool: pool, auditKey: auditKey}
+}
 
 // ListQuery filters ListCases.
 type ListQuery struct {
@@ -340,7 +345,7 @@ func (s *CaseStore) LabelCase(ctx context.Context, in LabelInput) (*fraudv1.Case
 	if _, err := tx.Exec(ctx, `UPDATE review_cases SET status = 'labelled', labelled_at = now() WHERE case_id = $1::uuid`, in.CaseID); err != nil {
 		return nil, err
 	}
-	if _, err := AppendAudit(ctx, tx, in.ActorSub, in.Role, "case.label", "case/"+in.CaseID,
+	if _, err := AppendAudit(ctx, tx, s.auditKey, in.ActorSub, in.Role, "case.label", "case/"+in.CaseID,
 		map[string]any{"label": in.Label, "label_id": labelID, "idempotency_key": in.IdempotencyKey, "note_chars": len([]rune(in.Note))}); err != nil {
 		return nil, err
 	}
