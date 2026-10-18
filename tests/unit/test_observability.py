@@ -98,7 +98,7 @@ def test_dashboard_datasources_are_provisioned() -> None:
 def test_observability_profile_ports() -> None:
     services = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
     obs = {n: s for n, s in services.items() if "observability" in s.get("profiles", [])}
-    ports = {p.split(":")[0] for s in obs.values() for p in s.get("ports", [])}
+    ports = {p.split(":")[1] for s in obs.values() for p in s.get("ports", [])}
     assert ports == {"8580", "8581", "8590", "8591", "8592"}
     assert all(":" in s["image"] and not s["image"].endswith(":latest") for s in obs.values())
     dd = [s for s in services.values() if "datadog" in s.get("profiles", [])]
@@ -109,3 +109,23 @@ def test_committed_dashboard_is_generated() -> None:
     from scripts import gen_dashboard
 
     assert DASHBOARD.read_text() == gen_dashboard.render(), "run `python scripts/gen_dashboard.py`"
+
+
+def test_compose_publishes_on_loopback_only() -> None:
+    """Audit M6 M8/L1: the local stack is reachable from this machine only."""
+    for name, svc in yaml.safe_load((ROOT / "compose.yaml").read_text())["services"].items():
+        for port in svc.get("ports", []):
+            assert str(port).startswith("127.0.0.1:"), f"{name} publishes {port} on every interface"
+
+
+def test_grafana_has_no_default_credentials_and_prometheus_no_lifecycle_api() -> None:
+    """Audit M6 M8: no admin/admin, no basic auth or login form; anonymous users are read-only viewers."""
+    services = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
+    env = services["grafana"]["environment"]
+    assert env["GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION"] == "true"
+    assert env["GF_AUTH_BASIC_ENABLED"] == "false" and env["GF_AUTH_DISABLE_LOGIN_FORM"] == "true"
+    assert env["GF_AUTH_ANONYMOUS_ORG_ROLE"] == "Viewer"
+    assert services["grafana"]["image"] != "grafana/grafana:11.5.2"  # 3 HIGH findings in Grafana itself
+    assert "--web.enable-lifecycle" not in services["prometheus"].get("command", [])
+    obs_host = (ROOT / "scripts/obs_host.sh").read_text()
+    assert "GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION=true" in obs_host

@@ -28,7 +28,8 @@ docker run -d --name obs-collector --network host -v "$C/collector.yaml:/c.yaml:
 docker run -d --name obs-prometheus --network host -v "$C/prometheus:/etc/prometheus:ro" "$(image prometheus)" \
   --config.file=/etc/prometheus/prometheus.yml --web.listen-address=127.0.0.1:18591 >/dev/null
 docker run -d --name obs-grafana --network host -e GF_SERVER_HTTP_ADDR=127.0.0.1 -e GF_SERVER_HTTP_PORT=18590 \
-  -e GF_AUTH_ANONYMOUS_ENABLED=true -e GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer \
+  -e GF_AUTH_ANONYMOUS_ENABLED=true -e GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer -e GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION=true \
+  -e GF_AUTH_BASIC_ENABLED=false -e GF_AUTH_DISABLE_LOGIN_FORM=true \
   -v "$C/grafana:/etc/grafana/provisioning:ro" -v "$PWD/deploy/grafana/fraud.json:/var/lib/grafana/dashboards/fraud.json:ro" \
   "$(image grafana)" >/dev/null
 
