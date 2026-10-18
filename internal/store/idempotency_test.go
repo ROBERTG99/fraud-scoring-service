@@ -18,7 +18,7 @@ import (
 func TestRedisIdempotencyFirstWriteWins(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: testutil.RedisAddr(t)})
 	defer func() { _ = rdb.Close() }()
-	idem := NewRedisIdempotency(rdb, testutil.UniqueName("t"))
+	idem := NewRedisIdempotency(rdb, testutil.UniqueName("t"), testIdemKey)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if d, h, err := idem.Get(ctx, "tx1"); d != nil || h != nil || err != nil {
@@ -40,7 +40,7 @@ func TestRedisIdempotencyFirstWriteWins(t *testing.T) {
 	// APPROVE for a future transaction id. It reads as a miss, so Score decides, and Postgres's ON CONFLICT
 	// still returns a decision that really was stored.
 	planted, _ := proto.Marshal(&fraudv1.Decision{DecisionId: "d3", TransactionId: "tx3", Action: fraudv1.Action_ACTION_APPROVE})
-	if err := rdb.Set(ctx, idem.key("tx3"), planted, time.Minute).Err(); err != nil {
+	if err := rdb.Set(ctx, idem.redisKey("tx3"), planted, time.Minute).Err(); err != nil {
 		t.Fatal(err)
 	}
 	if d, h, err := idem.Get(ctx, "tx3"); err != nil || d != nil || h != nil {
@@ -56,8 +56,52 @@ func TestRedisIdempotencyFirstWriteWins(t *testing.T) {
 	if err := idem.Put(ctx, &fraudv1.Decision{DecisionId: "d4", TransactionId: "tx4"}, nil); err == nil {
 		t.Fatal("Put without a request hash must fail: it would write a value nobody can read")
 	}
-	ttl := rdb.TTL(ctx, idem.key("tx1")).Val()
+	ttl := rdb.TTL(ctx, idem.redisKey("tx1")).Val()
 	if ttl < 23*time.Hour || ttl > IdempotencyTTL {
 		t.Fatalf("ttl %v", ttl)
+	}
+}
+
+var testIdemKey = []byte("idempotency key for tests, 32 b!")
+
+// Security audit round 3: with the plain request hash, whoever reaches Redis could rewrite a stored decision
+// (REVIEW to APPROVE, keeping the hash) or plant one under a future transaction_id. Values are MACed under a
+// server key now: an edited or planted value reads as a miss and is removed.
+func TestRedisIdempotencyRejectsForgedValues(t *testing.T) {
+	rdb := redis.NewClient(&redis.Options{Addr: testutil.RedisAddr(t)})
+	defer func() { _ = rdb.Close() }()
+	idem := NewRedisIdempotency(rdb, testutil.UniqueName("f"), testIdemKey)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	hash := bytes.Repeat([]byte{3}, 32)
+	if err := idem.Put(ctx, &fraudv1.Decision{DecisionId: "d1", TransactionId: "tx1", Action: fraudv1.Action_ACTION_REVIEW}, hash); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := rdb.Get(ctx, idem.redisKey("tx1")).Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	approve, _ := proto.Marshal(&fraudv1.Decision{DecisionId: "d1", TransactionId: "tx1", Action: fraudv1.Action_ACTION_APPROVE})
+	edited := append(append([]byte{}, raw[:len(raw)-len(approve)]...), approve...) // same header, other decision
+	planted := append(append(append([]byte{}, idemMagic...), make([]byte, 64)...), approve...)
+	for name, v := range map[string][]byte{"edited": edited, "planted": planted} {
+		if err := rdb.Set(ctx, idem.redisKey("tx1"), v, time.Minute).Err(); err != nil {
+			t.Fatal(err)
+		}
+		if d, h, err := idem.Get(ctx, "tx1"); err != nil || d != nil || h != nil {
+			t.Fatalf("%s value served: %v %x %v", name, d, h, err)
+		}
+		if n := rdb.Exists(ctx, idem.redisKey("tx1")).Val(); n != 0 {
+			t.Fatalf("%s value left in place", name)
+		}
+	}
+	other := NewRedisIdempotency(rdb, testutil.UniqueName("f"), []byte("a different key, also 32 bytes!!"))
+	if err := other.Put(ctx, &fraudv1.Decision{DecisionId: "d2", TransactionId: "tx2"}, hash); err != nil {
+		t.Fatal(err)
+	}
+	moved, _ := rdb.Get(ctx, other.redisKey("tx2")).Bytes()
+	_ = rdb.Set(ctx, idem.redisKey("tx2"), moved, time.Minute).Err()
+	if d, _, _ := idem.Get(ctx, "tx2"); d != nil {
+		t.Fatal("a value MACed under another key was served")
 	}
 }

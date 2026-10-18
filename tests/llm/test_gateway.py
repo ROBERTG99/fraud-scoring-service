@@ -314,6 +314,8 @@ async def test_adapters_against_cassettes() -> None:
         with pytest.raises(ProviderError) as exc:
             await AnthropicProvider(client=client).complete(request("claude-haiku-5-5"))
         assert exc.value.kind == kind and exc.value.retryable is retryable, path_file
+        if kind == "refusal":  # billed, though unusable: the usage travels with the error (D-062)
+            assert exc.value.usage == ("claude-haiku-5-5", 1180, 0)
 
     seen = []
     oclient = mock_client(openai.AsyncOpenAI, {"/v1/responses": (200, "openai_responses_ok.json")}, seen)
@@ -326,6 +328,7 @@ async def test_adapters_against_cassettes() -> None:
     with pytest.raises(ProviderError) as oexc:
         await OpenAIProvider(client=oclient).complete(request("gpt-6-luna"))
     assert oexc.value.kind == "refusal"
+    assert oexc.value.usage == ("gpt-6-luna", 1100, 8)
 
 
 async def test_fake_is_deterministic_and_cassettes_win(tmp_path: Path) -> None:
@@ -467,3 +470,29 @@ async def test_a_timed_out_call_is_charged_an_estimate() -> None:
         await run(gw)
     assert budget.spent_usd > 0.001  # 2,048 output tokens at the route's price, plus the input
     assert exc.value.attempts[0].cost_usd == pytest.approx(budget.spent_usd)
+
+
+async def test_billed_errors_are_charged_to_the_budget() -> None:
+    """Security audit round 3: a response cut at max_tokens (what an injected "write forever" asks for) was
+    the most expensive call and cost $0 against the budget."""
+    from fraud_summarizer.llm.budget import DailyBudget
+
+    budget = DailyBudget(1.0)
+    cut = ProviderError("truncated", kind="max_tokens", usage=("claude-haiku-5-5", 1000, 2048))
+    p = Scripted([cut])
+    gw = LLMGateway(load(env={"FRAUD_SUMMARY_PROVIDER": "anthropic"}), {"anthropic": p}, budget=budget)
+    with pytest.raises(GatewayExhaustedError) as exc:
+        await run(gw)
+    want = load(env={}).cost_usd("claude-haiku-5-5", 1000, 2048)
+    assert budget.spent_usd == pytest.approx(want) and exc.value.attempts[0].cost_usd == pytest.approx(want)
+
+
+async def test_a_connection_error_is_charged_an_estimate() -> None:
+    from fraud_summarizer.llm.budget import DailyBudget
+
+    budget = DailyBudget(1.0)
+    p = Scripted([ProviderError("reset", retryable=False, kind="connection")])
+    gw = LLMGateway(load(env={"FRAUD_SUMMARY_PROVIDER": "anthropic"}), {"anthropic": p}, budget=budget)
+    with pytest.raises(GatewayExhaustedError):
+        await run(gw)
+    assert budget.spent_usd > 0.001  # the request may have reached the provider

@@ -47,16 +47,21 @@ class OpenAIProvider:
             raise ProviderError.from_status(
                 exc.status_code, f"openai {exc.status_code}: {exc.message}"
             ) from exc
+        usage = resp.usage
+        billed = (
+            str(resp.model),
+            int(getattr(usage, "input_tokens", 0) or 0),
+            int(getattr(usage, "output_tokens", 0) or 0),
+        )
         if getattr(resp, "status", "completed") == "incomplete":
-            raise ProviderError("openai output incomplete", kind="max_tokens")
+            raise ProviderError("openai output incomplete", kind="max_tokens", usage=billed)
         for item in resp.output or []:
             for part in getattr(item, "content", None) or []:
                 if getattr(part, "type", "") == "refusal":
-                    raise ProviderError("openai refusal", kind="refusal")
+                    raise ProviderError("openai refusal", kind="refusal", usage=billed)
         text = resp.output_text
         if not text:
-            raise ProviderError("openai returned no output text", kind="empty")
-        usage = resp.usage
+            raise ProviderError("openai returned no output text", kind="empty", usage=billed)
         return ProviderResponse(
             text=text,
             model=str(resp.model),

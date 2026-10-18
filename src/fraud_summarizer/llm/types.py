@@ -38,12 +38,21 @@ class ProviderError(Exception):
     """A provider call failed. `retryable` follows Appendix B: 408, 409, 429, 5xx and connection errors."""
 
     def __init__(
-        self, message: str, *, status: int | None = None, retryable: bool = False, kind: str = "error"
+        self,
+        message: str,
+        *,
+        status: int | None = None,
+        retryable: bool = False,
+        kind: str = "error",
+        usage: tuple[str, int, int] | None = None,
     ) -> None:
         super().__init__(message)
         self.status = status
         self.retryable = retryable
         self.kind = kind
+        # (model, input tokens, output tokens) of a response that was billed but is unusable (refusal,
+        # max_tokens, no text): the gateway charges it against the budget (D-062).
+        self.usage = usage
 
     @classmethod
     def from_status(cls, status: int, message: str) -> ProviderError:

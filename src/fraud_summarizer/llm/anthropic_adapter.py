@@ -54,17 +54,24 @@ class AnthropicProvider:
             raise ProviderError.from_status(
                 exc.status_code, f"anthropic {exc.status_code}: {exc.message}"
             ) from exc
+        usage = msg.usage
+        billed = (
+            str(msg.model),
+            int(usage.input_tokens or 0) + int(getattr(usage, "cache_creation_input_tokens", 0) or 0),
+            int(usage.output_tokens or 0),
+        )
         if msg.stop_reason == "refusal":
             category = getattr(getattr(msg, "stop_details", None), "category", None)
-            raise ProviderError(f"anthropic refusal (category={category})", kind="refusal")
+            raise ProviderError(f"anthropic refusal (category={category})", kind="refusal", usage=billed)
         if msg.stop_reason == "max_tokens":
-            raise ProviderError("anthropic output truncated at max_tokens", kind="max_tokens")
+            raise ProviderError("anthropic output truncated at max_tokens", kind="max_tokens", usage=billed)
         text = next((b.text for b in msg.content if b.type == "text"), None)
         if text is None:
             raise ProviderError(
-                f"anthropic returned no text block (stop_reason={msg.stop_reason})", kind="empty"
+                f"anthropic returned no text block (stop_reason={msg.stop_reason})",
+                kind="empty",
+                usage=billed,
             )
-        usage = msg.usage
         return ProviderResponse(
             text=text,
             model=msg.model,

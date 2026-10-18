@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -136,4 +137,12 @@ func requireAnchors(anchoring bool, anchors []store.AuditAnchor, entries int) er
 		return nil
 	}
 	return fmt.Errorf("FRAUD_AUDIT_ANCHORS holds no anchor for a chain of %d entries; run audit-anchor first", entries)
+}
+
+// idempotencyKey derives the key that MACs Redis idempotency values from the audit key, so the scorer holds
+// one secret; the derivation keeps the two uses apart (D-062).
+func idempotencyKey(auditKey []byte) []byte {
+	m := hmac.New(sha256.New, auditKey)
+	m.Write([]byte("fraud.idempotency.v1"))
+	return m.Sum(nil)
 }

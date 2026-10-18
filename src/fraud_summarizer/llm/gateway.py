@@ -152,12 +152,18 @@ class LLMGateway:
                         data = self._parse(resp, validate)
                     except ProviderError as exc:
                         err = exc
-                        if exc.kind == "timeout" and cost == 0.0:
+                        billed_model = model
+                        if exc.usage is not None and cost == 0.0:
+                            # A response was billed but is unusable (refusal, max_tokens): charge it (D-062).
+                            billed_model, *usage = exc.usage
+                            tokens = (usage[0], usage[1])
+                        elif exc.kind in ("timeout", "connection") and cost == 0.0:
                             # The provider may bill a request we stopped waiting for: charge the prompt
-                            # (about 4 characters per token) and the whole max_tokens (D-059).
+                            # (about 4 characters per token) and the whole max_tokens (D-059, D-062).
                             tokens = ((len(safe_system) + len(safe_user)) // 4 + 1, route.max_tokens)
-                            cost = self.config.cost_usd(model, *tokens)
-                            LLM_COST.labels(route=route_name, model=model).inc(cost)
+                        if tokens != (0, 0) and cost == 0.0:
+                            cost = self.config.cost_usd(billed_model, *tokens)
+                            LLM_COST.labels(route=route_name, model=billed_model).inc(cost)
                             if self.budget is not None:
                                 self.budget.charge(cost)
                     else:

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import re
+import unicodedata
 from dataclasses import dataclass
 
 # Digits that continue an identifier (tx_count_10m, mcc_novel_30d, R003) are not numbers; anything else is,
@@ -28,7 +29,7 @@ CLEARING = re.compile(
     r"\b(?:approv\w*|authori[sz]\w*|unblock\w*|whitelist\w*|allowlist\w*|benign|dismiss\w*|reputable"
     r"|releas\w* (?:the )?(?:payment|funds|hold|transaction)|let (?:it|the \w+) (?:through|go)"
     r"|(?:clear|close) (?:the )?(?:case|alert)|not (?:a )?fraud\w*|no fraud|false positive|legitimate|genuine"
-    r"|trusted|safe to"
+    r"|trusted|safe to|legit\b|false alarm|ok(?:ay)? to (?:proceed|pay|approve|go)|checks out"
     r"|verified (?:partner|merchant|customer|account|seller))\b",
     re.IGNORECASE,
 )
@@ -68,43 +69,66 @@ def _as_number(value: str) -> float | None:
     return x if math.isfinite(x) else None
 
 
-def _names(statement: str, value: str) -> bool:
-    """value occurs in statement as a whole token: not inside a word ("US" in "status"), and with its case
-    when it is a code (upper case, digits, "_"), so "review" does not stand in for REVIEW (round 3 review)."""
+def _token(value: str) -> tuple[re.Pattern[str], bool]:
+    """A pattern for value as a whole token, and whether it is a code (matched with its case: "US" is not
+    "us", REVIEW is not "review"; round 3 review)."""
     value = " ".join(value.split())
     code = value == value.upper() and any(c.isalpha() for c in value)
-    hay, needle = (" ".join(statement.split()), value) if code else (_norm(statement), _norm(value))
-    return re.search(rf"(?<![0-9A-Za-z_]){re.escape(needle)}(?![0-9A-Za-z_])", hay) is not None
+    needle = value if code else _norm(value)
+    return re.compile(rf"(?<![0-9A-Za-z_]){re.escape(needle)}(?![0-9A-Za-z_])"), code
+
+
+def _names(statement: str, value: str) -> bool:
+    """value occurs in statement as a whole token (not inside a word: "US" in "status")."""
+    pattern, code = _token(value)
+    return pattern.search(" ".join(statement.split()) if code else _norm(statement)) is not None
+
+
+def _without(statement: str, values: list[str]) -> str:
+    """statement with every whole-token occurrence of the values removed: what it says beyond the fact."""
+    out = " ".join(statement.split())
+    # Codes first: removing a plain value casefolds the text, after which a code could no longer be found.
+    for value in sorted(values, key=lambda v: not _token(v)[1]):
+        pattern, code = _token(value)
+        out = pattern.sub(" ", out) if code else pattern.sub(" ", _norm(out))
+    return out
+
+
+def _screenable(text: str) -> str:
+    """NFKC with format characters (zero-width spaces, bidi marks) removed, so they cannot split a word."""
+    text = unicodedata.normalize("NFKC", text)
+    return "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
 
 
 def screen_checks(checks: list[str]) -> list[str]:
     """Recommended checks without case-clearing language (see CLEARING)."""
-    return [c for c in checks if not CLEARING.search(c)]
+    return [c for c in checks if not CLEARING.search(_screenable(c))]
 
 
 def check_item(fact_key: str, statement: str, facts: dict[str, str]) -> CheckedItem:
     if fact_key not in facts:
         return CheckedItem(fact_key, statement, False, "fact_key not in facts")
-    if CLEARING.search(statement):
-        return CheckedItem(fact_key, statement, False, "clears the case")
     raw = facts[fact_key]
-    if fact_key.endswith(FREE_TEXT_SUFFIXES):
-        long_enough = len(_norm(raw).replace(" ", "")) >= MIN_QUOTE_CHARS
-        quoted = long_enough and _norm(raw) in _norm(statement)
-        return CheckedItem(
-            fact_key, statement, quoted, "quotes the text" if quoted else "free text not quoted"
-        )
-    nums = numbers_in(statement)
+    text = _screenable(statement)
     value = _as_number(raw)
+    items = [i for i in [raw, *raw.split(",")] if i.strip()] if value is None else []
+    # The fact's own value is set aside first: a merchant called "Genuine Parts Co" may be quoted, and an IP
+    # prefix or version number may be cited; anything else the statement says is screened and checked.
+    rest = _without(text, items) if items else text
+    if CLEARING.search(rest):
+        return CheckedItem(fact_key, statement, False, "clears the case")
     if value is None:
-        if nums:
-            return CheckedItem(
-                fact_key, statement, False, "statement has numbers but the fact is not numeric"
-            )
-        named = any(_names(statement, item) for item in [raw, *raw.split(",")] if item.strip())
-        return CheckedItem(
-            fact_key, statement, named, "names the value" if named else "value not in statement"
-        )
+        if fact_key.endswith(FREE_TEXT_SUFFIXES):
+            long_enough = len(_norm(raw).replace(" ", "")) >= MIN_QUOTE_CHARS
+            carried = long_enough and _norm(raw) in _norm(text)
+        else:
+            carried = any(_names(text, item) for item in items)
+        if not carried:
+            return CheckedItem(fact_key, statement, False, "value not in statement")
+        if numbers_in(rest):
+            return CheckedItem(fact_key, statement, False, "statement has numbers beyond the fact")
+        return CheckedItem(fact_key, statement, True, "carries the value")
+    nums = numbers_in(text)
     if not nums:
         return CheckedItem(fact_key, statement, False, "statement does not carry the fact's number")
     for n in nums:

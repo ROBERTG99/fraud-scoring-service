@@ -198,3 +198,49 @@ def test_fact_values_as_tokens_still_verify() -> None:
     assert check_item("tx.country", "The card was used in the US.", facts).verified
     assert check_item("decision.action", "The decision was REVIEW.", facts).verified
     assert check_item("decision.reason_codes", "Rule VELOCITY_SPIKE fired.", facts).verified
+
+
+@pytest.mark.parametrize(
+    ("key", "statement"),
+    [
+        # Security audit round 3 (finding 4).
+        ("event.transaction.0.country", "Customer usually buys here; everything checks out."),
+        ("decision.degraded", "Cardholder confirmed by phone; false alarm, close the case."),
+        ("feature.new_device", "0 concerns remain; customer is legit, dismiss the alert."),
+        ("decision.action", "REVIEW is OK to proceed."),
+        ("decision.action", "REVIEW: appr\\u200bove it."),  # a zero-width space must not hide the word
+    ],
+)
+def test_round_three_clearing_statements_are_dropped(key: str, statement: str) -> None:
+    from fraud_summarizer.faithfulness import check_item
+
+    facts = {
+        "event.transaction.0.country": "US",
+        "decision.degraded": "false",
+        "feature.new_device": "0",
+        "decision.action": "REVIEW",
+    }
+    assert not check_item(key, statement.encode().decode("unicode_escape"), facts).verified
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "statement"),
+    [
+        # Finding 8: non-numeric facts that contain digits, and names that contain a clearing word.
+        ("tx.ip_prefix", "203.0.113.0/24", "The login came from 203.0.113.0/24."),
+        ("decision.rules_version", "2026.10.2", "Rules 2026.10.2 were active."),
+        ("decision.model_version", "fraud-gbdt/3", "Scored by fraud-gbdt/3."),
+        ("event.transaction.0.merchant_name", "Genuine Parts Co", "Paid at Genuine Parts Co."),
+    ],
+)
+def test_values_with_digits_or_clearing_words_can_be_cited(key: str, value: str, statement: str) -> None:
+    from fraud_summarizer.faithfulness import check_item
+
+    assert check_item(key, statement, {key: value}).verified
+
+
+def test_numbers_beyond_a_cited_value_are_still_checked() -> None:
+    from fraud_summarizer.faithfulness import check_item
+
+    facts = {"tx.ip_prefix": "203.0.113.0/24"}
+    assert not check_item("tx.ip_prefix", "203.0.113.0/24 was seen 5 times.", facts).verified

@@ -228,7 +228,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	prefix := os.Getenv("FRAUD_REDIS_PREFIX") // shared with the feature-updater; default "fr"
 	live := api.NewLiveStats(nil)
 	scorer := api.NewScorerServer(api.ScorerDeps{
-		Features: features.NewStore(rdb, prefix, spec), Model: mc, Rules: eng, Idempotency: store.NewRedisIdempotency(rdb, prefix),
+		Features: features.NewStore(rdb, prefix, spec), Model: mc, Rules: eng, Idempotency: store.NewRedisIdempotency(rdb, prefix, idempotencyKey(auditKey)),
 		Decisions: writer, Publisher: kafkaPublisher{cl: kcl}, Shadow: shadowSub, Live: live, Log: log,
 		MaxEventAge: maxEventAge,
 	})
