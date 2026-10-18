@@ -457,14 +457,11 @@ def _fixpoint(text: str) -> str:
 # space, so decoding cannot change what a prompt says or close its facts fence (rounds 6 to 8).
 SAFE_DECODED = frozenset("0123456789@-./,:;|*+_~#!?=^$")
 _PERCENT = r"%[0-9A-Fa-f]{2}"
-# Named references with ";", the legacy names browsers and html.unescape also read without it, and numeric
-# references with or without ";" (security audit round 8).
-_LEGACY = sorted((n for n in html.entities.html5 if not n.endswith(";")), key=len, reverse=True)
-_ENTITY = (
-    r"&(?:#[0-9]{1,7};?|#[xX][0-9A-Fa-f]{1,6};?|[A-Za-z][A-Za-z0-9]{1,31};|(?:"
-    + "|".join(map(re.escape, _LEGACY))
-    + "))"
-)
+# Real named references only (with ";", or the legacy names browsers and html.unescape also read without it),
+# longest first, and numeric references of any length, with or without ";" (rounds 8 and 9: "&notx;" names
+# nothing; read as one escape it kept growing, so it is "&not" followed by "x;").
+_NAMES = sorted(html.entities.html5, key=len, reverse=True)
+_ENTITY = r"&(?:#[0-9]+;?|#[xX][0-9A-Fa-f]+;?|(?:" + "|".join(map(re.escape, _NAMES)) + "))"
 ESCAPE_RUN = re.compile(rf"(?:{_PERCENT}|{_ENTITY})+")
 _UNIT = re.compile(rf"(?P<pct>(?:{_PERCENT})+)|(?P<ent>{_ENTITY})")
 
@@ -514,17 +511,23 @@ def _decode_raw_once(text: str) -> tuple[str, list[tuple[int, int]]]:
     return "".join(out), spans
 
 
+class _DecodeError(ValueError):
+    """Decoding did not converge; redaction fails closed."""
+
+
 def _decode(text: str) -> tuple[str, list[tuple[int, int]]]:
     """Escapes decoded to a fixpoint and folded, with each result character's span in text. Folding can make a
     new escape ("&#&sup1;" folds to "&#1"), so decoding and folding repeat until the result is stable (round 8:
     a second redaction must change nothing)."""
     out, spans = _decode_and_fold(text)
-    for _ in range(8):
-        if not ESCAPE_RUN.search(out):
-            break
+    # Every round that changes the text makes it shorter (an escape becomes one character, or keeps its text for
+    # a letter), so this ends within len(text) rounds; there is no other bound to run out (round 9).
+    while ESCAPE_RUN.search(out):
         nxt, local = _decode_and_fold(out)
         if nxt == out:
             break
+        if len(nxt) >= len(out):  # not expected: the caller fails closed rather than loop
+            raise _DecodeError("decoding did not shorten the text")
         spans = [(spans[a][0], spans[b - 1][1]) for a, b in local]
         out = nxt
     return out, spans
@@ -549,15 +552,19 @@ def _decode_and_fold(text: str) -> tuple[str, list[tuple[int, int]]]:
             out.append(ch)
             out_spans.append((a, b))
             continue
-        for f in normalise(ch).translate(EXOTIC_SPACE) or "":
+        folded = normalise(ch).translate(EXOTIC_SPACE)
+        if any(f.isalnum() and not f.isdecimal() for f in folded):
+            # A letter, or a character whose NFKC form holds one ("\u3219" is "(하)"), keeps the text it was
+            # written as, once per escape and with nothing around it, so the text never grows (round 9).
+            if last_letter != (a, b):
+                out.extend(text[a:b])
+                out_spans.extend((i, i + 1) for i in range(a, b))
+                last_letter = (a, b)
+            continue
+        for f in folded:
             if f in SAFE_DECODED or f.isdecimal():  # digits of any script are digits to the redactor too
                 out.append(f)
                 out_spans.append((a, b))
-            elif f.isalnum():
-                if last_letter != (a, b):  # a letter keeps the text it was written as, once per escape
-                    out.extend(text[a:b])
-                    out_spans.extend((i, i + 1) for i in range(a, b))
-                    last_letter = (a, b)
             elif out and out[-1] == " " and out_spans[-1][1] >= a and out_spans[-1][1] - out_spans[-1][0] > 1:
                 out_spans[-1] = (out_spans[-1][0], max(out_spans[-1][1], b))  # "%0D%0A" is one separator
             else:
@@ -650,15 +657,32 @@ def _cache_clear() -> None:
 def _redact(text: str) -> str:
     """Redact what the text says as written or as decoded, and repeat on the result until nothing changes: a
     label can cut a run so that the gap beside it holds a card neither reading saw (round 8)."""
+    try:
+        return _redact_to_fixpoint(text)
+    except _DecodeError:  # not expected: fail closed on the text as written
+        return _closed(_fixpoint(normalise(text)))
+
+
+def _redact_to_fixpoint(text: str) -> str:
     out, labelled = _redact_once(text)
-    for _ in range(4):
-        if not labelled:  # nothing was cut, so the decoded reading has already seen every run
-            break
+    # A pass that changes the output removes digits, so this ends within as many rounds as there are digits.
+    while labelled:  # nothing was cut, so the decoded reading, decoded to the end, has seen every run
         nxt, labelled = _redact_once(out)
         if nxt == out:
             break
+        if len(_DIGIT.findall(nxt)) >= len(_DIGIT.findall(out)):  # not expected: fail closed
+            return _closed(nxt)
         out = nxt
     return out
+
+
+def _closed(text: str) -> str:
+    """Fail closed: every stretch of digits joined by non-letters that holds four or more digits is redacted."""
+    return re.sub(
+        r"\d[\d\W_]*\d|\d",
+        lambda m: CARD_LABEL if sum(c.isdigit() for c in m.group(0)) >= 4 else m.group(0),
+        text,
+    )
 
 
 def _redact_once(text: str) -> tuple[str, bool]:
@@ -670,14 +694,8 @@ def _redact_once(text: str) -> tuple[str, bool]:
     decoded, origin = _decode(plain) if ESCAPE_RUN.search(plain) else (plain, [])
     spans = _redaction_spans(plain)
     decoded_spans = _redaction_spans(decoded) if decoded != plain else []
-    if spans is None or decoded_spans is None:
-        # Not expected: fail closed, every run of four or more digits is redacted (round 8).
-        closed = re.sub(
-            r"\d[\d\W_]*\d|\d",
-            lambda m: CARD_LABEL if sum(c.isdigit() for c in m.group(0)) >= 4 else m.group(0),
-            _fixpoint(decoded),
-        )
-        return closed, False
+    if spans is None or decoded_spans is None:  # not expected: fail closed (round 8)
+        return _closed(_fixpoint(decoded)), False
     for a, b, label in decoded_spans:
         spans.append((origin[a][0], origin[b - 1][1], label))
     merged: list[list[Any]] = []

@@ -178,7 +178,9 @@ escapes and by HTML entities (D-064 to D-067): escapes are decoded to a fixpoint
 that is not a digit, "@" or plain punctuation becomes a space. Out of scope: separators of 9 or more characters, separators
 that contain letters or digits other than those escapes, card layouts other than the common shapes and equal
 groups, a card written as an IPv4 address or inside a UUID (held as identifiers), a card split by an email or
-a date, and a phone glued to the extension of the item before it (`x12415-555-2671`). Only merchant names
+a date, a phone glued to the extension of the item before it (`x12415-555-2671`), escape schemes other than
+percent escapes and HTML references (`%u0034`, `\x34`), and digits read as part of a longer numeric reference
+(`&#52111` is one character, as HTML reads it, though another reader might see `&#52` and `111`). Only merchant names
 (at most 120 characters) reach a provider as third-party free text.
 
 ## Merged card windows remove numbers from lists

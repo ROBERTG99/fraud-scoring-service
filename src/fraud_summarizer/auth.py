@@ -65,8 +65,11 @@ def check_database_dsn(dsn: str) -> None:
             )
         pw = next((c for c in cands if c), "")
         if not pw:
-            cert = params.get("sslcert") or os.environ.get("PGSSLCERT")
-            sslmode = params.get("sslmode") or os.environ.get("PGSSLMODE") or "prefer"
+            # As the other options: an empty sslcert is libpq's default file, never PGSSLCERT (round 9).
+            cert = _option(params, "sslcert", "PGSSLCERT") or str(
+                Path.home() / ".postgresql" / "postgresql.crt"
+            )
+            sslmode = _option(params, "sslmode", "PGSSLMODE") or "prefer"
             if cert and sslmode != "disable" and Path(cert).is_file():
                 continue  # certificate authentication: nothing here to compare
             raise ValueError(f"database DSN for role {user}: no password or client certificate")
@@ -191,10 +194,11 @@ def _passfile_passwords(params: dict[str, str], user: str) -> list[list[str]]:
         )
 
     out = []
+    # Entries are used as written, spaces included, as libpq uses them (round 9); only an empty one defaults.
     for i, raw_host in enumerate(hosts):
-        addr = addrs[i].strip() if i < len(addrs) else ""
-        host = raw_host.strip() or addr or "localhost"
-        port = (ports[i] if len(ports) == len(hosts) else ports[0]).strip() or "5432"
+        addr = addrs[i] if i < len(addrs) else ""
+        host = raw_host or addr or "localhost"
+        port = (ports[i] if len(ports) == len(hosts) else ports[0]) or "5432"
         names_tried = ["localhost", host] if host.startswith("/") else [host]
         out.append([lookup(h, port) for h in names_tried])
     return out

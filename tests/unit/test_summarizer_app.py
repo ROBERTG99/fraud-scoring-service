@@ -687,6 +687,47 @@ def test_an_empty_dsn_option_uses_the_libpq_default_not_the_environment(
     refused("host=db dbname=fraud user=fraud_summarizer port='' passfile=" + str(other))  # libpq uses 5432
 
 
+def test_dsn_list_entries_are_used_as_written_and_sslcert_as_libpq(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Security audit round 9, checked against libpq: host, hostaddr and port entries are not trimmed, and an
+    empty sslcert means ~/.postgresql/postgresql.crt, never PGSSLCERT."""
+    from fraud_summarizer.auth import check_database_dsn
+
+    for var in (
+        "FRAUD_ENV",
+        "PGPASSWORD",
+        "PGUSER",
+        "PGHOST",
+        "PGHOSTADDR",
+        "PGPORT",
+        "PGDATABASE",
+        "PGSSLCERT",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    passfile = tmp_path / "pgpass"
+    passfile.write_text("db:1:fraud:fraud_summarizer:Str0ng\n*:*:*:fraud_summarizer:fraud_summarizer\n")
+    passfile.chmod(0o600)
+    monkeypatch.setenv("PGPASSFILE", str(passfile))
+
+    def refused(dsn: str) -> None:
+        with pytest.raises(ValueError, match="database DSN"):
+            check_database_dsn(dsn)
+
+    check_database_dsn("host=db port=1 dbname=fraud user=fraud_summarizer")
+    refused("host=' db' hostaddr=127.0.0.1 port=1 dbname=fraud user=fraud_summarizer")
+    refused("host='db ' port=1 dbname=fraud user=fraud_summarizer")
+    refused("host=db port=' 1' dbname=fraud user=fraud_summarizer")
+
+    monkeypatch.setenv("PGPASSFILE", str(tmp_path / "none"))
+    cert = tmp_path / "client.crt"
+    cert.write_text("cert")
+    monkeypatch.setenv("PGSSLCERT", str(cert))
+    refused("host=db dbname=fraud user=fraud_summarizer sslcert='' sslmode=require")
+    check_database_dsn("host=db dbname=fraud user=fraud_summarizer sslmode=require")  # PGSSLCERT applies
+
+
 def test_public_readyz_names_no_cause(
     client: TestClient, store: Store, monkeypatch: pytest.MonkeyPatch
 ) -> None:

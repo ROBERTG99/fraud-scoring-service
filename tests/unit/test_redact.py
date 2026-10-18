@@ -656,3 +656,46 @@ def test_redaction_fails_closed_when_spans_cannot_be_recovered(monkeypatch: pyte
     redact._cache_clear()
     out = redact.redact_text("card 4111~%4008~1111~1111 call 415 555 2671")
     assert not re.search(r"\d{4}", out), out
+
+
+def _chain(depth: int) -> str:
+    """An escape that folding rebuilds one level at a time: "&#&#185;85;" folds to "&#185;", then to "1"."""
+    text = "&#185;"
+    for _ in range(depth - 1):
+        text = "&#" + text + "85;"
+    return text
+
+
+@pytest.mark.parametrize("depth", [2, 9, 20])
+def test_escapes_that_folding_rebuilds_are_decoded_to_the_end(depth: int) -> None:
+    """Security audit round 9: decoding stopped after 8 rounds, so one call returned 15 card digits and the
+    escape for the 16th."""
+    for card in ("4111111111111111", "4111111111101"):
+        assert luhn_ok(card)
+        text = (
+            _split(card[:-1], (4, 4, 4, len(card) - 13), " ") + _chain(depth)
+            if len(card) == 16
+            else card[:-1] + _chain(depth)
+        )
+        out = redact_text(text)
+        assert not _leaks(card, out, run=8), out
+        assert redact_text(out) == out
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["&notx;", "&not4x;", "&ampx;", "&lt1x;", "a &not4111x; b", "&notin;x", "&#x3219", "a&#x3219;b&#xFDFD;"],
+)
+def test_names_that_only_start_with_an_entity_do_not_grow(text: str) -> None:
+    """Security audit round 9: "&notx;" was read as one escape, kept for its letter and decoded again every round,
+    so the output grew and gained digits the text never had."""
+    out = redact_text(text)
+    assert redact_text(out) == out, out
+    assert len(out) <= len(text) + 2 and sum(c.isdigit() for c in out) <= sum(c.isdigit() for c in text), out
+
+
+def test_numeric_references_of_any_length_read_as_html_does() -> None:
+    import html
+
+    for ref in ("&#00000052;", "&#x0000034;"):
+        assert redact_text(f"x {ref} y") == f"x {html.unescape(ref)} y"
