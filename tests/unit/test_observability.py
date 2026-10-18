@@ -140,7 +140,12 @@ def test_service_containers_are_hardened() -> None:
         assert svc.get("read_only") is True, name
         assert svc.get("cap_drop") == ["ALL"], name
         assert "no-new-privileges:true" in svc.get("security_opt", []), name
-    for dockerfile in ("Dockerfile.go", "Dockerfile.summarizer", "serving/bentoml/Dockerfile", "deploy/mlflow/Dockerfile"):
+    for dockerfile in (
+        "Dockerfile.go",
+        "Dockerfile.summarizer",
+        "serving/bentoml/Dockerfile",
+        "deploy/mlflow/Dockerfile",
+    ):
         text = (ROOT / dockerfile).read_text()
         bases = re.findall(r"^FROM (\S+)", text, re.M) + re.findall(r"^ARG \w+_IMAGE=(\S+)", text, re.M)
         for base in bases:
