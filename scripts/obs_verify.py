@@ -59,7 +59,10 @@ def check_grafana(grafana: str) -> bool:
 
 
 def check_traces(jaeger: str) -> bool:
-    q = "service=case-summarizer&operation=summarizer.decision&limit=50&lookback=1h"
+    # Only summarized decisions have a case, and so a Score span, in this stack: on a shared test broker the
+    # summarizer also drains other runs' decisions (outcome missing_case), whose traces were never here.
+    tags = urllib.parse.quote(json.dumps({"app.outcome": "summarized"}))
+    q = f"service=case-summarizer&operation=summarizer.decision&tags={tags}&limit=50&lookback=1h"
     data = get(f"{jaeger}/api/traces?{q}")["data"]
     joined = 0
     for tr in data:
