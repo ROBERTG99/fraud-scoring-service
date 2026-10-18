@@ -24,7 +24,7 @@ from fraud_summarizer.faithfulness import check as check_faithfulness
 from fraud_summarizer.faithfulness import screen_checks
 from fraud_summarizer.llm import GatewayExhaustedError, LLMGateway, LLMResult
 from fraud_summarizer.paths import repo_root
-from fraud_summarizer.redact import redact_text
+from fraud_summarizer.redact import off_loop, redact_text
 from fraud_summarizer.schemas import (
     CaseSummaryOutput,
     StoredSummary,
@@ -299,10 +299,11 @@ class SummaryPipeline:
         case_id = ctx.case_id
         for s in steps:
             s.task_id = case_id
-        raw_facts = build_facts(ctx)
+        # Redaction is CPU work: off the event loop, which the console and the consumer share (audit round 7).
+        raw_facts = await off_loop(lambda: build_facts(ctx))
 
         async def redact() -> dict[str, str]:
-            return {k: redact_text(v) for k, v in raw_facts.items()}
+            return await off_loop(lambda: {k: redact_text(v) for k, v in raw_facts.items()})
 
         facts: dict[str, str] = await step("redact", "compute", redact)
         llm_result: LLMResult | None = None

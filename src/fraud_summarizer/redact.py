@@ -11,19 +11,27 @@ and redaction repeats until nothing changes. Phone groups may be separated by sp
 lists of numbers in prose are kept. Card groups may be separated by any run of up to 8 characters that are not
 letters or digits: a second pass redacts every Luhn-valid window of groups in a card layout (overlapping
 windows merge into one label), and of the run pass and this pass in either order, the result that leaves fewer
-digits is kept (security audit round 4). Percent escapes and HTML entities that stand for a digit, a space, "@"
-or plain punctuation are decoded, never into letters, quotes, brackets or control characters, so decoding
-cannot change what a prompt says or close its facts fence (round 6). Out of scope: names, postal addresses, IBANs, obfuscated addresses
-("john(at)example"), masked card numbers and bare 9-digit SSNs without an "SSN" keyword (docs/security.md).
+digits is kept (security audit round 4). Percent escapes (UTF-8 sequences as one character) and HTML entities
+are decoded, to a fixpoint, into digits, "@" and plain punctuation; any other character that is not a letter
+becomes a space and letters stay encoded, so decoding cannot change what a prompt says or close its facts
+fence. The text is redacted as written and as decoded, and whatever either reading finds is redacted (rounds
+5 to 7). Out of scope: names, postal addresses, IBANs, obfuscated addresses ("john(at)example"), masked card
+numbers and bare 9-digit SSNs without an "SSN" keyword (docs/security.md).
 """
 
 from __future__ import annotations
 
+import asyncio
+import contextvars
 import functools
 import html
+import json
 import re
 import unicodedata
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from typing import Any
 
 CARD_LABEL, PHONE_LABEL = "[REDACTED_CARD]", "[REDACTED_PHONE]"
 
@@ -55,7 +63,12 @@ PHONE_SEPS = frozenset({"", " ", "-", ".", "/", "_"})
 # A contiguous 13-19 digit number glued to letters ("PAN4111...", "...1111EXP") is still a card; so is a
 # separated one in a card shape, and a 3-3-4 phone (_card_shaped, _phone_shaped).
 GLUED_CARD = re.compile(r"(?<!\d)\d{13,21}(?!\d)")  # up to 21: two digits may be a "%XX" escape
-EXTENSION = re.compile(re.escape(PHONE_LABEL) + r"\s*(?:x|ext\.?|extension)\s*\d{1,6}\b", re.IGNORECASE)
+# Each label is followed by one private-use character that numbers the text it replaced (_label), so redact_text
+# can map labels back to spans; normalise removes private-use characters from the input.
+MARK = "[\U000f0000-\U000ffffd]"
+EXTENSION = re.compile(
+    re.escape(PHONE_LABEL) + MARK + r"?\s*(?:x|ext\.?|extension)\s*\d{1,6}\b", re.IGNORECASE
+)
 DASHES = dict.fromkeys(
     [ord(c) for c in "\u2010\u2011\u2012\u2013\u2014\u2015\u2212\ufe58\ufe63\uff0d"], ord("-")
 )
@@ -81,6 +94,18 @@ WIDE_RUN = re.compile(r"(?<![\d\x00])\d+(?:[^0-9A-Za-z\x00]{1,8}\d+)+(?![\d\x00]
 WIDE_SHAPES = frozenset({(4, 4, 8), (8, 8), (4, 12), (6, 10), (6, 13), (6, 6, 4)})
 
 
+_REPLACED: contextvars.ContextVar[list[str] | None] = contextvars.ContextVar("redact_replaced", default=None)
+
+
+def _label(label: str, original: str) -> str:
+    """label, numbered with the text it replaces when redact_text tracks spans."""
+    replaced = _REPLACED.get()
+    if replaced is None:
+        return label
+    replaced.append(original)
+    return label + chr(0xF0000 + len(replaced) - 1)
+
+
 def luhn_ok(digits: str) -> bool:
     total, parity = 0, len(digits) % 2
     for i, ch in enumerate(digits):
@@ -96,7 +121,7 @@ def luhn_ok(digits: str) -> bool:
 def normalise(text: str) -> str:
     """NFKC, zero-width and other format characters removed, Unicode dashes and full stops folded."""
     text = unicodedata.normalize("NFKC", text)
-    text = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
+    text = "".join(ch for ch in text if unicodedata.category(ch) not in ("Cf", "Co"))
     # NUL is dropped too: it delimits the placeholders of held identifiers in _once.
     text = text.translate(DASHES).translate(FULL_STOPS).translate(EXOTIC_SPACE)
     # "%40" is not decoded here (it would take two digits of a card separated by "%"): EMAIL matches it.
@@ -257,7 +282,7 @@ def _redact_run(m: re.Match[str]) -> str:
     out, pos = [], 0
     for i, j, label in chosen:
         out.append(run[pos : gs[i].start])
-        out.append(label)
+        out.append(_label(label, run[gs[i].start : gs[j - 1].end]))
         pos = gs[j - 1].end
     out.append(run[pos:])
     return "".join(out)
@@ -327,7 +352,7 @@ def _wide_cards(m: re.Match[str], merge: bool = True) -> str:
         i = found + 1 if found is not None and not merge else i + 1
     out, pos = [], 0
     for a, b in spans:
-        out += [run[pos:a], CARD_LABEL]
+        out += [run[pos:a], _label(CARD_LABEL, run[a:b])]
         pos = b
     out.append(run[pos:])
     return "".join(out)
@@ -337,13 +362,15 @@ def _glued_card(m: re.Match[str]) -> str:
     d = m.group(0)
     escaped = m.string[m.start() - 1 : m.start()] == "%"  # "pay%404111...": "40" is the escape's
     card = (len(d) <= 19 and luhn_ok(d)) or (escaped and 13 <= len(d) - 2 <= 19 and luhn_ok(d[2:]))
-    return CARD_LABEL if card else d
+    return _label(CARD_LABEL, d) if card else d
 
 
 def _once(text: str) -> str:
-    text = EMAIL.sub("[REDACTED_EMAIL]", text)
-    text = SSN.sub("[REDACTED_SSN]", text)
+    text = EMAIL.sub(lambda m: _label("[REDACTED_EMAIL]", m.group(0)), text)
+    text = SSN.sub(lambda m: _label("[REDACTED_SSN]", m.group(0)), text)
     kept: list[str] = []
+    replaced = _REPLACED.get()
+    first = len(replaced) if replaced is not None else 0
 
     def _hold(m: re.Match[str]) -> str:
         kept.append(m.group(0))
@@ -360,7 +387,10 @@ def _once(text: str) -> str:
     for pattern in (DATE_TIME, IPV4):  # identifiers that contain digits but are not PII
         text = pattern.sub(_hold, text)
     text = LONG_DIGITS.sub(
-        lambda m: CARD_LABEL if any(map(luhn_ok, _digit_windows(m.group(0)))) else m.group(0), text
+        lambda m: (
+            _label(CARD_LABEL, m.group(0)) if any(map(luhn_ok, _digit_windows(m.group(0)))) else m.group(0)
+        ),
+        text,
     )
     text = GLUED_CARD.sub(_glued_card, text)
     # The run pass and the wide card pass in both orders (the wide pass merging every card window, or taking
@@ -371,8 +401,14 @@ def _once(text: str) -> str:
     wide_first = RUN.sub(_redact_run, WIDE_RUN.sub(_wide_cards, text))
     shortest_first = RUN.sub(_redact_run, WIDE_RUN.sub(lambda m: _wide_cards(m, merge=False), text))
     text = min((narrow_first, wide_first, shortest_first), key=_digits_left)
-    text = EXTENSION.sub(PHONE_LABEL, text)
-    return re.sub(r"\x00(\d+)\x00", lambda m: kept[int(m.group(1))], text)
+    text = EXTENSION.sub(lambda m: _label(PHONE_LABEL, m.group(0)), text)
+
+    def restore(t: str) -> str:
+        return re.sub(r"\x00(\d+)\x00", lambda m: kept[int(m.group(1))], t)
+
+    if replaced is not None:  # the replaced texts recorded in this call may hold placeholders too
+        replaced[first:] = [restore(t) for t in replaced[first:]]
+    return restore(text)
 
 
 def _digits_left(text: str) -> int:
@@ -397,36 +433,229 @@ def _fixpoint(text: str) -> str:
     return out
 
 
-# What a percent escape or an HTML entity may decode to: digits, spaces and punctuation that only separates.
-# Letters, quotes, brackets, "<", ">", backticks, backslashes, "%", "&" and control characters stay encoded, so
-# decoding cannot change what a prompt says or close its facts fence (M6 review round 6).
-SAFE_DECODED = frozenset("0123456789 @-./,:;|*+_~#!?=^$")
-ESCAPE = re.compile(r"%([0-9A-Fa-f]{2})|&(#[0-9]{1,7};|#[xX][0-9A-Fa-f]{1,6};|[A-Za-z][A-Za-z0-9]{1,31};)")
+# Escapes are decoded into digits, "@" and these separators; any other character that is not a letter or digit
+# (spaces, controls, quotes, brackets, "<", ">", backticks, backslashes, "%", "&") becomes a space and a letter
+# keeps its escape, so decoding cannot change what a prompt says or close its facts fence (rounds 6 and 7).
+SAFE_DECODED = frozenset("0123456789@-./,:;|*+_~#!?=^$")
+_PERCENT = r"%[0-9A-Fa-f]{2}"
+_ENTITY = r"&(?:#[0-9]{1,7}|#[xX][0-9A-Fa-f]{1,6}|[A-Za-z][A-Za-z0-9]{1,31});"
+ESCAPE_RUN = re.compile(rf"(?:{_PERCENT}|{_ENTITY})+")
+_UNIT = re.compile(rf"(?P<pct>(?:{_PERCENT})+)|(?P<ent>{_ENTITY})")
 
 
-def _decode_safe(m: re.Match[str]) -> str:
-    if m.group(1) is not None:
-        ch = chr(int(m.group(1), 16))
-    else:
-        ch = unicodedata.normalize("NFKC", html.unescape("&" + m.group(2)))  # "&nbsp;" is a space
-    return ch if ch in SAFE_DECODED else m.group(0)
+def _fold(raw: str) -> str | None:
+    """What a decoded character becomes: digits and SAFE_DECODED as they are (after the folding normalise
+    applies), format characters nothing, a letter None (it keeps its escape), anything else a space."""
+    out = []
+    for ch in normalise(raw).translate(EXOTIC_SPACE):
+        if ch in SAFE_DECODED or ch.isdecimal():  # digits of any script are digits to the redactor too
+            out.append(ch)
+        elif ch.isalnum():
+            return None
+        else:
+            out.append(" ")
+    return "".join(out)
+
+
+def _units(run: str) -> list[tuple[int, int, str | None]]:
+    """The escapes of a run as (start, end, decoded): a percent run as UTF-8 characters (an invalid byte on its
+    own), an entity as html.unescape reads it (None when it names nothing)."""
+    out: list[tuple[int, int, str | None]] = []
+    for m in _UNIT.finditer(run):
+        if m.group("ent"):
+            text = html.unescape(m.group(0))
+            out.append((m.start(), m.end(), None if text == m.group(0) else text))
+            continue
+        data = bytes(int(m.group(0)[k + 1 : k + 3], 16) for k in range(0, len(m.group(0)), 3))
+        k = 0
+        while k < len(data):
+            n = 1 if data[k] < 0x80 else 2 if data[k] >> 5 == 6 else 3 if data[k] >> 4 == 14 else 4
+            try:
+                ch: str | None = data[k : k + n].decode("utf-8")
+            except UnicodeDecodeError:
+                ch, n = None, 1
+            out.append((m.start() + 3 * k, m.start() + 3 * (k + n), ch))
+            k += n
+    return out
+
+
+def _decode_once(text: str) -> tuple[str, list[tuple[int, int]]]:
+    """text with its escapes decoded once, and for each character of the result its span in text. Spaces that
+    decoding produces next to each other become one."""
+    out: list[str] = []
+    spans: list[tuple[int, int]] = []
+    pos = 0
+    for m in ESCAPE_RUN.finditer(text):
+        for i in range(pos, m.start()):
+            out.append(text[i])
+            spans.append((i, i + 1))
+        for ua, ub, raw in _units(m.group(0)):
+            a, b = ua + m.start(), ub + m.start()
+            folded = _fold(raw) if raw is not None else None
+            if folded is None:
+                for i in range(a, b):
+                    out.append(text[i])
+                    spans.append((i, i + 1))
+                continue
+            for ch in folded:
+                if ch == " " and out and out[-1] == " " and spans[-1][1] >= m.start():
+                    spans[-1] = (spans[-1][0], b)  # collapse decoded spaces, "%0D%0A" is one separator
+                    continue
+                out.append(ch)
+                spans.append((a, b))
+        pos = m.end()
+    for i in range(pos, len(text)):
+        out.append(text[i])
+        spans.append((i, i + 1))
+    return "".join(out), spans
+
+
+def _decode(text: str) -> tuple[str, list[tuple[int, int]]]:
+    """Escapes decoded to a fixpoint ("&amp;#52;" is decoded once per level), with each result character's
+    span in text. Each round makes the text shorter or leaves it as it is, so this ends."""
+    spans = [(i, i + 1) for i in range(len(text))]
+    while True:
+        nxt, local = _decode_once(text)
+        if nxt == text:
+            return text, spans
+        spans = [(spans[a][0], spans[b - 1][1]) if b > a else (spans[a][0], spans[a][0]) for a, b in local]
+        text = nxt
 
 
 def decode_escapes(text: str) -> str:
-    return ESCAPE.sub(_decode_safe, text)
+    return _decode(text)[0]
+
+
+_LABELLED = re.compile(r"(\[REDACTED_[A-Z]+\])(" + MARK + ")")
+
+
+def _expand(text: str, replaced: list[str]) -> tuple[str, list[tuple[int, int, str]]]:
+    """The text a redaction started from, rebuilt from its labels, and each top-level label's span in it."""
+    out: list[str] = []
+    spans: list[tuple[int, int, str]] = []
+    size = 0
+    pos = 0
+
+    def full(t: str, depth: int) -> str:
+        if depth > 64:
+            raise ValueError("labels nested too deep")
+        return _LABELLED.sub(lambda m: full(replaced[ord(m.group(2)) - 0xF0000], depth + 1), t)
+
+    for m in _LABELLED.finditer(text):
+        out.append(text[pos : m.start()])
+        size += m.start() - pos
+        original = full(replaced[ord(m.group(2)) - 0xF0000], 0)
+        spans.append((size, size + len(original), m.group(1)))
+        out.append(original)
+        size += len(original)
+        pos = m.end()
+    out.append(text[pos:])
+    return "".join(out), spans
+
+
+def _redaction_spans(text: str) -> list[tuple[int, int, str]] | None:
+    """The spans of text that _fixpoint redacts, with their labels; None if they cannot be recovered."""
+    replaced: list[str] = []
+    token = _REPLACED.set(replaced)
+    try:
+        out = _fixpoint(text)
+    finally:
+        _REPLACED.reset(token)
+    try:
+        rebuilt, spans = _expand(out, replaced)
+    except (ValueError, IndexError):
+        return None
+    return spans if rebuilt == text else None
+
+
+_LABEL_RANK = {"[REDACTED_CARD]": 0, "[REDACTED_SSN]": 1, "[REDACTED_PHONE]": 2, "[REDACTED_EMAIL]": 3}
 
 
 def redact_text(text: str) -> str:
-    """Two candidates, keeping the one that leaves fewer digits: redact as written, then decode what is left and
-    redact again; or decode, then redact. "%40" is ambiguous: an "@" in "pay%404111..." but a separator before
-    the card group "4046" in "...~%4046...", so neither order alone is safe (rounds 5 and 6)."""
+    """See _redact. Short texts are cached: each fact value is redacted by build_facts, the redact step and the
+    gateway in turn, and the later passes usually see the same string (redaction is a pure function)."""
+    return _redact_short(text) if len(text) <= _CACHED_CHARS else _redact(text)
+
+
+_CACHED_CHARS = 512
+
+
+@functools.lru_cache(maxsize=8192)
+def _redact_short(text: str) -> str:
+    return _redact(text)
+
+
+def _redact(text: str) -> str:
+    """Redact what the text says as written or as decoded: both readings are redacted, their spans mapped onto
+    the text as written and merged, and the rest decoded. "%40" is an "@" in "pay%404111..." but may also be a
+    separator before the card group "4046" in "...~%4046...", so neither reading alone is safe, and choosing
+    between their results let one reading's find go unredacted (rounds 5 to 7)."""
     plain = normalise(text)
-    first = _fixpoint(decode_escapes(_fixpoint(plain)))
-    decoded = decode_escapes(plain)
-    if decoded == plain:
-        return first
-    return min((first, _fixpoint(decoded)), key=_digits_left)
+    decoded, origin = _decode(plain)
+    spans = _redaction_spans(plain)
+    decoded_spans = _redaction_spans(decoded) if decoded != plain else []
+    if spans is None or decoded_spans is None:  # not expected; fall back to redacting the decoded text
+        return _fixpoint(decoded)
+    for a, b, label in decoded_spans:
+        spans.append((origin[a][0], origin[b - 1][1], label))
+    merged: list[list[Any]] = []
+    for a, b, label in sorted(spans):
+        if merged and a < merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], b)
+            merged[-1][2] = min(merged[-1][2], label, key=_LABEL_RANK.__getitem__)
+        else:
+            merged.append([a, b, label])
+    out, pos = [], 0
+    for a, b, label in merged:
+        out += [_decode(plain[pos:a])[0], label]
+        pos = b
+    out.append(_decode(plain[pos:])[0])
+    return "".join(out)
 
 
 def contains_pii(text: str) -> bool:
     return redact_text(text) != decode_escapes(normalise(text))
+
+
+# A fenced JSON block of a prompt (facts.render, judge.judge_message): its values are redacted one by one and
+# the block written again, so the gateway never redacts JSON syntax ("\u0060" for a backtick) as text (round 7).
+_BLOCK = re.compile(r"(<(?P<tag>[a-z_]+)>\s*```json\s*)(?P<body>\{.*?\})(\s*```\s*</(?P=tag)>)", re.DOTALL)
+
+
+def _redact_json(value: Any) -> Any:
+    if isinstance(value, str):
+        return redact_text(value)
+    if isinstance(value, list):
+        return [_redact_json(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _redact_json(v) for k, v in value.items()}
+    return value
+
+
+def redact_prompt(text: str) -> str:
+    """redact_text for a prompt: each fenced JSON block value by value, written again as facts.render writes
+    it, and the text around the blocks as text."""
+    out, pos = [], 0
+    for m in _BLOCK.finditer(text):
+        out.append(redact_text(text[pos : m.start()]))
+        try:
+            data = json.loads(m.group("body"))
+        except json.JSONDecodeError:
+            out.append(redact_text(m.group(0)))
+        else:
+            body = json.dumps(_redact_json(data), indent=1, ensure_ascii=False)
+            body = body.replace("<", "\\u003c").replace(">", "\\u003e").replace("`", "\\u0060")
+            out.append(m.group(1) + body + m.group(4))
+        pos = m.end()
+    out.append(redact_text(text[pos:]))
+    return "".join(out)
+
+
+# One long-lived pool for redaction: off the event loop the console and the consumer share (security audit
+# round 7), and not the loop's default executor, which asyncio.run creates and shuts down on every run.
+_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="redact")
+
+
+async def off_loop[T](fn: Callable[[], T]) -> T:
+    """Run CPU-bound redaction in the redaction pool and await its result."""
+    return await asyncio.get_running_loop().run_in_executor(_POOL, fn)

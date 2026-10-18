@@ -7,6 +7,7 @@ import getpass
 import json
 import math
 import os
+import stat
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -51,7 +52,7 @@ def check_database_dsn(dsn: str) -> None:
     service = params.get("service") or os.environ.get("PGSERVICE")
     if service:
         params = _service_params(service) | params  # the DSN's own parameters win
-    user = params.get("user") or os.environ.get("PGUSER") or getpass.getuser()
+    user = params.get("user") or os.environ.get("PGUSER") or _effective_user()
     # A password option that is present, even empty, hides PGPASSWORD; an empty one falls to the passfile (round 6).
     password = params["password"] if "password" in params else os.environ.get("PGPASSWORD", "")
     # libpq tries every host in turn, each with its own passfile entry when no password is set (round 5). A
@@ -72,6 +73,16 @@ def check_database_dsn(dsn: str) -> None:
 
 
 LIBPQ_SPACE = " \t\r\v\f"  # what C's isspace() strips, not every Unicode line break as str.strip() does
+
+
+def _effective_user() -> str:
+    """The user libpq defaults to: the effective uid's name, not $USER or $LOGNAME (round 7)."""
+    try:
+        import pwd
+
+        return pwd.getpwuid(os.geteuid()).pw_name
+    except (ImportError, KeyError, AttributeError):
+        return getpass.getuser()
 
 
 def _service_params(service: str) -> dict[str, str]:
@@ -95,7 +106,7 @@ def _service_params(service: str) -> dict[str, str]:
             if line.startswith("["):
                 if found is not None:
                     break  # the next section ends ours
-                found = {} if line == f"[{service}]" else None
+                found = {} if line.startswith(f"[{service}]") else None  # libpq compares up to "]"
                 continue
             if found is None:
                 continue  # libpq reads only the lines of the section it looks for
@@ -108,20 +119,33 @@ def _service_params(service: str) -> dict[str, str]:
     raise ValueError(f"database DSN: service {service!r} not found")
 
 
-def _passfile_fields(line: str) -> list[str]:
-    fields: list[str] = []
-    cur, escaped = "", False
+def _passfile_fields(line: str) -> list[tuple[str, bool]]:
+    """A passfile line as libpq reads it: (value, is a bare "*" wildcard) per field. Fields end at an unescaped
+    ":" and the password at the next one (round 7: "pw:old" is "pw" to libpq); an escaped "\\*" is a literal."""
+    fields: list[tuple[str, bool]] = []
+    cur, raw, escaped = "", "", False
     for ch in line:
         if escaped:
-            cur, escaped = cur + ch, False
+            cur, raw, escaped = cur + ch, raw + "\\" + ch, False
         elif ch == "\\":
             escaped = True
-        elif ch == ":" and len(fields) < 4:
-            fields.append(cur)
-            cur = ""
+        elif ch == ":":
+            fields.append((cur, raw == "*"))
+            if len(fields) == 5:
+                return fields
+            cur, raw = "", ""
         else:
-            cur += ch
-    return [*fields, cur]
+            cur, raw = cur + ch, raw + ch
+    return [*fields, (cur, raw == "*")]
+
+
+def _passfile_readable(path: Path) -> bool:
+    """libpq ignores a passfile that is not a regular file or that its group or others can read (round 7)."""
+    try:
+        st = path.stat()
+    except OSError:
+        return False
+    return stat.S_ISREG(st.st_mode) and not st.st_mode & 0o077
 
 
 def _passfile_passwords(params: dict[str, str], user: str) -> list[list[str]]:
@@ -130,7 +154,7 @@ def _passfile_passwords(params: dict[str, str], user: str) -> list[list[str]]:
     compiled default directory and as the path otherwise (round 6: both count, failing closed)."""
     path = Path(params.get("passfile") or os.environ.get("PGPASSFILE") or Path.home() / ".pgpass")
     try:
-        lines = path.read_bytes().decode(errors="replace").split("\n")  # no universal newlines
+        lines = path.read_bytes().decode(errors="replace").split("\n") if _passfile_readable(path) else []
     except OSError:
         lines = []
     entries = [
@@ -155,7 +179,12 @@ def _passfile_passwords(params: dict[str, str], user: str) -> list[list[str]]:
     def lookup(host: str, port: str) -> str:
         want = (host, port, dbname, user)
         return next(
-            (f[4] for f in entries if all(x in ("*", w) for x, w in zip(f[:4], want, strict=True))), ""
+            (
+                f[4][0]
+                for f in entries
+                if all(star or x == w for (x, star), w in zip(f[:4], want, strict=True))
+            ),
+            "",
         )
 
     out = []

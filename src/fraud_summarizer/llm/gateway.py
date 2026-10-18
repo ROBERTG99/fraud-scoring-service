@@ -23,7 +23,7 @@ from fraud_summarizer.llm.budget import DailyBudget
 from fraud_summarizer.llm.routes import RouteConfig
 from fraud_summarizer.llm.types import Provider, ProviderError, ProviderRequest, ProviderResponse, Usage
 from fraud_summarizer.metrics import LLM_CALLS, LLM_COST
-from fraud_summarizer.redact import redact_text
+from fraud_summarizer.redact import off_loop, redact_prompt
 from fraud_summarizer.schemas import provider_schema
 
 tracer = trace.get_tracer("fraud_summarizer.llm")
@@ -106,7 +106,9 @@ class LLMGateway:
         route = self.config.routes[route_name]
         chain = [route.provider] + ([route.fallback_provider] if route.fallback_provider else [])
         attempts: list[Attempt] = []
-        safe_system, safe_user = redact_text(system), redact_text(user)
+        # Fenced JSON is redacted value by value, so its syntax is never redacted as text; the work runs off the
+        # event loop, which the console and the consumer share (security audit round 7).
+        safe_system, safe_user = await off_loop(lambda: (redact_prompt(system), redact_prompt(user)))
         start = time.perf_counter()
         with tracer.start_as_current_span(f"llm.{route_name}") as span:
             span.set_attribute("gen_ai.operation.name", "chat")

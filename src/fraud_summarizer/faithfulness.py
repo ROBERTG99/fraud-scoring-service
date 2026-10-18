@@ -35,11 +35,11 @@ _CLEARING_WORDS = (
     r"|verified (?:partner|merchant|customer|account|seller)"
 )
 # Words are delimited by anything but a letter or digit ("_approve_" too), and the words of a phrase may be
-# joined by up to five characters that are not letters or digits, or by none ("false-positive", "false_alarm",
-# "false.positive", "not\u2010fraud", "falsealarm" once a zero-width space is removed; security audit rounds 5
-# and 6).
+# joined by any run of characters that are not letters or digits, or by none ("false-positive", "false_alarm",
+# "false.......positive", "not\u2010fraud", "falsealarm" once a zero-width space is removed; rounds 5 to 7).
+# The run is possessive, so it cannot backtrack; statements and checks are at most a few hundred characters.
 CLEARING = re.compile(
-    r"(?<![^\W_])(?:" + _CLEARING_WORDS.replace(" ", r"[\W_]{0,5}") + r")(?![^\W_])", re.IGNORECASE
+    r"(?<![^\W_])(?:" + _CLEARING_WORDS.replace(" ", r"[\W_]*+") + r")(?![^\W_])", re.IGNORECASE
 )
 
 
@@ -124,10 +124,19 @@ def _blank(text: str, spans: list[tuple[int, int]]) -> str:
     return "".join(out)
 
 
+# Hangul fillers render as nothing but are letters to the regex engine (security audit round 7).
+_HANGUL_FILLERS = frozenset("\u115f\u1160\u3164\uffa0")
+
+
 def _screenable(text: str) -> str:
-    """NFKC with format characters (zero-width spaces, bidi marks) removed, so they cannot split a word."""
+    """NFKC with format characters (zero-width spaces, bidi marks), combining marks that stand alone after NFKC
+    and Hangul fillers removed, so none of them can split a word."""
     text = unicodedata.normalize("NFKC", text)
-    return "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
+    return "".join(
+        ch
+        for ch in text
+        if unicodedata.category(ch) not in ("Cf", "Mn", "Me", "Mc") and ch not in _HANGUL_FILLERS
+    )
 
 
 def screen_checks(checks: list[str]) -> list[str]:

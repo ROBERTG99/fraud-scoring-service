@@ -173,8 +173,9 @@ quote drops it. The console should show quoted merchant names as data (they are 
 ## Redaction gaps that remain
 
 Card digits are found in groups joined by up to 8 characters that are not letters or digits, by percent
-escapes and by HTML entities (D-064 to D-066); an escape or entity is decoded only into a digit, a space, "@"
-or plain punctuation. Out of scope: separators of 9 or more characters, separators
+escapes and by HTML entities (D-064 to D-067): escapes are decoded to a fixpoint and folded as plain text is
+(dashes, NFKC, format characters removed); a decoded letter keeps its escape, and any other decoded character
+that is not a digit, "@" or plain punctuation becomes a space. Out of scope: separators of 9 or more characters, separators
 that contain letters or digits other than those escapes, card layouts other than the common shapes and equal
 groups, a card written as an IPv4 address or inside a UUID (held as identifiers), a card split by an email or
 a date, and a phone glued to the extension of the item before it (`x12415-555-2671`). Only merchant names

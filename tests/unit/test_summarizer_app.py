@@ -6,6 +6,7 @@ import asyncio
 import base64
 import json
 import logging
+import os
 import time
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
@@ -443,14 +444,18 @@ def test_the_dsn_check_reads_passfiles_services_and_certificates_as_libpq(
 
     for content in ("", "# only a comment\n", "otherhost:5432:fraud:fraud_summarizer:real\n"):
         passfile.write_text(content)
+        passfile.chmod(0o600)  # libpq ignores a passfile others can read
         refused(f"{url}?passfile={passfile}")  # no entry for this connection: no password
     passfile.write_text("db:5432:fraud:fraud_summarizer:fraud_summarizer\n")
+    passfile.chmod(0o600)  # libpq ignores a passfile others can read
     refused(f"{url}?passfile={passfile}")
     monkeypatch.setenv("PGPASSFILE", str(passfile))
     refused(url)
     passfile.write_text("*:*:*:fraud_summarizer:fraud_summarizer\n")
+    passfile.chmod(0o600)  # libpq ignores a passfile others can read
     refused(url)
     passfile.write_text("db\\:x:*:*:*:wrong\n*:5432:fraud:fraud_summarizer:from\\:a-secret\n")
+    passfile.chmod(0o600)  # libpq ignores a passfile others can read
     check_database_dsn(url)
     monkeypatch.setenv("PGPASSFILE", str(tmp_path / "none"))
     refused(f"{url}?passfile=/etc/hostname")
@@ -517,6 +522,7 @@ def test_the_dsn_check_parses_service_files_and_hosts_as_libpq(
     )
     refused("host=a,b dbname=fraud user=fraud_summarizer")  # libpq tries b with the development password
     passfile.write_text("a:5432:fraud:fraud_summarizer:strong\nb:5432:fraud:fraud_summarizer:other\n")
+    passfile.chmod(0o600)  # libpq ignores a passfile others can read
     check_database_dsn("host=a,b dbname=fraud user=fraud_summarizer")
     passfile.write_text(
         "localhost:5432:fraud:fraud_summarizer:strong\n/var/run/custom:5432:fraud:fraud_summarizer:fraud_summarizer\n"
@@ -561,16 +567,77 @@ def test_the_dsn_check_follows_libpq_on_duplicates_line_ends_and_host_keys(
     passfile = tmp_path / "pgpass"
     monkeypatch.setenv("PGPASSFILE", str(passfile))
     passfile.write_text(f"#old\r*:*:*:fraud_summarizer:strong\n*:*:*:{dev}\n")
+    passfile.chmod(0o600)  # libpq ignores a passfile others can read
     refused("host=db dbname=fraud user=fraud_summarizer")
     passfile.write_text(f"*:*:*:{dev}\n")
+    passfile.chmod(0o600)  # libpq ignores a passfile others can read
     monkeypatch.setenv("PGPASSWORD", "strong")
     refused("host=db dbname=fraud user=fraud_summarizer password=")  # libpq ignores PGPASSWORD here
     check_database_dsn("host=db dbname=fraud user=fraud_summarizer")  # PGPASSWORD wins over the passfile
     monkeypatch.delenv("PGPASSWORD")
     passfile.write_text(f"localhost:5432:fraud:fraud_summarizer:strong\n10.0.0.5:5432:fraud:{dev}\n")
+    passfile.chmod(0o600)  # libpq ignores a passfile others can read
     refused("hostaddr=10.0.0.5 dbname=fraud user=fraud_summarizer")
     passfile.write_text(f"localhost:5432:fraud:fraud_summarizer:strong\n/tmp:5432:fraud:{dev}\n")
+    passfile.chmod(0o600)  # libpq ignores a passfile others can read
     refused("host=/tmp dbname=fraud user=fraud_summarizer")
+
+
+def test_the_dsn_check_reads_passfiles_and_headers_as_libpq(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Security audit round 7, checked against libpq: the password ends at the first unescaped ":", an escaped
+    "\\*" is a literal, a group- or world-readable passfile is ignored, a header matches up to "]", and the
+    default user is the effective uid's."""
+    import pwd
+
+    from fraud_summarizer.auth import check_database_dsn
+
+    for var in (
+        "FRAUD_ENV",
+        "PGPASSWORD",
+        "PGUSER",
+        "PGHOST",
+        "PGHOSTADDR",
+        "PGPORT",
+        "PGDATABASE",
+        "PGSERVICE",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    passfile = tmp_path / "pgpass"
+    monkeypatch.setenv("PGPASSFILE", str(passfile))
+    url = "host=db dbname=fraud user=fraud_summarizer"
+
+    def refused(dsn: str) -> None:
+        with pytest.raises(ValueError, match="database DSN"):
+            check_database_dsn(dsn)
+
+    def write(text: str, mode: int = 0o600) -> None:
+        passfile.write_text(text)
+        passfile.chmod(mode)
+
+    write("*:*:*:fraud_summarizer:fraud_summarizer:old\n")
+    refused(url)  # libpq's password is "fraud_summarizer"
+    write("\\*:*:*:fraud_summarizer:Str0ng\n*:*:*:fraud_summarizer:fraud_summarizer\n")
+    refused(url)  # "\\*" matches only a host named "*"
+    write("*:*:*:fraud_summarizer:Str0ng\n", 0o644)
+    refused(url)  # libpq ignores the file and sends no password
+    write("*:*:*:fraud_summarizer:Str0ng\n")
+    check_database_dsn(url)
+
+    services = tmp_path / "pg_service.conf"
+    monkeypatch.setenv("PGSERVICEFILE", str(services))
+    monkeypatch.setenv("PGPASSFILE", str(tmp_path / "none"))
+    services.write_text(
+        "[prod] # old\nuser=fraud_summarizer\npassword=fraud_summarizer\n[prod]\npassword=Str0ng\n"
+    )
+    refused("service=prod dbname=fraud")
+
+    me = pwd.getpwuid(os.geteuid()).pw_name
+    monkeypatch.setenv("USER", "alice")
+    monkeypatch.setenv("LOGNAME", "alice")
+    refused(f"host=db dbname=fraud password={me}")  # libpq connects as the effective user, not $USER
 
 
 def test_public_readyz_names_no_cause(

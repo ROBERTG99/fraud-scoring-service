@@ -350,6 +350,17 @@ def test_a_word_value_still_verifies() -> None:
         "false~alarm",
         "not\u2010fraud",
         "let it - through",
+        # Review and security audit round 7: joins of six or more characters, combining marks, Hangul fillers.
+        "not a - - - fraud",
+        "false - - - positive",
+        "close - - - - the case",
+        "false_-_-_-_positive",
+        "false.......positive",
+        "false      positive",
+        "not\n\n\n\n\n\nfraud",
+        "not\u3000\u3000\u3000\u3000\u3000\u3000fraud",
+        "not \u034f fraud",
+        "false\u115fpositive",
     ],
 )
 def test_clearing_words_joined_by_hyphens_or_underscores_are_dropped(clearing: str) -> None:

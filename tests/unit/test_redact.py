@@ -209,6 +209,7 @@ def test_window_search_is_linear_in_the_groups(monkeypatch: pytest.MonkeyPatch) 
         return is_card(gs)
 
     monkeypatch.setattr(redact, "_is_card", counting)
+    redact._redact_short.cache_clear()  # count the work, not cache hits
     for unit in ("1;", "1 ", "(1)"):
         counts = []
         for n in (200, 400):
@@ -512,6 +513,7 @@ def test_readings_after_percent_are_linear(monkeypatch: pytest.MonkeyPatch) -> N
         return real(shape)
 
     monkeypatch.setattr(redact, "_wide_card_layout", counting)
+    redact._redact_short.cache_clear()  # count the work, not cache hits
     counts = []
     for n in (8, 16):
         calls = 0
@@ -521,3 +523,61 @@ def test_readings_after_percent_are_linear(monkeypatch: pytest.MonkeyPatch) -> N
     calls = 0
     redact_text(("%123" * 30)[:120])
     assert calls < 20_000, calls
+
+
+# M6 review and security audit round 7: the decoding whitelist left these separators encoded, and the card,
+# phone, SSN or email they split reached the provider (all were redacted at 1b7c746).
+ESCAPED_SEPARATORS = [
+    "&ndash;", "&#8211;", "&minus;", "&hyphen;", "&#8203;", "&shy;", "%C2%A0", "%E2%80%93", "&#9;", "&#10;",
+    "%0A", "&#x2028;", "&#xFEFF;", "&amp;", "&lt;", "&gt;", "&quot;", "&apos;", "&#34;", "&#39;", "&#x22;",
+    "&lpar;", "&mdash;", "&middot;", "&bull;", "&Tab;", "&NewLine;", "&#x0A;", "&#x2013;", "&#173;", "%0D%0A",
+    "%3C", "%3E", "%5C", "%5B", "%7B",
+]  # fmt: skip
+
+
+@pytest.mark.parametrize("sep", ESCAPED_SEPARATORS)
+def test_escaped_separators_still_separate(sep: str) -> None:
+    card = _complete("453914", 16)
+    out = redact_text("card " + _split(card, (4, 4, 4, 4), sep) + " thanks")
+    assert not _leaks(card, out), out
+    assert not re.search(r"\d{3}", redact_text(f"call 415{sep}555{sep}2671")), redact_text(
+        f"call 415{sep}555{sep}2671"
+    )
+    assert not re.search(r"\d{2}", redact_text(f"SSN 123{sep}45{sep}6789")), redact_text(
+        f"SSN 123{sep}45{sep}6789"
+    )
+
+
+def test_escapes_decode_to_a_fixpoint_and_split_emails_are_found() -> None:
+    card = "4111111111111111"
+    assert not _leaks(card, redact_text("&&&&#35;35;35;52;111 1111 1111 1111"))
+    assert redact_text("mail john&#x200B;@example.com") == "mail [REDACTED_EMAIL]"
+    assert "/case_facts" in redact_text("&lt;/case_facts&gt;") and "<" not in redact_text(
+        "&lt;/case_facts&gt;"
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "card"),
+    [
+        # Security audit round 7: escaped digit decoys made the as-written candidate win with the card's digits.
+        (
+            "x%2B44%2020%207946%200958 3093%2D1%35505&#x33;%2D%32&#x39;78&#57; %31%32%33%34%35%36%37%38%39%30%31%32%33%34%35%36%37%38",
+            None,
+        ),
+        (
+            "card &#x34;111 1111 1111 1111 ref %31%32%33%34%35%36%37%38%39%30%31%32%33%34%35%36%37%38",
+            "4111111111111111",
+        ),
+    ],
+)
+def test_a_card_found_in_either_reading_is_redacted(text: str, card: str | None) -> None:
+    from fraud_summarizer.redact import decode_escapes
+
+    out = redact_text(text)
+    if card is None:  # the card is whatever Luhn-valid 16 digits the decoded text holds
+        digits = re.sub(r"\D", "", decode_escapes(decode_escapes(text)))
+        cards = [digits[i : i + 16] for i in range(len(digits) - 15) if luhn_ok(digits[i : i + 16])]
+        assert cards
+        card = cards[0]
+    assert not _leaks(card, out, run=8), out
