@@ -446,4 +446,15 @@ func TestGRPCHealthNeedsNoToken(t *testing.T) {
 	if err != nil || resp.Status != healthpb.HealthCheckResponse_SERVING {
 		t.Fatalf("health: %v %v", resp, err)
 	}
+	// Only Check is open: Watch holds a stream and List enumerates services (security audit round 2, N7).
+	w, err := healthpb.NewHealthClient(conn).Watch(ctx, &healthpb.HealthCheckRequest{})
+	if err == nil {
+		_, err = w.Recv()
+	}
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("anonymous Watch: %v, want Unauthenticated", err)
+	}
+	if _, err := healthpb.NewHealthClient(conn).List(ctx, &healthpb.HealthListRequest{}); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("anonymous List: %v, want Unauthenticated", err)
+	}
 }

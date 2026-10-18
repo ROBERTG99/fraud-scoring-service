@@ -71,7 +71,11 @@ func auditVerify(anchor bool) int {
 	if err != nil {
 		return fail(2, err)
 	}
-	pool, err := openPool(ctx, envOr("FRAUD_PG_DSN", "postgres://fraud_app:fraud_app@127.0.0.1:8520/fraud?sslmode=disable"), 2)
+	dsn := envOr("FRAUD_PG_DSN", "postgres://fraud_app:fraud_app@127.0.0.1:8520/fraud?sslmode=disable")
+	if err := auth.CheckDatabaseDSN(dsn); err != nil {
+		return fail(2, err)
+	}
+	pool, err := openPool(ctx, dsn, 2)
 	if err != nil {
 		return fail(2, err)
 	}

@@ -6,7 +6,8 @@ Load order per alias (spec §4.7, MLflow row):
 3. FRAUD_MODEL_DIR (a local `make train` output; used for both aliases),
 otherwise the alias is not ready and /readyz fails.
 
-Every source is checked against the SHA-256 recorded for it before an InferenceSession is built (audit M6 M6):
+Every source is checked against the SHA-256 recorded for it before an InferenceSession is built (audit M6 M6),
+and a model with no recorded digest at all is refused (round 2, D-059):
 `FRAUD_MODEL_SHA256_<ALIAS>` when the deployment pins one, the registry's `onnx_sha256` version tag for an
 MLflow download (required), and the `onnx_sha256` that training wrote into model_meta.json.
 """
@@ -67,6 +68,10 @@ def _check_digest(alias: str, model_dir: Path, model: bytes, source: str) -> Non
     }
     if source == "mlflow" and not expected["registry tag onnx_sha256"]:
         raise ModelNotReadyError("registry version has no onnx_sha256 tag; refusing an unverifiable model")
+    if not any(expected.values()):  # every source needs one: deleting model_meta.json must not skip the check
+        raise ModelNotReadyError(
+            "no recorded sha256 for model.onnx (pin one or keep model_meta.json); refusing it"
+        )
     for where, want in expected.items():
         if want and want.lower() != digest:
             raise ModelNotReadyError(f"model.onnx sha256 {digest[:12]} does not match {where} {want[:12]}")

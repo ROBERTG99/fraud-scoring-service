@@ -21,6 +21,7 @@ from pydantic import ValidationError
 
 from fraud_summarizer import facts as factfmt
 from fraud_summarizer.faithfulness import check as check_faithfulness
+from fraud_summarizer.faithfulness import screen_checks
 from fraud_summarizer.llm import GatewayExhaustedError, LLMGateway, LLMResult
 from fraud_summarizer.paths import repo_root
 from fraud_summarizer.redact import redact_text
@@ -369,7 +370,7 @@ class SummaryPipeline:
         stored = StoredSummary(
             pattern=output.pattern,
             evidence=kept,
-            recommended_checks=output.recommended_checks,
+            recommended_checks=screen_checks(output.recommended_checks),
             confidence=output.confidence,
             model=model_name,
             prompt_version=prompt_version,

@@ -24,7 +24,14 @@ from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Re
 from prometheus_client import start_http_server
 from pydantic import BaseModel, ConfigDict
 
-from fraud_summarizer.auth import InvalidTokenError, Principal, RemoteKeys, Verifier, check_jwks_url
+from fraud_summarizer.auth import (
+    InvalidTokenError,
+    Principal,
+    RemoteKeys,
+    Verifier,
+    check_database_dsn,
+    check_jwks_url,
+)
 from fraud_summarizer.consumer import DecisionHandler, KafkaDecisionConsumer
 from fraud_summarizer.llm import routes
 from fraud_summarizer.llm.factory import build_gateway
@@ -127,6 +134,7 @@ async def _production_services() -> tuple[Services, Callable[[], Awaitable[None]
     dsn = os.environ.get(
         "FRAUD_SUMMARIZER_PG_DSN", "postgresql://fraud_summarizer:fraud_summarizer@127.0.0.1:8520/fraud"
     )
+    check_database_dsn(dsn)
     admin = start_admin_metrics(os.environ.get("FRAUD_SUMMARIZER_ADMIN_ADDR", "127.0.0.1:8517"))
     pool = PostgresRepository.create_pool(dsn)
     await pool.open(wait=False)

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -27,4 +28,22 @@ func CheckJWKSURL(raw string) error {
 	default:
 		return fmt.Errorf("JWKS URL %s: scheme must be https", raw)
 	}
+}
+
+// CheckDatabaseDSN refuses, outside dev mode, a Postgres DSN without a password or with the development
+// password the migrations give every service role (its own name; security audit round 2, N8). The defaults
+// built into the services are such DSNs, so a deployment that forgets FRAUD_PG_DSN fails closed.
+func CheckDatabaseDSN(dsn string) error {
+	if DevMode() {
+		return nil
+	}
+	u, err := url.Parse(dsn)
+	if err != nil || u.User == nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") {
+		return errors.New("database DSN: expected postgres://user:password@host/db")
+	}
+	pw, ok := u.User.Password()
+	if !ok || pw == "" || pw == u.User.Username() {
+		return fmt.Errorf("database DSN for role %s: development credentials are allowed only with FRAUD_ENV=dev", u.User.Username())
+	}
+	return nil
 }

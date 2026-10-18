@@ -381,3 +381,20 @@ async def test_remote_keys_serve_a_known_key_during_a_slow_refresh() -> None:
     await asyncio.wait_for(keys.key("k1"), timeout=1)  # not behind the refresh
     gate.set()
     await refresh
+
+
+def test_dev_database_credentials_only_in_dev(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Round 2 (N8), as internal/auth.CheckDatabaseDSN."""
+    from fraud_summarizer.auth import check_database_dsn
+
+    monkeypatch.delenv("FRAUD_ENV", raising=False)
+    for dsn in (
+        "postgresql://fraud_summarizer:fraud_summarizer@127.0.0.1:8520/fraud",
+        "postgresql://fraud_summarizer@db/fraud",
+        "not a url",
+    ):
+        with pytest.raises(ValueError, match="database DSN"):
+            check_database_dsn(dsn)
+    check_database_dsn("postgresql://fraud_summarizer:from-a-secret@db/fraud?sslmode=verify-full")
+    monkeypatch.setenv("FRAUD_ENV", "dev")
+    check_database_dsn("postgresql://fraud_summarizer:fraud_summarizer@127.0.0.1:8520/fraud")

@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"net"
 	"net/http"
@@ -57,7 +58,9 @@ func startModelServer() (string, *exec.Cmd, error) {
 	cmd := exec.Command("uv", "run", "--frozen", "python", "-m", "bentoml", "serve", "serving.bentoml.service:FraudModel", // #nosec G204 -- fixed command
 		"--host", "127.0.0.1", "--port", fmt.Sprint(port))
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), "FRAUD_MODEL_DIR="+dir, "BENTOML_DO_NOT_TRACK=true", "FRAUD_MODEL_CACHE="+filepath.Join(dir, "cache"), "MLFLOW_TRACKING_URI=")
+	digest := fmt.Sprintf("%x", sha256.Sum256(onnx)) // the server refuses a model with no recorded digest (D-059)
+	cmd.Env = append(os.Environ(), "FRAUD_MODEL_DIR="+dir, "BENTOML_DO_NOT_TRACK=true", "FRAUD_MODEL_CACHE="+filepath.Join(dir, "cache"), "MLFLOW_TRACKING_URI=",
+		"FRAUD_MODEL_SHA256_PRODUCTION="+digest, "FRAUD_MODEL_SHA256_SHADOW="+digest)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		return "", nil, err

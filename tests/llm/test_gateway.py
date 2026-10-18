@@ -435,3 +435,35 @@ def test_the_daily_budget_comes_from_the_environment(monkeypatch: pytest.MonkeyP
         monkeypatch.setenv("FRAUD_LLM_DAILY_BUDGET_USD", bad)
         with pytest.raises(ValueError, match="FRAUD_LLM_DAILY_BUDGET_USD"):
             budget_from_env()
+
+
+def test_an_unpriced_response_model_is_charged_the_highest_price() -> None:
+    """Round 2 (N5): a dated or unknown model id must not cost $0 against the budget."""
+    cfg = load(env={})
+    top_in = max(p[0] for p in cfg.pricing.values())
+    top_out = max(p[1] for p in cfg.pricing.values())
+    assert cfg.cost_usd("some-model-2026-10-01", 1000, 100) == pytest.approx(
+        (1000 * top_in + 100 * top_out) / 1e6
+    )
+
+
+def test_a_route_with_an_unpriced_model_is_refused() -> None:
+    from fraud_summarizer.llm.factory import build_gateway
+
+    with pytest.raises(ValueError, match="pricing"):
+        build_gateway(
+            load(env={"FRAUD_SUMMARY_PROVIDER": "anthropic", "FRAUD_SUMMARY_MODEL": "unpriced-model"})
+        )
+
+
+async def test_a_timed_out_call_is_charged_an_estimate() -> None:
+    """The provider may bill a request we stopped waiting for: charge input length plus max_tokens."""
+    from fraud_summarizer.llm.budget import DailyBudget
+
+    budget = DailyBudget(1.0)
+    p = Scripted([ProviderError("timed out", retryable=False, kind="timeout")])
+    gw = LLMGateway(load(env={"FRAUD_SUMMARY_PROVIDER": "anthropic"}), {"anthropic": p}, budget=budget)
+    with pytest.raises(GatewayExhaustedError) as exc:
+        await run(gw)
+    assert budget.spent_usd > 0.001  # 2,048 output tokens at the route's price, plus the input
+    assert exc.value.attempts[0].cost_usd == pytest.approx(budget.spent_usd)

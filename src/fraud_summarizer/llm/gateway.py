@@ -152,6 +152,14 @@ class LLMGateway:
                         data = self._parse(resp, validate)
                     except ProviderError as exc:
                         err = exc
+                        if exc.kind == "timeout" and cost == 0.0:
+                            # The provider may bill a request we stopped waiting for: charge the prompt
+                            # (about 4 characters per token) and the whole max_tokens (D-059).
+                            tokens = ((len(safe_system) + len(safe_user)) // 4 + 1, route.max_tokens)
+                            cost = self.config.cost_usd(model, *tokens)
+                            LLM_COST.labels(route=route_name, model=model).inc(cost)
+                            if self.budget is not None:
+                                self.budget.charge(cost)
                     else:
                         attempts.append(
                             Attempt(

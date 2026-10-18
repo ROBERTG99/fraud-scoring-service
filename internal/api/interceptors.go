@@ -59,11 +59,12 @@ func bearer(ctx context.Context) string {
 	return ""
 }
 
-// healthMethods is the gRPC health service: probes carry no credentials and learn nothing but SERVING.
-const healthMethods = "/grpc.health.v1.Health/"
+// healthCheck is the one method open without credentials: a load balancer's probe, answered with SERVING.
+// Watch (a held stream) and List (every service's status) need a token like any other call (D-059).
+const healthCheck = "/grpc.health.v1.Health/Check"
 
 func (c AuthConfig) authenticate(ctx context.Context, method string) (context.Context, error) {
-	if strings.HasPrefix(method, healthMethods) {
+	if method == healthCheck {
 		return ctx, nil
 	}
 	token := bearer(ctx)

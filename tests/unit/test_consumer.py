@@ -293,3 +293,40 @@ async def test_transient_failures_retry_without_a_cap() -> None:
     for _ in range(MAX_RETRIES * 2):
         await kc.process_partition(consumer, producer, tp, [record(60, decision_msg())])
     assert not producer.sent and not consumer.commits
+
+
+async def test_transient_retries_back_off_exponentially() -> None:
+    """Round 2 (N11): the delay doubles per retry of the same message, transient or not, up to 30 s."""
+
+    class Down(MemoryRepo):
+        async def load_case(self, decision_id: str) -> Any:
+            raise ConnectionError("postgres down")
+
+    slept: list[float] = []
+
+    async def sleep(s: float) -> None:
+        slept.append(s)
+
+    h, _ = handler(CountingProvider(FakeLLM()), Down({}))
+    kc = KafkaDecisionConsumer(h, "unused:9092", retry_backoff_s=1.0, sleep=sleep)
+    tp = TopicPartition("decisions", 3)
+    for _ in range(7):
+        await kc.process_partition(FakeConsumer(), FakeProducer(), tp, [record(70, decision_msg())])
+    assert slept == [1.0, 2.0, 4.0, 8.0, 16.0, 30.0, 30.0]
+
+
+async def test_a_statement_timeout_is_not_transient() -> None:
+    """A query that always times out would otherwise stall its partition forever."""
+    import psycopg
+
+    class Slow(MemoryRepo):
+        async def load_case(self, decision_id: str) -> Any:
+            raise psycopg.errors.QueryCanceled("canceling statement due to statement timeout")
+
+    h, _ = handler(CountingProvider(FakeLLM()), Slow({}))
+    kc = KafkaDecisionConsumer(h, "unused:9092", retry_backoff_s=0)
+    tp = TopicPartition("decisions", 3)
+    producer = FakeProducer()
+    for _ in range(MAX_RETRIES):
+        await kc.process_partition(FakeConsumer(), producer, tp, [record(80, decision_msg())])
+    assert producer.sent and json.loads(producer.sent[0][1])["offset"] == 80

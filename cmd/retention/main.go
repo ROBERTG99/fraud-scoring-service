@@ -17,6 +17,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/ROBERTG99/fraud-scoring-service/internal/auth"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/store"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/telemetry"
 )
@@ -30,8 +31,13 @@ func main() {
 		log.Error("FRAUD_RETENTION_BATCH must be a positive integer")
 		os.Exit(2)
 	}
+	dsn := envOr("FRAUD_PG_DSN", "postgres://fraud_retention:fraud_retention@127.0.0.1:8520/fraud?sslmode=disable")
+	if err := auth.CheckDatabaseDSN(dsn); err != nil {
+		log.Error("refusing to start", "err", err)
+		os.Exit(2)
+	}
 	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	pool, err := pgxpool.New(cctx, envOr("FRAUD_PG_DSN", "postgres://fraud_retention:fraud_retention@127.0.0.1:8520/fraud?sslmode=disable"))
+	pool, err := pgxpool.New(cctx, dsn)
 	cancel()
 	if err != nil {
 		log.Error("connect", "err", err)

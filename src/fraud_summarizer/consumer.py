@@ -17,6 +17,7 @@ import asyncio
 import base64
 import json
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
@@ -43,6 +44,13 @@ MAX_PAID_ATTEMPTS = 3
 MAX_RETRIES = 5
 # Failures that mean a dependency is unreachable, not that the message is poison.
 TRANSIENT: tuple[type[BaseException], ...] = (OSError, TimeoutError, psycopg.OperationalError)
+
+
+def is_transient(exc: BaseException) -> bool:
+    """An unreachable dependency; a statement timeout is not one (the same query would time out again)."""
+    return isinstance(exc, TRANSIENT) and not isinstance(exc, psycopg.errors.QueryCanceled)
+
+
 MAX_BACKOFF_S = 30.0
 
 Outcome = Literal["skipped", "duplicate", "summarized", "missing_case"]
@@ -158,6 +166,7 @@ class KafkaDecisionConsumer:
         group: str = CONSUMER_NAME,
         dlq_topic: str = DLQ_TOPIC,
         retry_backoff_s: float = 1.0,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
         self.handler = handler
         self.brokers = brokers
@@ -165,9 +174,11 @@ class KafkaDecisionConsumer:
         self.group = group
         self.dlq_topic = dlq_topic
         self.retry_backoff_s = retry_backoff_s
+        self.sleep = sleep
         self.ready = asyncio.Event()
-        # Failures so far per (partition, offset); in memory, so a restart starts the count again.
-        self._failures: dict[tuple[int, int], int] = {}
+        # Per (partition, offset): failures that count toward MAX_RETRIES, and all retries (for the backoff).
+        # In memory, so a restart starts both again.
+        self._failures: dict[tuple[int, int], tuple[int, int]] = {}
 
     async def run(self, stop: asyncio.Event) -> None:
         consumer = AIOKafkaConsumer(
@@ -220,8 +231,9 @@ class KafkaDecisionConsumer:
                 )
                 await producer.send_and_wait(self.dlq_topic, dlq_record(msg, str(exc)), key=msg.key)
             except Exception as exc:
-                failures = self._failures.get(key, 0)
-                if not isinstance(exc, TRANSIENT):
+                failures, retries = self._failures.get(key, (0, 0))
+                retries += 1
+                if not is_transient(exc):
                     failures += 1
                 if failures >= MAX_RETRIES:
                     MESSAGES.labels(outcome="failed").inc()
@@ -237,14 +249,14 @@ class KafkaDecisionConsumer:
                     continue
                 if len(self._failures) >= 10_000:
                     self._failures.clear()  # stale keys after rebalances; counts restart
-                self._failures[key] = failures
+                self._failures[key] = (failures, retries)
                 MESSAGES.labels(outcome="retry").inc()
                 log.exception(
                     "summarizer failed; will retry", extra={"partition": tp.partition, "offset": msg.offset}
                 )
                 await self._commit(consumer, tp, next_offset)
                 consumer.seek(tp, msg.offset)
-                await asyncio.sleep(min(MAX_BACKOFF_S, self.retry_backoff_s * 2 ** max(failures - 1, 0)))
+                await self.sleep(min(MAX_BACKOFF_S, self.retry_backoff_s * 2 ** (retries - 1)))
                 return
             self._failures.pop(key, None)
             next_offset = msg.offset + 1

@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/ROBERTG99/fraud-scoring-service/internal/auth"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/events"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/features"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/store"
@@ -63,6 +64,9 @@ func run(ctx context.Context, log *slog.Logger) error {
 
 	var sinks multiSink
 	if dsn := os.Getenv("FRAUD_PG_DSN"); dsn != "" {
+		if err := auth.CheckDatabaseDSN(dsn); err != nil {
+			return err
+		}
 		pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		pool, err := pgxpool.New(pctx, dsn)
 		cancel()

@@ -43,8 +43,14 @@ class RouteConfig:
         cache_write_tokens: int = 0,
         cache_read_tokens: int = 0,
     ) -> float:
-        """USD for one call: uncached input at the list price, cache writes at 1.25x, cache reads at 0.1x."""
-        inp, out = self.pricing.get(model, (0.0, 0.0))
+        """USD for one call: uncached input at the list price, cache writes at 1.25x, cache reads at 0.1x.
+
+        A model missing from the price list (a dated id in a response, say) is charged the highest known
+        prices, so it can never spend the daily budget for free (D-059)."""
+        inp, out = self.pricing.get(model) or (
+            max((p[0] for p in self.pricing.values()), default=0.0),
+            max((p[1] for p in self.pricing.values()), default=0.0),
+        )
         total = (
             input_tokens * inp
             + cache_write_tokens * inp * 1.25

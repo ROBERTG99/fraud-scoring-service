@@ -26,6 +26,14 @@ class UnavailableProvider:
 
 
 def build_gateway(config: RouteConfig, cassette_dir: Path | None = None) -> LLMGateway:
+    for route in config.routes.values():
+        for provider in filter(None, (route.provider, route.fallback_provider)):
+            model = route.model_for(provider)
+            if model not in config.pricing:
+                # An unpriced model would make the daily budget meaningless (D-059): refuse to start.
+                raise ValueError(
+                    f"route {route.name}: model {model!r} has no entry in config/llm_routes.yaml pricing"
+                )
     needed = {r.provider for r in config.routes.values()} | {
         r.fallback_provider for r in config.routes.values() if r.fallback_provider
     }

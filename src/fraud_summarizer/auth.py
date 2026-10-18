@@ -31,6 +31,20 @@ def check_jwks_url(url: str) -> None:
     raise ValueError(f"JWKS URL {url}: scheme must be https")
 
 
+def check_database_dsn(dsn: str) -> None:
+    """Refuse, outside FRAUD_ENV=dev, a DSN without a password or with the migrations' development password
+    (the role's own name), as internal/auth.CheckDatabaseDSN (security audit round 2, N8)."""
+    if os.environ.get("FRAUD_ENV") == "dev":
+        return
+    u = urlsplit(dsn)
+    if u.scheme not in ("postgres", "postgresql") or not u.username:
+        raise ValueError("database DSN: expected postgresql://user:password@host/db")
+    if not u.password or u.password == u.username:
+        raise ValueError(
+            f"database DSN for role {u.username}: development credentials are allowed only with FRAUD_ENV=dev"
+        )
+
+
 class InvalidTokenError(Exception):
     """The bearer token failed verification."""
 

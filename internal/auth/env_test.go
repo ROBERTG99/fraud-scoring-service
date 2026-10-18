@@ -23,3 +23,26 @@ func TestDevModeAndJWKSURL(t *testing.T) {
 		t.Fatal("non-HTTP scheme accepted")
 	}
 }
+
+// Security audit round 2, N8: migrations create every service role with its name as its password; outside
+// dev mode a service refuses those credentials, including the default DSNs.
+func TestDevDatabaseCredentialsOnlyInDevMode(t *testing.T) {
+	t.Setenv("FRAUD_ENV", "")
+	for _, dsn := range []string{
+		"postgres://fraud_app:fraud_app@127.0.0.1:8520/fraud?sslmode=disable",
+		"postgresql://fraud_summarizer:fraud_summarizer@db/fraud",
+		"postgres://fraud_retention@db/fraud", // no password at all
+		"not a url",
+	} {
+		if err := CheckDatabaseDSN(dsn); err == nil {
+			t.Errorf("%q accepted outside dev", dsn)
+		}
+	}
+	if err := CheckDatabaseDSN("postgres://fraud_app:s3cr3t-from-vault@db/fraud?sslmode=verify-full"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("FRAUD_ENV", "dev")
+	if err := CheckDatabaseDSN("postgres://fraud_app:fraud_app@127.0.0.1:8520/fraud"); err != nil {
+		t.Fatal(err)
+	}
+}

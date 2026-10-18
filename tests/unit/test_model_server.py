@@ -22,8 +22,10 @@ def model_dir(tmp_path: Path) -> Path:
     d.mkdir()
     shutil.copyfile(FIXTURES / "tiny.onnx", d / "model.onnx")
     meta = json.loads((FIXTURES / "golden.json").read_text(encoding="utf-8"))
+    digest = hashlib.sha256((d / "model.onnx").read_bytes()).hexdigest()
     (d / "model_meta.json").write_text(
-        json.dumps({"model_version": meta["model_version"], "feature_spec": "v2"}), encoding="utf-8"
+        json.dumps({"model_version": meta["model_version"], "feature_spec": "v2", "onnx_sha256": digest}),
+        encoding="utf-8",
     )
     return d
 
@@ -70,6 +72,7 @@ def test_uses_cached_artifact_when_mlflow_down(
     cache = tmp_path / "cache"
     (cache / "production").mkdir(parents=True)
     shutil.copyfile(model_dir / "model.onnx", cache / "production" / "model.onnx")
+    shutil.copyfile(model_dir / "model_meta.json", cache / "production" / "model_meta.json")
     monkeypatch.setenv("MLFLOW_TRACKING_URI", "http://127.0.0.1:9")  # nothing listens
     monkeypatch.setenv("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "0")
     rt = ModelRuntime(model_dir=None, cache_dir=str(cache), use_mlflow=True)
@@ -136,6 +139,7 @@ def test_a_registry_download_that_fails_its_digest_keeps_the_cached_model(
     cache = tmp_path / "cache"
     (cache / "production").mkdir(parents=True)
     shutil.copyfile(model_dir / "model.onnx", cache / "production" / "model.onnx")
+    shutil.copyfile(model_dir / "model_meta.json", cache / "production" / "model_meta.json")
 
     def download_swapped(alias: str, dest: Path) -> Path:
         dest.mkdir(parents=True, exist_ok=True)
@@ -202,3 +206,19 @@ def test_a_verified_registry_download_replaces_the_cache(
     assert (loaded.source, loaded.version) == ("mlflow", "fraud-gbdt/9")
     assert _sha(cache / "production" / "model.onnx") == good
     assert rt.load("production").source == "mlflow"  # a second download over an existing cache
+
+
+@pytest.mark.parametrize("meta", ["deleted", "no digest"])
+def test_a_model_without_any_recorded_digest_is_refused(model_dir: Path, tmp_path: Path, meta: str) -> None:
+    """Security audit round 2, N3: swapping model.onnx and deleting its metadata must not load it."""
+    (model_dir / "model.onnx").write_bytes((model_dir / "model.onnx").read_bytes() + b"\0")
+    if meta == "deleted":
+        (model_dir / "model_meta.json").unlink()
+    else:
+        doc = json.loads((model_dir / "model_meta.json").read_text(encoding="utf-8"))
+        del doc["onnx_sha256"]
+        (model_dir / "model_meta.json").write_text(json.dumps(doc), encoding="utf-8")
+    rt = ModelRuntime(model_dir=str(model_dir), cache_dir=str(tmp_path / "cache"), use_mlflow=False)
+    status = rt.load_all()
+    assert not rt.ready()
+    assert "no recorded sha256" in status["production"]
