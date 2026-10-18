@@ -209,7 +209,7 @@ def test_window_search_is_linear_in_the_groups(monkeypatch: pytest.MonkeyPatch) 
         return is_card(gs)
 
     monkeypatch.setattr(redact, "_is_card", counting)
-    redact._redact_short.cache_clear()  # count the work, not cache hits
+    redact._cache_clear()  # count the work, not cache hits
     for unit in ("1;", "1 ", "(1)"):
         counts = []
         for n in (200, 400):
@@ -513,7 +513,7 @@ def test_readings_after_percent_are_linear(monkeypatch: pytest.MonkeyPatch) -> N
         return real(shape)
 
     monkeypatch.setattr(redact, "_wide_card_layout", counting)
-    redact._redact_short.cache_clear()  # count the work, not cache hits
+    redact._cache_clear()  # count the work, not cache hits
     counts = []
     for n in (8, 16):
         calls = 0
@@ -581,3 +581,78 @@ def test_a_card_found_in_either_reading_is_redacted(text: str, card: str | None)
         assert cards
         card = cards[0]
     assert not _leaks(card, out, run=8), out
+
+
+@pytest.mark.parametrize(
+    ("text", "item"),
+    [
+        # M6 review round 8: one reading labels an item, and the gap beside it holds a card neither reading saw.
+        ("pay 3782 8224 6310 005%34111111111111111", "4111111111111111"),
+        ("call 415-555-2671&#52;222222222222 now", "4222222222222"),
+        ("ssn 123-45-6789%34222222222222", "4222222222222"),
+    ],
+)
+def test_redaction_repeats_until_nothing_changes(text: str, item: str) -> None:
+    from fraud_summarizer.redact import redact_prompt
+
+    assert luhn_ok(item)
+    assert not _leaks(item, redact_text(text)), redact_text(text)
+    prompt = '<case_facts>\n```json\n{\n "m": "' + text + '"\n}\n```\n</case_facts>'
+    assert not _leaks(item, redact_prompt(prompt)), redact_prompt(prompt)
+
+
+def test_redacting_twice_changes_nothing() -> None:
+    for text in ("ext%E2%80&#&sup1;", "#&#x31;391;"):  # folding made a new escape ("&#" + "1")
+        assert redact_text(redact_text(text)) == redact_text(text), text
+    rng = random.Random(53)
+    pool = [
+        *"0123456789 -.,:;/_~#()@x",
+        "%40",
+        "%34",
+        "&#52;",
+        "&ndash;",
+        "&amp;",
+        "%2520",
+        "+44 ",
+        "415-555-2671",
+    ]
+    for _ in range(2_000):
+        text = "".join(rng.choice(pool) for _ in range(rng.randint(5, 50)))
+        once = redact_text(text)
+        assert redact_text(once) == once, (text, once)
+
+
+def _twice(sep: str) -> str:
+    return sep.replace("&", "&amp;").replace("%", "%25")
+
+
+@pytest.mark.parametrize(
+    "sep",
+    [
+        # Security audit round 8: an escape written twice decoded to " ndash;" and hid the separator.
+        "&amp;#45;", "&amp;#32;", "&amp;nbsp;", "&amp;ndash;", "&amp;#x2D;", "%252D", "%26%2345%3B", "%26nbsp%3B",
+        "&#37;2D", "&amp;amp;#45;", "%25252D",
+        # Entities without ";", and cut or invalid UTF-8 (standard decoders read all of these).
+        "&nbsp", "&shy", "&amp", "%E2%80", "%E2%FF%93",
+        *[_twice(s) for s in ESCAPED_SEPARATORS],
+    ],
+)  # fmt: skip
+def test_escapes_written_more_than_once_still_separate(sep: str) -> None:
+    card = _complete("479542", 16)
+    out = redact_text("merchant " + _split(card, (4, 4, 4, 4), sep) + " ok")
+    assert not _leaks(card, out), out
+
+
+def test_digits_encoded_twice_or_without_semicolons_are_found() -> None:
+    card = "4539148803436467"
+    assert not _leaks(card, redact_text("card " + "".join(f"&amp;#{ord(c)};" for c in card)))
+    assert not _leaks(card, redact_text("card " + "".join(f"&#x{ord(c):x}" for c in card) + " ok"))
+
+
+def test_redaction_fails_closed_when_spans_cannot_be_recovered(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fraud_summarizer import redact
+
+    monkeypatch.setattr(redact, "_redaction_spans", lambda text: None)
+    redact._cache_clear()
+    out = redact.redact_text("card 4111~%4008~1111~1111 call 415 555 2671")
+    assert not re.search(r"\d{4}", out), out

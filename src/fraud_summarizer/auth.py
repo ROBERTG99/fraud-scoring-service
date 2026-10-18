@@ -52,7 +52,7 @@ def check_database_dsn(dsn: str) -> None:
     service = params.get("service") or os.environ.get("PGSERVICE")
     if service:
         params = _service_params(service) | params  # the DSN's own parameters win
-    user = params.get("user") or os.environ.get("PGUSER") or _effective_user()
+    user = _option(params, "user", "PGUSER") or _effective_user()
     # A password option that is present, even empty, hides PGPASSWORD; an empty one falls to the passfile (round 6).
     password = params["password"] if "password" in params else os.environ.get("PGPASSWORD", "")
     # libpq tries every host in turn, each with its own passfile entry when no password is set (round 5). A
@@ -70,6 +70,13 @@ def check_database_dsn(dsn: str) -> None:
             if cert and sslmode != "disable" and Path(cert).is_file():
                 continue  # certificate authentication: nothing here to compare
             raise ValueError(f"database DSN for role {user}: no password or client certificate")
+
+
+def _option(params: dict[str, str], key: str, env: str) -> str:
+    """A connection option as libpq resolves it: the DSN's (or service's) value when the option is present,
+    even empty, and the environment only when it is absent (round 8: an empty option never reads the
+    environment). "" means libpq's built-in default."""
+    return params[key] if key in params else os.environ.get(env, "")
 
 
 LIBPQ_SPACE = " \t\r\v\f"  # what C's isspace() strips, not every Unicode line break as str.strip() does
@@ -152,7 +159,7 @@ def _passfile_passwords(params: dict[str, str], user: str) -> list[list[str]]:
     """For each host libpq would try, the passwords of the first matching passfile entry ("" for none): one
     for a host name or address, two for a socket path, which libpq looks up as "localhost" when it is its
     compiled default directory and as the path otherwise (round 6: both count, failing closed)."""
-    path = Path(params.get("passfile") or os.environ.get("PGPASSFILE") or Path.home() / ".pgpass")
+    path = Path(_option(params, "passfile", "PGPASSFILE") or Path.home() / ".pgpass")
     try:
         lines = path.read_bytes().decode(errors="replace").split("\n") if _passfile_readable(path) else []
     except OSError:
@@ -165,16 +172,12 @@ def _passfile_passwords(params: dict[str, str], user: str) -> list[list[str]]:
         for fields in [_passfile_fields(line)]
         if len(fields) == 5
     ]
-    # libpq matches the passfile on host, or on hostaddr when no host is given (round 6).
-    names = (
-        params.get("host")
-        or os.environ.get("PGHOST")
-        or params.get("hostaddr")
-        or os.environ.get("PGHOSTADDR")
-    )
-    hosts = (names or "localhost").split(",")
-    ports = (params.get("port") or os.environ.get("PGPORT") or "5432").split(",")
-    dbname = params.get("dbname") or os.environ.get("PGDATABASE") or user
+    # libpq matches the passfile on each host, or on its hostaddr when that host entry is empty (rounds 6, 8).
+    host_opt, addr_opt = _option(params, "host", "PGHOST"), _option(params, "hostaddr", "PGHOSTADDR")
+    hosts = host_opt.split(",") if host_opt else addr_opt.split(",") if addr_opt else [""]
+    addrs = addr_opt.split(",") if addr_opt else []
+    ports = (_option(params, "port", "PGPORT") or "5432").split(",")
+    dbname = _option(params, "dbname", "PGDATABASE") or user
 
     def lookup(host: str, port: str) -> str:
         want = (host, port, dbname, user)
@@ -189,7 +192,8 @@ def _passfile_passwords(params: dict[str, str], user: str) -> list[list[str]]:
 
     out = []
     for i, raw_host in enumerate(hosts):
-        host = raw_host.strip() or "localhost"
+        addr = addrs[i].strip() if i < len(addrs) else ""
+        host = raw_host.strip() or addr or "localhost"
         port = (ports[i] if len(ports) == len(hosts) else ports[0]).strip() or "5432"
         names_tried = ["localhost", host] if host.startswith("/") else [host]
         out.append([lookup(h, port) for h in names_tried])

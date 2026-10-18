@@ -640,6 +640,53 @@ def test_the_dsn_check_reads_passfiles_and_headers_as_libpq(
     refused(f"host=db dbname=fraud password={me}")  # libpq connects as the effective user, not $USER
 
 
+def test_an_empty_dsn_option_uses_the_libpq_default_not_the_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Security audit round 8, checked against libpq: an option present but empty takes libpq's built-in default
+    (never the environment), and an empty host entry is looked up by its hostaddr."""
+    from fraud_summarizer.auth import check_database_dsn
+
+    for var in (
+        "FRAUD_ENV",
+        "PGPASSWORD",
+        "PGUSER",
+        "PGHOST",
+        "PGHOSTADDR",
+        "PGPORT",
+        "PGDATABASE",
+        "PGSERVICE",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    home_pass = tmp_path / ".pgpass"
+    other = tmp_path / "other"
+    dev = "fraud_summarizer:fraud_summarizer"
+
+    def refused(dsn: str) -> None:
+        with pytest.raises(ValueError, match="database DSN"):
+            check_database_dsn(dsn)
+
+    def write(path: Path, text: str) -> None:
+        path.write_text(text)
+        path.chmod(0o600)
+
+    write(home_pass, f"10.0.0.5:5432:fraud:{dev}\n127.0.0.1:5432:fraud:fraud_summarizer:Str0ng\n")
+    monkeypatch.setenv("PGPASSFILE", str(home_pass))
+    refused("host=,127.0.0.1 hostaddr=10.0.0.5,127.0.0.1 dbname=fraud user=fraud_summarizer")
+    write(home_pass, f"db:5432:fraud_summarizer:{dev}\ndb:5432:other:fraud_summarizer:Str0ng\n")
+    monkeypatch.setenv("PGDATABASE", "other")
+    refused("host=db dbname='' user=fraud_summarizer")  # libpq's dbname is the user name
+    monkeypatch.delenv("PGDATABASE")
+    write(home_pass, f"*:*:*:{dev}\n")
+    write(other, "*:*:*:fraud_summarizer:Str0ng\n")
+    monkeypatch.setenv("PGPASSFILE", str(other))
+    refused("host=db dbname=fraud user=fraud_summarizer passfile=''")  # libpq reads ~/.pgpass
+    write(other, "db:1:fraud:fraud_summarizer:Str0ng\n")
+    monkeypatch.setenv("PGPORT", "1")
+    refused("host=db dbname=fraud user=fraud_summarizer port='' passfile=" + str(other))  # libpq uses 5432
+
+
 def test_public_readyz_names_no_cause(
     client: TestClient, store: Store, monkeypatch: pytest.MonkeyPatch
 ) -> None:
