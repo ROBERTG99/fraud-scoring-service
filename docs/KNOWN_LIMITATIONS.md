@@ -138,3 +138,11 @@ scorer holds the key, though: a compromised scorer process can append entries th
 owner (the migration role) or a superuser can still disable the append-only triggers. Anchors written outside
 the database (`scorer audit-anchor`) make removed or rewritten entries detectable up to the last anchor;
 entries after it are protected only by the key.
+
+## Redaction errs toward removing digits
+
+A hex identifier that contains a Luhn-valid run of 13 to 19 digits loses that run to `[REDACTED_CARD]`
+(D-058): 3 of the 6,488 unique strings in the eval datasets are device hashes that do
+(`uv run python scripts/redact_parity.py --rev 1d1b596`). The summary still cites the device by its fact key;
+only the prompt's copy of the hash is altered. Bare 9-digit numbers are not treated as SSNs unless an "SSN"
+keyword precedes them.

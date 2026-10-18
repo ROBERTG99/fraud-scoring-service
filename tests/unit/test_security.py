@@ -28,6 +28,11 @@ PII = [
     "078-05-1120",
     # Adjacent items (M6 review): joined with a single space, so a card follows a phone directly.
     "+33 1 42 68 53 00 4012 8888 8888 1881",
+    # M6 round 2: a card glued to hex, comma- and colon-separated cards, a 00-prefixed phone.
+    "4111111111111111deadbeefdeadbeef",
+    "4012,8888,8888,1881",
+    "4012:8888:8888:1881",
+    "0044 20 7946 0958",
 ]
 
 

@@ -88,7 +88,7 @@ def _card(rng: random.Random) -> str:
         d = "4" + "".join(rng.choice("0123456789") for _ in range(15))
         if luhn_ok(d):
             break
-    sep = rng.choice([" ", "-", ".", ""])
+    sep = rng.choice([" ", "-", ".", "", ",", ":", " - ", ", ", "\t"])
     return sep.join(d[i : i + 4] for i in range(0, 16, 4)) if sep else d
 
 
@@ -101,6 +101,7 @@ def _phone(rng: random.Random) -> str:
         f"+44 20 {b}{c[:1]} {c}",
         f"+1 {a} {b} {c}",
         f"{a}.{b}.{c}",
+        f"0044 20 {b}{c[:1]} {c}",
     ]
     return rng.choice(forms)
 
@@ -189,3 +190,44 @@ def test_email_pattern_is_linear() -> None:
 
 def test_ip_prefixes_are_kept() -> None:
     assert redact_text("ip 64.192.210.0/24 and 10.0.0.1") == "ip 64.192.210.0/24 and 10.0.0.1"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # M6 round 2 (security audit N1, code review): layouts that reached the provider.
+        "4111111111111111deadbeefdeadbeef",
+        "card 4111111111111111abcdefabcdefabcdefab",
+        "4111,1111,1111,1111",
+        "4111:1111:1111:1111",
+        "4111\t1111\t1111\t1111",
+        "4111\n1111\n1111\n1111",
+        "4111 - 1111 - 1111 - 1111",
+        "4111, 1111, 1111, 1111",
+        "4 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1",
+        "0044 20 7946 0958",
+        "4155552671card",
+    ],
+)
+def test_round_two_layouts_leave_no_digit_run(text: str) -> None:
+    out = redact_text(text)
+    assert not re.search(r"\d{2}", out), f"{text!r} -> {out!r}"
+    assert not re.search(r"(\d\D?){6}", out.replace("[REDACTED_CARD]", "").replace("[REDACTED_PHONE]", "")), (
+        out
+    )
+
+
+def test_input_cannot_collide_with_the_hold_placeholder() -> None:
+    assert redact_text("\x007\x00 and \x000\x00") == "7 and 0"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "amounts 1200, 3400 and 5600",  # a list of numbers is not a phone
+        "Order 1234. 5678 items",
+        "at 10:30, 3 items",
+    ],
+)
+def test_lists_and_prose_are_kept(text: str) -> None:
+    assert redact_text(text) == text
