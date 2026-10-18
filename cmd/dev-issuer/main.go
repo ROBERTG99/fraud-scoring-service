@@ -46,12 +46,16 @@ func main() {
 		os.Exit(telemetry.Healthcheck(envOr("FRAUD_HEALTHCHECK_URL", "http://127.0.0.1:8515/healthz")))
 	}
 	log := telemetry.NewLogger("dev-issuer")
+	if !auth.DevMode() { // it mints console tokens for anyone who asks (audit M6 M4)
+		log.Error("dev-issuer runs only with FRAUD_ENV=dev")
+		os.Exit(2)
+	}
 	signer, err := auth.NewSigner(envOr("FRAUD_ISSUER", "http://dev-issuer:8515"))
 	if err != nil {
 		log.Error("key generation failed", "err", err)
 		os.Exit(1)
 	}
-	srv := &http.Server{Addr: envOr("FRAUD_ISSUER_ADDR", ":8515"), Handler: newMux(signer), ReadHeaderTimeout: 2 * time.Second}
+	srv := &http.Server{Addr: envOr("FRAUD_ISSUER_ADDR", "127.0.0.1:8515"), Handler: newMux(signer), ReadHeaderTimeout: 2 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

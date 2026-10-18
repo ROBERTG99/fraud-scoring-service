@@ -105,7 +105,12 @@ def stack(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, Any]]:
     procs = [
         subprocess.Popen(
             [str(work / "dev-issuer")],
-            env={**env, "FRAUD_ISSUER": issuer, "FRAUD_ISSUER_ADDR": f"127.0.0.1:{issuer_port}"},
+            env={
+                **env,
+                "FRAUD_ENV": "dev",
+                "FRAUD_ISSUER": issuer,
+                "FRAUD_ISSUER_ADDR": f"127.0.0.1:{issuer_port}",
+            },
         )
     ]
     try:
@@ -117,6 +122,7 @@ def stack(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, Any]]:
                 stdout=subprocess.DEVNULL,
                 env={
                     **env,
+                    "FRAUD_ENV": "dev",  # plain-HTTP JWKS from the dev-issuer (D-045)
                     "FRAUD_SERVICE_TOKEN": SERVICE_TOKEN,
                     "FRAUD_GRPC_ADDR": f"127.0.0.1:{grpc_port}",
                     "FRAUD_HTTP_ADDR": f"127.0.0.1:{http_port}",

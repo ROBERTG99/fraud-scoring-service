@@ -168,3 +168,15 @@ func TestSourceMapsAreNotServed(t *testing.T) {
 		t.Fatalf("source map: %d %q", resp.StatusCode, body)
 	}
 }
+
+func TestNoTokenProxyOutsideDev(t *testing.T) {
+	h, err := newHandler(config{Dist: t.TempDir(), API: "http://127.0.0.1:1", Summarizer: "http://127.0.0.1:1"}, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	if resp, _ := get(t, srv.URL+"/auth/token"); resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("/auth/ without an issuer: %d, want 404", resp.StatusCode)
+	}
+}

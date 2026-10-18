@@ -10,6 +10,8 @@ services:
   scorer:
     build: { <<: *build, dockerfile: Dockerfile.go, target: scorer }
     image: fraud/scorer:dev
+    environment:
+      FRAUD_ENV: dev # local stack: plain-HTTP JWKS allowed (D-045)
     ports: ["8510:8510", "8511:8511"]
     restart: unless-stopped
 
@@ -17,6 +19,7 @@ services:
     build: { <<: *build, dockerfile: Dockerfile.summarizer }
     image: fraud/case-summarizer:dev
     environment:
+      FRAUD_ENV: dev # local stack: plain-HTTP JWKS allowed (D-045)
       FRAUD_SUMMARY_PROVIDER: fake
     ports: ["8513:8513"]
     restart: unless-stopped

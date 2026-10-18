@@ -17,7 +17,7 @@ from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from fastapi.testclient import TestClient
 
 from fraud_summarizer.app import Services, create_app
-from fraud_summarizer.auth import AUDIENCE, InvalidTokenError, StaticKeys, Verifier
+from fraud_summarizer.auth import AUDIENCE, InvalidTokenError, StaticKeys, Verifier, check_jwks_url
 from fraud_summarizer.llm import LLMGateway
 from fraud_summarizer.llm.fake import FakeLLM
 from fraud_summarizer.llm.routes import load
@@ -265,3 +265,16 @@ def test_a_rate_limited_regenerate_does_not_consume_its_key(client: TestClient) 
     assert retry.json()["duplicate"] is False and retry.json()["run_id"]
     again = client.post(f"/v1/summaries/{CASE_ID}:regenerate", headers=headers)
     assert again.json()["duplicate"] is True
+
+
+def test_jwks_url_needs_https_outside_dev(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keys fetched over plain HTTP could be swapped in transit (audit M6 M4, D-045)."""
+    monkeypatch.delenv("FRAUD_ENV", raising=False)
+    check_jwks_url("https://issuer.example/.well-known/jwks.json")
+    for bad in ("http://127.0.0.1:8515/.well-known/jwks.json", "file:///etc/jwks.json", "issuer/jwks"):
+        with pytest.raises(ValueError, match="JWKS URL"):
+            check_jwks_url(bad)
+    monkeypatch.setenv("FRAUD_ENV", "dev")
+    check_jwks_url("http://127.0.0.1:8515/.well-known/jwks.json")
+    with pytest.raises(ValueError, match="JWKS URL"):
+        check_jwks_url("ftp://127.0.0.1/jwks.json")

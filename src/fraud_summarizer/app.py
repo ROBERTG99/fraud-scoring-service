@@ -25,7 +25,7 @@ from fastapi.responses import Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, ConfigDict
 
-from fraud_summarizer.auth import InvalidTokenError, Principal, RemoteKeys, Verifier
+from fraud_summarizer.auth import InvalidTokenError, Principal, RemoteKeys, Verifier, check_jwks_url
 from fraud_summarizer.consumer import DecisionHandler, KafkaDecisionConsumer
 from fraud_summarizer.llm import routes
 from fraud_summarizer.llm.factory import build_gateway
@@ -103,13 +103,16 @@ async def _production_services() -> tuple[Services, Callable[[], Awaitable[None]
     configure_logging("case-summarizer")  # production only: tests keep pytest's log capture
     from fraud_summarizer.repository import PostgresRepository
 
-    dsn = os.environ.get("FRAUD_SUMMARIZER_PG_DSN", "postgresql://fraud_summarizer:fraud_summarizer@127.0.0.1:8520/fraud")
+    issuer = os.environ.get("FRAUD_ISSUER", "http://127.0.0.1:8515")
+    jwks = os.environ.get("FRAUD_JWKS_URL", f"{issuer}/.well-known/jwks.json")
+    check_jwks_url(jwks)
+    dsn = os.environ.get(
+        "FRAUD_SUMMARIZER_PG_DSN", "postgresql://fraud_summarizer:fraud_summarizer@127.0.0.1:8520/fraud"
+    )
     pool = PostgresRepository.create_pool(dsn)
     await pool.open(wait=False)
     repo = PostgresRepository(pool)
     pipeline = SummaryPipeline(build_gateway(routes.load()), repo)
-    issuer = os.environ.get("FRAUD_ISSUER", "http://127.0.0.1:8515")
-    jwks = os.environ.get("FRAUD_JWKS_URL", f"{issuer}/.well-known/jwks.json")
     services = Services(store=repo, pipeline=pipeline, verifier=Verifier(issuer, RemoteKeys(jwks)))
     stop = asyncio.Event()
     brokers = os.environ.get("FRAUD_KAFKA_BROKERS", "")

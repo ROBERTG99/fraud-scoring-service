@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ROBERTG99/fraud-scoring-service/internal/auth"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/telemetry"
 )
 
@@ -123,6 +124,9 @@ func newHandler(cfg config, log *slog.Logger) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	for prefix, target := range map[string]string{"/api": cfg.API, "/auth": cfg.Issuer, "/summarizer": cfg.Summarizer} {
+		if target == "" { // no dev-issuer outside FRAUD_ENV=dev: /auth/ answers 404
+			continue
+		}
 		h, err := proxy(target, prefix, cfg.UpstreamTimeout, log)
 		if err != nil {
 			return nil, err
@@ -148,10 +152,12 @@ func main() {
 	cfg := config{
 		Dist:       envOr("FRAUD_WEB_DIST", "web/dist"),
 		API:        envOr("FRAUD_WEB_API_URL", "http://127.0.0.1:8511"),
-		Issuer:     envOr("FRAUD_WEB_ISSUER_URL", "http://127.0.0.1:8515"),
 		Summarizer: envOr("FRAUD_WEB_SUMMARIZER_URL", "http://127.0.0.1:8513"),
 		// Console calls budget 2 s; the proxy gives an upstream a little more before answering 502.
 		UpstreamTimeout: 5 * time.Second,
+	}
+	if auth.DevMode() { // the dev-issuer's personas and tokens are proxied only on a local stack (audit M6 M4)
+		cfg.Issuer = envOr("FRAUD_WEB_ISSUER_URL", "http://127.0.0.1:8515")
 	}
 	h, err := newHandler(cfg, log)
 	if err != nil {

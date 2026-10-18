@@ -23,6 +23,7 @@ export FRAUD_SERVICE_TOKEN=seed-host-token
 # The seed replays weeks-old synthetic events with their own timestamps: lift Score's 24 h event_ts bound (D-041).
 export FRAUD_MAX_EVENT_AGE=0
 echo "$DB" > $S/db
+export FRAUD_ENV=dev # a local stack: dev-issuer and plain-HTTP JWKS allowed (D-045)
 $S/bin/scorer migrate
 # Model server on the trained demo artifact (no MLflow).
 BENTOML_DO_NOT_TRACK=true FRAUD_MODEL_DIR=$PWD/artifacts/model FRAUD_MODEL_CACHE=$S/model-cache MLFLOW_TRACKING_URI= \

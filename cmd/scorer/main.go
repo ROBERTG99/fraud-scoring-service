@@ -224,8 +224,11 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("FRAUD_RATE_LIMIT_RPS: %w", err)
 	}
-	verifier := &auth.Verifier{Issuer: envOr("FRAUD_ISSUER", "http://127.0.0.1:8515"),
-		Keys: &auth.RemoteKeys{URL: envOr("FRAUD_JWKS_URL", "http://127.0.0.1:8515/.well-known/jwks.json")}}
+	jwksURL := envOr("FRAUD_JWKS_URL", "http://127.0.0.1:8515/.well-known/jwks.json")
+	if err := auth.CheckJWKSURL(jwksURL); err != nil {
+		return err
+	}
+	verifier := &auth.Verifier{Issuer: envOr("FRAUD_ISSUER", "http://127.0.0.1:8515"), Keys: &auth.RemoteKeys{URL: jwksURL}}
 	srv, err := newServers(ctx, serverConfig{
 		GRPCAddr: envOr("FRAUD_GRPC_ADDR", ":8510"),
 		HTTPAddr: envOr("FRAUD_HTTP_ADDR", ":8511"),

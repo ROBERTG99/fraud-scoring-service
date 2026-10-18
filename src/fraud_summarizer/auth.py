@@ -3,15 +3,30 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from dataclasses import dataclass
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 import httpx
 import jwt
 
 AUDIENCE = "fraud-console"
 CONSOLE_ROLES = frozenset({"analyst", "risk_engineer", "ml_engineer"})
+
+
+def check_jwks_url(url: str) -> None:
+    """Require HTTPS for the JWKS endpoint unless FRAUD_ENV=dev, as internal/auth.CheckJWKSURL (audit M6 M4).
+
+    Keys fetched over plain HTTP could be replaced in transit, and with them every console token.
+    """
+    scheme = urlsplit(url).scheme
+    if scheme == "https" or (scheme == "http" and os.environ.get("FRAUD_ENV") == "dev"):
+        return
+    if scheme == "http":
+        raise ValueError(f"JWKS URL {url}: plain HTTP is allowed only with FRAUD_ENV=dev")
+    raise ValueError(f"JWKS URL {url}: scheme must be https")
 
 
 class InvalidTokenError(Exception):
