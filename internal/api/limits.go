@@ -24,4 +24,10 @@ const (
 	// DefaultUserRPS is the per-user rate for console APIs (token bucket, burst equal to the rate); the
 	// service token used by Score is exempt. Override with FRAUD_RATE_LIMIT_RPS.
 	DefaultUserRPS = 20
+	// MaxStreamsPerUser bounds the server streams (StreamLiveMetrics) one console user holds open at once;
+	// the rate limit only applies when a stream opens (audit M6 M5).
+	MaxStreamsPerUser = 4
+	// MaxConcurrentStreams bounds the streams on one HTTP/2 connection, including the gateway's loopback
+	// connection, which carries every HTTP request.
+	MaxConcurrentStreams = 1024
 )

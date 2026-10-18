@@ -375,3 +375,25 @@ func TestBodyOver64KBRejected(t *testing.T) {
 		t.Fatalf("gRPC message over 64 KB: %v, want ResourceExhausted", err)
 	}
 }
+
+// Metadata is bounded like HTTP headers: 8 MB of it used to reach the auth check (audit M6 M5).
+func TestGRPCMetadataOverHeaderLimitRejected(t *testing.T) {
+	st := startStack(t)
+	conn, err := grpc.NewClient(st.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	call := func(pad int) error {
+		ctx, cancel := context.WithTimeout(metadata.AppendToOutgoingContext(context.Background(), "x-pad", strings.Repeat("x", pad)), 5*time.Second)
+		defer cancel()
+		_, err := fraudv1.NewScorerClient(conn).Score(ctx, &fraudv1.ScoreRequest{})
+		return err
+	}
+	if err := call(1 << 10); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("small metadata, no token: %v, want Unauthenticated", err)
+	}
+	if err := call(api.MaxHeaderBytes + 1); err == nil || status.Code(err) == codes.Unauthenticated {
+		t.Fatalf("metadata over %d bytes reached the auth check: %v", api.MaxHeaderBytes, err)
+	}
+}

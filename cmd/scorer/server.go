@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
 
@@ -73,6 +74,13 @@ func newServers(ctx context.Context, cfg serverConfig) (*servers, error) {
 	}
 	gs := grpc.NewServer(
 		grpc.MaxRecvMsgSize(maxBody),
+		// Transport limits (audit M6 M5): metadata is bounded like HTTP headers, a connection carries a bounded
+		// number of streams, must finish its handshake in 5 s, and may not ping more than every 10 s.
+		grpc.MaxHeaderListSize(api.MaxHeaderBytes),
+		grpc.MaxConcurrentStreams(api.MaxConcurrentStreams),
+		grpc.ConnectionTimeout(5*time.Second),
+		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 10 * time.Second, PermitWithoutStream: true}),
+		grpc.KeepaliveParams(keepalive.ServerParameters{MaxConnectionIdle: 5 * time.Minute, Time: time.Minute, Timeout: 20 * time.Second}),
 		// Server spans continue a W3C traceparent from gRPC metadata (forwarded by the gateway from HTTP).
 		grpc.StatsHandler(otelgrpc.NewServerHandler(traceOpts...)),
 		grpc.ChainUnaryInterceptor(api.UnaryRecover(cfg.Log), cfg.Auth.UnaryAuth(), cfg.Limiter.Unary()),

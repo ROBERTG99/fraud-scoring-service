@@ -18,6 +18,7 @@ type RateLimiter struct {
 	now   func() time.Time
 	mu    sync.Mutex
 	users map[string]*bucket
+	open  map[string]int // live streams per user, bounded by MaxStreamsPerUser
 }
 
 type bucket struct {
@@ -33,7 +34,7 @@ func NewRateLimiter(rps float64, now func() time.Time) *RateLimiter {
 	if now == nil {
 		now = time.Now
 	}
-	return &RateLimiter{rate: rps, burst: rps, now: now, users: map[string]*bucket{}}
+	return &RateLimiter{rate: rps, burst: rps, now: now, users: map[string]*bucket{}, open: map[string]int{}}
 }
 
 // Allow takes one token for subject.
@@ -82,11 +83,36 @@ func (r *RateLimiter) Unary() grpc.UnaryServerInterceptor {
 	}
 }
 
-// Stream limits stream opens; it must run after the auth interceptor.
+// acquireStream takes one of subject's MaxStreamsPerUser stream slots; release returns it.
+func (r *RateLimiter) acquireStream(subject string) (release func(), ok bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.open[subject] >= MaxStreamsPerUser {
+		return nil, false
+	}
+	r.open[subject]++
+	return func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if r.open[subject]--; r.open[subject] <= 0 {
+			delete(r.open, subject)
+		}
+	}, true
+}
+
+// Stream limits stream opens and the streams a console user holds open at once; it must run after the auth
+// interceptor. The stream cap applies even when the request rate limit is off.
 func (r *RateLimiter) Stream() grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, _ *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		if err := r.check(ss.Context()); err != nil {
 			return err
+		}
+		if p, ok := PrincipalFrom(ss.Context()); ok && p.Role != "service" && r != nil {
+			release, ok := r.acquireStream(p.Subject)
+			if !ok {
+				return status.Errorf(codes.ResourceExhausted, "at most %d open streams per user", MaxStreamsPerUser)
+			}
+			defer release()
 		}
 		return handler(srv, ss)
 	}
