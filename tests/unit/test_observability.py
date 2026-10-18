@@ -129,3 +129,20 @@ def test_grafana_has_no_default_credentials_and_prometheus_no_lifecycle_api() ->
     assert "--web.enable-lifecycle" not in services["prometheus"].get("command", [])
     obs_host = (ROOT / "scripts/obs_host.sh").read_text()
     assert "GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION=true" in obs_host
+
+
+def test_service_containers_are_hardened() -> None:
+    """Audit M6 L8: read-only root, no capabilities, no privilege gain; bases pinned by digest."""
+    services = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
+    built = {n: s for n, s in services.items() if "build" in s}
+    assert set(built) == {"scorer", "case-summarizer"}
+    for name, svc in built.items():
+        assert svc.get("read_only") is True, name
+        assert svc.get("cap_drop") == ["ALL"], name
+        assert "no-new-privileges:true" in svc.get("security_opt", []), name
+    for dockerfile in ("Dockerfile.go", "Dockerfile.summarizer", "serving/bentoml/Dockerfile", "deploy/mlflow/Dockerfile"):
+        text = (ROOT / dockerfile).read_text()
+        bases = re.findall(r"^FROM (\S+)", text, re.M) + re.findall(r"^ARG \w+_IMAGE=(\S+)", text, re.M)
+        for base in bases:
+            if not base.startswith("${"):
+                assert "@sha256:" in base, f"{dockerfile}: {base} is not pinned by digest"

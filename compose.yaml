@@ -1,5 +1,12 @@
 name: fraud
 
+# Service containers run with a read-only root, no capabilities and no privilege gain (D-055).
+x-hardened: &hardened
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: ["/tmp"]
+
 x-build: &build
   context: .
   network: host
@@ -8,8 +15,10 @@ x-build: &build
 
 services:
   scorer:
+    <<: *hardened
     build: { <<: *build, dockerfile: Dockerfile.go, target: scorer }
     image: fraud/scorer:dev
+    volumes: ["scorer-spool:/var/lib/fraud/spool"]
     environment:
       FRAUD_ENV: dev # local stack: plain-HTTP JWKS allowed (D-045)
       FRAUD_ADMIN_ADDR: ":8516" # metrics for Prometheus on the stack network, not published (D-052)
@@ -17,6 +26,7 @@ services:
     restart: unless-stopped
 
   case-summarizer:
+    <<: *hardened
     build: { <<: *build, dockerfile: Dockerfile.summarizer }
     image: fraud/case-summarizer:dev
     environment:
@@ -96,3 +106,6 @@ services:
     volumes: ["./deploy/otel/collector.datadog.yaml:/etc/otelcol/collector.yaml:ro"]
     ports: ["127.0.0.1:8580:4317", "127.0.0.1:8581:4318"]
     restart: unless-stopped
+
+volumes:
+  scorer-spool:
