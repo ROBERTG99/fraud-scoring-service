@@ -83,13 +83,20 @@ def test_adjacent_cards_and_phones(text: str, expected: str) -> None:
     assert redact_text(text) == expected
 
 
-def _card(rng: random.Random) -> str:
+def _card(rng: random.Random, shapes: tuple[tuple[int, ...], ...] = ((4, 4, 4, 4),)) -> str:
+    shape = rng.choice(shapes)
     while True:
-        d = "4" + "".join(rng.choice("0123456789") for _ in range(15))
+        d = "4" + "".join(rng.choice("0123456789") for _ in range(sum(shape) - 1))
         if luhn_ok(d):
             break
     sep = rng.choice([" ", "-", ".", "", ",", ":", " - ", ", ", "\t"])
-    return sep.join(d[i : i + 4] for i in range(0, 16, 4)) if sep else d
+    if not sep:
+        return d
+    out, pos = [], 0
+    for n in shape:
+        out.append(d[pos : pos + n])
+        pos += n
+    return sep.join(out)
 
 
 def _phone(rng: random.Random) -> str:
@@ -111,7 +118,7 @@ def test_no_digit_of_adjacent_pii_survives() -> None:
     rng = random.Random(7)
     for _ in range(3000):
         items = [rng.choice((_card, _phone))(rng) for _ in range(2)]
-        text = "amount 94000 then " + rng.choice((" ", ", ", " / ")).join(items) + " end"
+        text = "amount 94000 then " + rng.choice((" ", ", ", " / ", "_", "; ")).join(items) + " end"
         out = redact_text(text)
         assert re.sub(r"\D", "", out) == "94000", (text, out)
 
@@ -207,6 +214,15 @@ def test_ip_prefixes_are_kept() -> None:
         "4 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1",
         "0044 20 7946 0958",
         "4155552671card",
+        # M6 review round 3: separated numbers touching letters or "_".
+        "PAN4111 1111 1111 1111",
+        "Visa4111-1111-1111-1111",
+        "PAN_4111 1111 1111 1111",
+        "4111 1111 1111 1111EXP",
+        "4111-1111-1111-1111exp",
+        "ph415-555-2671",
+        "Tel_415-555-2671",
+        "call415 555 2671",
     ],
 )
 def test_round_two_layouts_leave_no_digit_run(text: str) -> None:
@@ -231,3 +247,15 @@ def test_input_cannot_collide_with_the_hold_placeholder() -> None:
 )
 def test_lists_and_prose_are_kept(text: str) -> None:
     assert redact_text(text) == text
+
+
+def test_no_digit_of_adjacent_pii_survives_in_every_card_shape() -> None:
+    """Seeded fuzz over every card shape (16, 15 Amex, 19, 14 Diners) and every joiner, "_" included; the M6
+    round-3 review found 39 leaks in 20,000 such pairs before cards glued by "_" were handled (D-058, D-061)."""
+    shapes = ((4, 4, 4, 4), (4, 6, 5), (4, 4, 4, 4, 3), (4, 6, 4))
+    rng = random.Random(11)
+    for _ in range(20_000):
+        items = [_card(rng, shapes) if rng.random() < 0.5 else _phone(rng) for _ in range(2)]
+        text = "amount 94000 then " + rng.choice((" ", ", ", " / ", "_", "; ", "\n")).join(items) + " end"
+        out = redact_text(text)
+        assert re.sub(r"\D", "", out) == "94000", (text, out)

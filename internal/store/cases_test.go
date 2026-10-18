@@ -375,6 +375,39 @@ func TestAuditRewriteAsUnkeyedIsRejected(t *testing.T) {
 	}
 }
 
+// Round 3 review: the owner can choose sequence numbers, so an unkeyed rewrite at seq <= 0 must not slip
+// under the legacy bound (default 0). Migration 00013 also refuses such rows; the owner can drop that check,
+// so VerifyAudit refuses them too.
+func TestAuditRowsAtSequenceZeroOrBelowAreRejected(t *testing.T) {
+	pool := newPool(t, migratedDB(t))
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `ALTER TABLE audit_log DROP CONSTRAINT IF EXISTS audit_log_seq_positive`); err != nil {
+		t.Fatal(err)
+	}
+	prev := ""
+	for i, seq := range []int64{-2, -1, 0} {
+		ts := time.Now().UTC().Truncate(time.Microsecond)
+		h, _ := AuditHash(prev, ts, "intruder", "analyst", "case.label", fmt.Sprintf("case/%d", i), map[string]any{})
+		if _, err := pool.Exec(ctx, `INSERT INTO audit_log (seq, ts, actor_sub, role, action, target, details, prev_hash, hash, alg)
+			VALUES ($1, $2, 'intruder', 'analyst', 'case.label', $3, '{}', $4, $5, 1)`, seq, ts, fmt.Sprintf("case/%d", i), prev, h); err != nil {
+			t.Fatal(err)
+		}
+		prev = h
+	}
+	if n, _, err := VerifyAudit(ctx, pool, testAuditKey, nil, 0); err == nil {
+		t.Fatalf("an unkeyed chain at seq <= 0 verified (%d entries)", n)
+	}
+}
+
+func TestAuditSequenceMustBePositive(t *testing.T) {
+	pool := newPool(t, migratedDB(t))
+	_, err := pool.Exec(context.Background(), `INSERT INTO audit_log (seq, actor_sub, role, action, target, details, prev_hash, hash, alg)
+		VALUES (0, 'a', 'analyst', 'x', 'y', '{}', '', 'h0', 2)`)
+	if err == nil || !strings.Contains(err.Error(), "audit_log_seq_positive") {
+		t.Fatalf("seq 0 inserted: %v", err)
+	}
+}
+
 // Anchors kept outside the database detect what a valid-looking chain cannot show: its newest entries
 // cut off, or an entry rewritten by someone holding the key.
 func TestAuditAnchorsDetectTruncation(t *testing.T) {

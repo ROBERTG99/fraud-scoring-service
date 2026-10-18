@@ -38,6 +38,9 @@ func (r *RedisIdempotency) key(txID string) string { return r.prefix + ":idem:sc
 // value written before the hash existed expires within IdempotencyTTL anyway.
 var idemMagic = []byte("fidem1")
 
+// delIfEqual deletes KEYS[1] only if it still holds ARGV[1] (a concurrent real Put must survive).
+var delIfEqual = redis.NewScript(`if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) end return 0`)
+
 // Get returns the stored decision and its request hash, or nils on a miss or an unprefixed value.
 func (r *RedisIdempotency) Get(ctx context.Context, txID string) (*fraudv1.Decision, []byte, error) {
 	b, err := r.rdb.Get(ctx, r.key(txID)).Bytes()
@@ -48,6 +51,9 @@ func (r *RedisIdempotency) Get(ctx context.Context, txID string) (*fraudv1.Decis
 		return nil, nil, err
 	}
 	if !bytes.HasPrefix(b, idemMagic) || len(b) < len(idemMagic)+sha256.Size {
+		// Never served, and removed (only if unchanged since the read) so it cannot block the real decision's
+		// SET NX for its TTL; best effort within the same deadline.
+		_ = delIfEqual.Run(ctx, r.rdb, []string{r.key(txID)}, b).Err()
 		return nil, nil, nil
 	}
 	hash := b[len(idemMagic) : len(idemMagic)+sha256.Size]

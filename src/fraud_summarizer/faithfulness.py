@@ -25,8 +25,10 @@ FREE_TEXT_SUFFIXES = (".merchant_name",)
 MIN_QUOTE_CHARS = 4
 # Language that clears a case. A summary describes evidence and checks; it never recommends the outcome.
 CLEARING = re.compile(
-    r"\b(?:approv\w*|unblock\w*|whitelist\w*|allowlist\w*|releas\w* (?:the )?(?:payment|funds|hold|transaction)"
-    r"|not (?:a )?fraud\w*|no fraud|false positive|legitimate|genuine|trusted|safe to"
+    r"\b(?:approv\w*|authori[sz]\w*|unblock\w*|whitelist\w*|allowlist\w*|benign|dismiss\w*|reputable"
+    r"|releas\w* (?:the )?(?:payment|funds|hold|transaction)|let (?:it|the \w+) (?:through|go)"
+    r"|(?:clear|close) (?:the )?(?:case|alert)|not (?:a )?fraud\w*|no fraud|false positive|legitimate|genuine"
+    r"|trusted|safe to"
     r"|verified (?:partner|merchant|customer|account|seller))\b",
     re.IGNORECASE,
 )
@@ -66,6 +68,15 @@ def _as_number(value: str) -> float | None:
     return x if math.isfinite(x) else None
 
 
+def _names(statement: str, value: str) -> bool:
+    """value occurs in statement as a whole token: not inside a word ("US" in "status"), and with its case
+    when it is a code (upper case, digits, "_"), so "review" does not stand in for REVIEW (round 3 review)."""
+    value = " ".join(value.split())
+    code = value == value.upper() and any(c.isalpha() for c in value)
+    hay, needle = (" ".join(statement.split()), value) if code else (_norm(statement), _norm(value))
+    return re.search(rf"(?<![0-9A-Za-z_]){re.escape(needle)}(?![0-9A-Za-z_])", hay) is not None
+
+
 def screen_checks(checks: list[str]) -> list[str]:
     """Recommended checks without case-clearing language (see CLEARING)."""
     return [c for c in checks if not CLEARING.search(c)]
@@ -90,8 +101,7 @@ def check_item(fact_key: str, statement: str, facts: dict[str, str]) -> CheckedI
             return CheckedItem(
                 fact_key, statement, False, "statement has numbers but the fact is not numeric"
             )
-        items = [i for i in (_norm(p) for p in [raw, *raw.split(",")]) if i]
-        named = any(i in _norm(statement) for i in items)
+        named = any(_names(statement, item) for item in [raw, *raw.split(",")] if item.strip())
         return CheckedItem(
             fact_key, statement, named, "names the value" if named else "value not in statement"
         )

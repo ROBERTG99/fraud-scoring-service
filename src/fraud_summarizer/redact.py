@@ -45,7 +45,8 @@ HEX_ID = re.compile(
 SEP = r"(?:[ \t\r\n]{1,2}|[ \t]?[-./_,:][ \t]?)"
 RUN = re.compile(r"\+?\(?\d+\)?(?:(?:" + SEP + r"|(?<=\)))\(?\d+\)?)*")
 PHONE_SEPS = frozenset({"", " ", "-", ".", "/", "_"})
-# A contiguous 13-19 digit number glued to letters ("PAN4111...", "...1111EXP") is still a card.
+# A contiguous 13-19 digit number glued to letters ("PAN4111...", "...1111EXP") is still a card; so is a
+# separated one in a card shape, and a 3-3-4 phone (_card_shaped, _phone_shaped).
 GLUED_CARD = re.compile(r"(?<!\d)\d{13,19}(?!\d)")
 EXTENSION = re.compile(re.escape(PHONE_LABEL) + r"\s*(?:x|ext\.?|extension)\s*\d{1,6}\b", re.IGNORECASE)
 DASHES = dict.fromkeys(
@@ -138,6 +139,21 @@ def _is_phone(gs: list[_Group]) -> bool:
     return gs[0].digits.startswith("0") and len(digits) in (10, 11) and all(2 <= n <= 6 for n in lengths)
 
 
+def _uniform(gs: list[_Group]) -> str | None:
+    seps = {g.sep for g in gs[1:]}
+    return seps.pop() if len(seps) == 1 else None
+
+
+def _card_shaped(gs: list[_Group]) -> bool:
+    """A card layout even when glued to letters ("PAN4111 1111 1111 1111"): one separator and a card shape."""
+    return len(gs) > 1 and _uniform(gs) is not None and tuple(len(g.digits) for g in gs) in CARD_SHAPES
+
+
+def _phone_shaped(gs: list[_Group]) -> bool:
+    """A 3-3-4 number with one separator, even when glued to letters ("ph415-555-2671")."""
+    return [len(g.digits) for g in gs] == [3, 3, 4] and _uniform(gs) in (" ", "-", ".")
+
+
 def _windows(gs: list[_Group], glued: bool) -> list[tuple[int, int, str]]:
     """Choose non-overlapping card/phone windows (group index ranges) covering the most digits."""
     n = len(gs)
@@ -148,9 +164,9 @@ def _windows(gs: list[_Group], glued: bool) -> list[tuple[int, int, str]]:
         for j in range(i + 1, n + 1):
             window = gs[i:j]
             label = None
-            if _is_card(window) and (not glued or j - i == 1):
+            if _is_card(window) and (not glued or j - i == 1 or _card_shaped(window)):
                 label = CARD_LABEL
-            elif not glued and _is_phone(window):
+            elif (not glued or _phone_shaped(window)) and _is_phone(window):
                 label = PHONE_LABEL
             if label:
                 rest = best[j][0]
@@ -170,7 +186,8 @@ def _redact_run(m: re.Match[str]) -> str:
     before = text[start - 1] if start else ""
     after = text[end : end + 2]
     # Glued to letters (UUIDs, hex hashes, "PAN4111..."): only a contiguous card number may be redacted.
-    glued_before = before.isalpha() or before == "_"
+    # "_" glues only to a word ("Tel_415..."), not to a redaction label or punctuation before it ("]_(588) ...").
+    glued_before = before.isalpha() or (before == "_" and start >= 2 and text[start - 2].isalnum())
     glued = (
         not run.startswith("+")
         and (  # a "+" opens a phone number even after letters ("Tel+1415...")

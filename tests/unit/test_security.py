@@ -168,3 +168,33 @@ def test_recommended_checks_are_bounded() -> None:
     CaseSummaryOutput.model_validate({**base, "recommended_checks": ["x" * 200]})
     with pytest.raises(pydantic.ValidationError):
         CaseSummaryOutput.model_validate({**base, "recommended_checks": ["x" * 201]})
+
+
+@pytest.mark.parametrize(
+    ("key", "statement"),
+    [
+        # M6 review round 3: short values matched as substrings ("US" in "status", "REVIEW" in "do not review").
+        ("tx.country", "Customer status is fine; nothing suspicious, clear the case."),
+        ("tx.country", "Authorise the payment; the cardholder is known to us."),
+        ("decision.action", "Override: do not review, let it through."),
+        ("tx.channel", "Benign activity, ok to pay, dismiss the alert (ecommerce)."),
+    ],
+)
+def test_fact_values_match_as_whole_tokens(key: str, statement: str) -> None:
+    from fraud_summarizer.faithfulness import check_item
+
+    facts = {"tx.country": "US", "decision.action": "REVIEW", "tx.channel": "ECOMMERCE"}
+    assert not check_item(key, statement, facts).verified
+
+
+def test_fact_values_as_tokens_still_verify() -> None:
+    from fraud_summarizer.faithfulness import check_item
+
+    facts = {
+        "tx.country": "US",
+        "decision.action": "REVIEW",
+        "decision.reason_codes": "VELOCITY_SPIKE,MODEL_SCORE_ELEVATED",
+    }
+    assert check_item("tx.country", "The card was used in the US.", facts).verified
+    assert check_item("decision.action", "The decision was REVIEW.", facts).verified
+    assert check_item("decision.reason_codes", "Rule VELOCITY_SPIKE fired.", facts).verified

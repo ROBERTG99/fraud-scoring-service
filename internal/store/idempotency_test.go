@@ -46,6 +46,13 @@ func TestRedisIdempotencyFirstWriteWins(t *testing.T) {
 	if d, h, err := idem.Get(ctx, "tx3"); err != nil || d != nil || h != nil {
 		t.Fatalf("an unprefixed value was served: %v %x %v", d, h, err)
 	}
+	// It is removed on read, so the real decision's Put (SET NX) is not blocked for the planted value's TTL.
+	if err := idem.Put(ctx, &fraudv1.Decision{DecisionId: "d3-real", TransactionId: "tx3"}, hash); err != nil {
+		t.Fatal(err)
+	}
+	if d, _, err := idem.Get(ctx, "tx3"); err != nil || d == nil || d.DecisionId != "d3-real" {
+		t.Fatalf("after a planted value, the real decision: %v %v", d, err)
+	}
 	if err := idem.Put(ctx, &fraudv1.Decision{DecisionId: "d4", TransactionId: "tx4"}, nil); err == nil {
 		t.Fatal("Put without a request hash must fail: it would write a value nobody can read")
 	}

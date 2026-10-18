@@ -224,12 +224,15 @@ func VerifyAudit(ctx context.Context, pool *pgxpool.Pool, key []byte, anchors []
 		if e.PrevHash != head.Hash {
 			return n, head, fmt.Errorf("audit chain broken at seq %d: prev_hash does not match the previous entry", e.Seq)
 		}
+		if e.Seq < 1 { // bigserial starts at 1; only someone writing the table directly picks seq <= 0
+			return n, head, fmt.Errorf("audit chain broken at seq %d: sequence numbers start at 1", e.Seq)
+		}
 		var hash string
 		switch {
 		case e.Alg == AuditAlgHMAC:
 			keyed = true
 			hash, err = AuditMAC(key, e.PrevHash, e.TS, e.ActorSub, e.Role, e.Action, e.Target, e.Details)
-		case e.Alg == AuditAlgSHA256 && !keyed && e.Seq <= legacyMaxSeq:
+		case e.Alg == AuditAlgSHA256 && !keyed && e.Seq >= 1 && e.Seq <= legacyMaxSeq:
 			hash, err = AuditHash(e.PrevHash, e.TS, e.ActorSub, e.Role, e.Action, e.Target, e.Details)
 		case e.Alg == AuditAlgSHA256 && keyed:
 			return n, head, fmt.Errorf("audit chain broken at seq %d: unkeyed entry after keyed entries", e.Seq)

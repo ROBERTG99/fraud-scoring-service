@@ -59,3 +59,21 @@ func TestEventAgeBoundLiftsOnlyInDevMode(t *testing.T) {
 		t.Fatalf("%v %v", d, err)
 	}
 }
+
+// Outside dev mode an anchors file with no anchor in it cannot vouch for a non-empty chain (round 3 review).
+func TestAuditVerifyRefusesAnEmptyAnchorsFileOutsideDev(t *testing.T) {
+	t.Setenv("FRAUD_ENV", "")
+	if err := requireAnchors(false, nil, 3); err == nil {
+		t.Fatal("an empty anchors file vouched for 3 entries outside dev")
+	}
+	if err := requireAnchors(false, nil, 0); err != nil {
+		t.Fatalf("an empty chain needs no anchor yet: %v", err)
+	}
+	if err := requireAnchors(true, nil, 3); err != nil {
+		t.Fatalf("audit-anchor writes the first anchor: %v", err)
+	}
+	t.Setenv("FRAUD_ENV", "dev")
+	if err := requireAnchors(false, nil, 3); err != nil {
+		t.Fatalf("dev mode: %v", err)
+	}
+}

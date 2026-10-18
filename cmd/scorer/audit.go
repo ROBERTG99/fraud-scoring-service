@@ -84,6 +84,9 @@ func auditVerify(anchor bool) int {
 	if err != nil {
 		return fail(1, fmt.Errorf("%w (after %d verified entries)", err, n))
 	}
+	if err := requireAnchors(anchor, anchors, n); err != nil {
+		return fail(2, err)
+	}
 	fmt.Printf("audit chain intact: %d entries verified, %d anchors checked, head seq %d\n", n, len(anchors), head.Seq)
 	if !anchor || n == 0 {
 		return 0
@@ -124,4 +127,13 @@ func readAnchors(path string, allowMissing bool) ([]store.AuditAnchor, error) {
 	}
 	defer func() { _ = f.Close() }()
 	return store.ReadAuditAnchors(io.Reader(f))
+}
+
+// requireAnchors refuses, outside dev mode, to call a non-empty chain intact when the anchors file holds no
+// anchor: a chain cut off or rewritten in full would verify on its own (D-061). audit-anchor writes the first.
+func requireAnchors(anchoring bool, anchors []store.AuditAnchor, entries int) error {
+	if anchoring || auth.DevMode() || len(anchors) > 0 || entries == 0 {
+		return nil
+	}
+	return fmt.Errorf("FRAUD_AUDIT_ANCHORS holds no anchor for a chain of %d entries; run audit-anchor first", entries)
 }

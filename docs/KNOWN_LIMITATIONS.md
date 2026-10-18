@@ -145,4 +145,13 @@ A hex identifier that contains a Luhn-valid run of 13 to 19 digits loses that ru
 (D-058): 3 of the 6,488 unique strings in the eval datasets are device hashes that do
 (`uv run python scripts/redact_parity.py --rev 1d1b596`). The summary still cites the device by its fact key;
 only the prompt's copy of the hash is altered. Bare 9-digit numbers are not treated as SSNs unless an "SSN"
-keyword precedes them.
+keyword precedes them. Two more over-redactions are accepted (D-061): a 10–11 digit number followed by letters
+becomes a phone ("order 1234567890th"), and a list of four 4-digit numbers that happens to pass Luhn becomes a
+card ("ids 1111,2222,3333,4444").
+
+## Faithfulness drops natural phrasing
+
+A statement must carry its fact (D-059, D-061): "The device is new." citing `feature.new_device` is dropped
+because it lacks the number. FakeLLM's statements always carry it (faithfulness 1.0, `make eval-summary`); a
+live model may phrase evidence without the value, which lowers faithfulness and can turn summaries
+`unfaithful`. Watch the faithfulness score in `make eval-live` before relying on live summaries.

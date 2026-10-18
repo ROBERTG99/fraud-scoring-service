@@ -80,3 +80,9 @@ none); set it once, from the last unkeyed `seq` at upgrade time, and keep it out
 3. `entries were removed` or `missing from the chain`: rows after the last anchor's `seq` were cut off.
 4. `MAC does not match the audit key`: the anchor file was edited, or the key differs from the one that wrote it.
 5. `anchor chain broken`: a line was removed from the anchors file or the lines were reordered.
+
+Anchors written before D-057 (no `prev` field) fail with "MAC does not match": start a new anchors file with
+`scorer audit-anchor` after verifying the chain once without it in dev mode. Outside dev mode the services take
+their database credentials only from a `postgres://user:password@host/db` URL with a real password
+(`FRAUD_PG_DSN`, `FRAUD_SUMMARIZER_PG_DSN`); key=value DSNs and passwords from `PGPASSWORD` or a passfile are
+refused (D-059).
