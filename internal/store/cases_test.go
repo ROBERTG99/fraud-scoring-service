@@ -106,7 +106,7 @@ func TestLabelWritesAuditRow(t *testing.T) {
 	if _, err := s.LabelCase(ctx, LabelInput{CaseID: other, Label: "legit", IdempotencyKey: "key-0004", ActorSub: "analyst-2", Role: "analyst"}); err != nil {
 		t.Fatal(err)
 	}
-	if n, _, err := VerifyAudit(ctx, pool, testAuditKey, nil); err != nil || n != 2 {
+	if n, _, err := VerifyAudit(ctx, pool, testAuditKey, nil, 0); err != nil || n != 2 {
 		t.Fatalf("audit verify %d %v", n, err)
 	}
 }
@@ -122,7 +122,7 @@ func TestAuditVerifyDetectsTampering(t *testing.T) {
 		}
 		_ = tx.Commit(ctx)
 	}
-	if n, _, err := VerifyAudit(ctx, pool, testAuditKey, nil); err != nil || n != 3 {
+	if n, _, err := VerifyAudit(ctx, pool, testAuditKey, nil, 0); err != nil || n != 3 {
 		t.Fatalf("verify %d %v", n, err)
 	}
 	// Superuser-only tampering (the trigger blocks normal updates).
@@ -132,7 +132,7 @@ func TestAuditVerifyDetectsTampering(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE audit_log SET details = '{"label":"legit","n":1}' WHERE seq = 2`); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := VerifyAudit(ctx, pool, testAuditKey, nil); err == nil {
+	if _, _, err := VerifyAudit(ctx, pool, testAuditKey, nil, 0); err == nil {
 		t.Fatal("tampered chain verified")
 	}
 }
@@ -293,13 +293,13 @@ func TestAuditChainIsKeyed(t *testing.T) {
 	pool := newPool(t, migratedDB(t))
 	ctx := context.Background()
 	appendN(t, pool, testAuditKey, 2)
-	if _, _, err := VerifyAudit(ctx, pool, []byte("another key, also thirty-two bytes!"), nil); err == nil {
+	if _, _, err := VerifyAudit(ctx, pool, []byte("another key, also thirty-two bytes!"), nil, 0); err == nil {
 		t.Fatal("verified under the wrong key")
 	}
 	if _, err := AppendAudit(ctx, nil, []byte("short"), "a", "analyst", "x", "y", nil); err == nil {
 		t.Fatal("a short key must be refused")
 	}
-	n, head, err := VerifyAudit(ctx, pool, testAuditKey, nil)
+	n, head, err := VerifyAudit(ctx, pool, testAuditKey, nil, 0)
 	if err != nil || n != 2 {
 		t.Fatalf("%d %v", n, err)
 	}
@@ -309,7 +309,7 @@ func TestAuditChainIsKeyed(t *testing.T) {
 		VALUES ($1, 'intruder', 'risk_engineer', 'case.label', 'case/x', '{}', $2, $3, 1)`, ts, head.Hash, forged); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := VerifyAudit(ctx, pool, testAuditKey, nil); err == nil || !strings.Contains(err.Error(), "unkeyed entry after keyed") {
+	if _, _, err := VerifyAudit(ctx, pool, testAuditKey, nil, 0); err == nil || !strings.Contains(err.Error(), "unkeyed entry after keyed") {
 		t.Fatalf("downgrade: %v", err)
 	}
 }
@@ -318,14 +318,14 @@ func TestAuditChainWithForgedKeyedRowFails(t *testing.T) {
 	pool := newPool(t, migratedDB(t))
 	ctx := context.Background()
 	appendN(t, pool, testAuditKey, 1)
-	_, head, _ := VerifyAudit(ctx, pool, testAuditKey, nil)
+	_, head, _ := VerifyAudit(ctx, pool, testAuditKey, nil, 0)
 	ts := time.Now().UTC().Truncate(time.Microsecond)
 	forged, _ := AuditMAC([]byte("guessed key, thirty-two bytes long"), head.Hash, ts, "intruder", "analyst", "case.label", "case/x", map[string]any{})
 	if _, err := pool.Exec(ctx, `INSERT INTO audit_log (ts, actor_sub, role, action, target, details, prev_hash, hash, alg)
 		VALUES ($1, 'intruder', 'analyst', 'case.label', 'case/x', '{}', $2, $3, 2)`, ts, head.Hash, forged); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := VerifyAudit(ctx, pool, testAuditKey, nil); err == nil || !strings.Contains(err.Error(), "seq 2: hash mismatch") {
+	if _, _, err := VerifyAudit(ctx, pool, testAuditKey, nil, 0); err == nil || !strings.Contains(err.Error(), "seq 2: hash mismatch") {
 		t.Fatalf("forged row: %v", err)
 	}
 }
@@ -341,8 +341,37 @@ func TestLegacyEntriesVerifyBeforeKeyedOnes(t *testing.T) {
 		t.Fatal(err)
 	}
 	appendN(t, pool, testAuditKey, 2)
-	if n, head, err := VerifyAudit(ctx, pool, testAuditKey, nil); err != nil || n != 3 || head.Alg != AuditAlgHMAC {
+	if _, _, err := VerifyAudit(ctx, pool, testAuditKey, nil, 0); err == nil || !strings.Contains(err.Error(), "unkeyed entry") {
+		t.Fatalf("without a legacy bound, an unkeyed entry must fail: %v", err)
+	}
+	if n, head, err := VerifyAudit(ctx, pool, testAuditKey, nil, 1); err != nil || n != 3 || head.Alg != AuditAlgHMAC {
 		t.Fatalf("%d %+v %v", n, head, err)
+	}
+}
+
+// M6 round-2 review: the owner disables the trigger, deletes every row and writes the chain back, forged rows
+// included, as unkeyed alg 1 entries with recomputed hashes. With no legacy bound (the default) it fails.
+func TestAuditRewriteAsUnkeyedIsRejected(t *testing.T) {
+	pool := newPool(t, migratedDB(t))
+	ctx := context.Background()
+	appendN(t, pool, testAuditKey, 2)
+	for _, q := range []string{`ALTER TABLE audit_log DISABLE TRIGGER audit_log_no_update`, `DELETE FROM audit_log`} {
+		if _, err := pool.Exec(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	prev := ""
+	for i, actor := range []string{"analyst-1", "intruder"} {
+		ts := time.Now().UTC().Truncate(time.Microsecond)
+		h, _ := AuditHash(prev, ts, actor, "analyst", "case.label", fmt.Sprintf("case/%d", i), map[string]any{})
+		if _, err := pool.Exec(ctx, `INSERT INTO audit_log (ts, actor_sub, role, action, target, details, prev_hash, hash, alg)
+			VALUES ($1, $2, 'analyst', 'case.label', $3, '{}', $4, $5, 1)`, ts, actor, fmt.Sprintf("case/%d", i), prev, h); err != nil {
+			t.Fatal(err)
+		}
+		prev = h
+	}
+	if _, _, err := VerifyAudit(ctx, pool, testAuditKey, nil, 0); err == nil {
+		t.Fatal("a chain rewritten as unkeyed entries verified")
 	}
 }
 
@@ -352,17 +381,17 @@ func TestAuditAnchorsDetectTruncation(t *testing.T) {
 	pool := newPool(t, migratedDB(t))
 	ctx := context.Background()
 	appendN(t, pool, testAuditKey, 3)
-	_, head, err := VerifyAudit(ctx, pool, testAuditKey, nil)
+	_, head, err := VerifyAudit(ctx, pool, testAuditKey, nil, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	anchor := NewAuditAnchor(testAuditKey, head, time.Now())
-	if n, _, err := VerifyAudit(ctx, pool, testAuditKey, []AuditAnchor{anchor}); err != nil || n != 3 {
+	anchor := NewAuditAnchor(testAuditKey, head, time.Now(), nil)
+	if n, _, err := VerifyAudit(ctx, pool, testAuditKey, []AuditAnchor{anchor}, 0); err != nil || n != 3 {
 		t.Fatalf("anchored chain: %d %v", n, err)
 	}
 	bad := anchor
 	bad.Hash = strings.Repeat("0", 64)
-	if _, _, err := VerifyAudit(ctx, pool, testAuditKey, []AuditAnchor{bad}); err == nil || !strings.Contains(err.Error(), "MAC") {
+	if _, _, err := VerifyAudit(ctx, pool, testAuditKey, []AuditAnchor{bad}, 0); err == nil || !strings.Contains(err.Error(), "MAC") {
 		t.Fatalf("an edited anchor must fail its MAC: %v", err)
 	}
 	// The owner disables the trigger and removes the newest entry: the remaining chain is still valid.
@@ -372,10 +401,10 @@ func TestAuditAnchorsDetectTruncation(t *testing.T) {
 	if _, err := pool.Exec(ctx, `DELETE FROM audit_log WHERE seq = $1`, head.Seq); err != nil {
 		t.Fatal(err)
 	}
-	if n, _, err := VerifyAudit(ctx, pool, testAuditKey, nil); err != nil || n != 2 {
+	if n, _, err := VerifyAudit(ctx, pool, testAuditKey, nil, 0); err != nil || n != 2 {
 		t.Fatalf("without anchors the cut is invisible: %d %v", n, err)
 	}
-	if _, _, err := VerifyAudit(ctx, pool, testAuditKey, []AuditAnchor{anchor}); err == nil || !strings.Contains(err.Error(), "entries were removed") {
+	if _, _, err := VerifyAudit(ctx, pool, testAuditKey, []AuditAnchor{anchor}, 0); err == nil || !strings.Contains(err.Error(), "entries were removed") {
 		t.Fatalf("truncation: %v", err)
 	}
 }

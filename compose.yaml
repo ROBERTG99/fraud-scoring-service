@@ -18,10 +18,12 @@ services:
     <<: *hardened
     build: { <<: *build, dockerfile: Dockerfile.go, target: scorer }
     image: fraud/scorer:dev
-    volumes: ["scorer-spool:/var/lib/fraud/spool"]
+    volumes: ["scorer-spool:/var/lib/fraud/spool", "audit-anchors:/var/lib/fraud/audit"]
     environment:
       FRAUD_ENV: dev # local stack: plain-HTTP JWKS allowed (D-045)
       FRAUD_ADMIN_ADDR: ":8516" # metrics for Prometheus on the stack network, not published (D-052)
+      # Local stand-in for append-only storage outside the database (`make audit-verify`, D-050, D-057).
+      FRAUD_AUDIT_ANCHORS: /var/lib/fraud/audit/anchors.jsonl
     ports: ["127.0.0.1:8510:8510", "127.0.0.1:8511:8511"]
     restart: unless-stopped
 
@@ -109,3 +111,4 @@ services:
 
 volumes:
   scorer-spool:
+  audit-anchors:

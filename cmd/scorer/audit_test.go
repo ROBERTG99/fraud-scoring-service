@@ -29,3 +29,18 @@ func TestAuditKeyFromEnv(t *testing.T) {
 		t.Fatalf("dev key: %x %v", k, err)
 	}
 }
+
+// Outside dev mode, verification without anchors cannot see removed entries, so it refuses to run (M6 round 2).
+func TestAuditVerifyNeedsAnchorsOutsideDev(t *testing.T) {
+	t.Setenv("FRAUD_ENV", "")
+	t.Setenv("FRAUD_AUDIT_KEY", strings.Repeat("ab", 32))
+	t.Setenv("FRAUD_AUDIT_ANCHORS", "")
+	if code := auditVerify(false); code != 2 {
+		t.Fatalf("audit-verify without anchors outside dev: exit %d, want 2", code)
+	}
+	t.Setenv("FRAUD_AUDIT_LEGACY_MAX_SEQ", "-1")
+	t.Setenv("FRAUD_ENV", "dev")
+	if code := auditVerify(false); code != 2 {
+		t.Fatalf("a negative legacy bound: exit %d, want 2", code)
+	}
+}

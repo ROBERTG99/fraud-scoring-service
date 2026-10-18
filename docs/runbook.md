@@ -63,13 +63,20 @@ case, which the console shows without an AI summary.
 ## Audit log verification
 
 `make audit-verify` (`scorer audit-verify`) recomputes the `audit_log` chain under `FRAUD_AUDIT_KEY` (D-050)
-and exits 1 when it is broken, naming the first bad `seq`. Schedule `scorer audit-anchor` (hourly, say) with
-`FRAUD_AUDIT_ANCHORS` pointing at storage the database's operators cannot rewrite (an append-only bucket, a
-separate host): it verifies the chain and appends the head's `seq` and hash, signed with the key. Verify then
-also fails when anchored entries were removed or rewritten.
+and checks every anchor in `FRAUD_AUDIT_ANCHORS`; it exits 1 when the chain is broken, naming the first bad
+`seq`, and 2 when it cannot run. Outside `FRAUD_ENV=dev` it refuses to run without an anchors file, because a
+chain with its newest entries cut off still verifies on its own (D-057). Schedule `scorer audit-anchor`
+(hourly, say): it verifies the chain and appends the head's `seq` and hash, signed with the key and chained to
+the previous anchor. Keep the anchors file on storage the database's operators cannot rewrite or truncate (an
+append-only bucket, a separate host): the chain of anchors shows a line removed from the middle, but not the
+newest lines removed. The compose stack keeps it on the `audit-anchors` volume, which is only a stand-in.
+Entries written before migration 00010 (unkeyed) verify only up to `FRAUD_AUDIT_LEGACY_MAX_SEQ` (default 0,
+none); set it once, from the last unkeyed `seq` at upgrade time, and keep it outside the database.
 
 1. `hash mismatch` or `prev_hash does not match`: an entry was changed or inserted outside the scorer. The
    triggers stop every role but the table owner (the migration role) and superusers; check who used them.
-2. `unkeyed entry after keyed entries`: someone appended an old-format row to avoid the key.
+2. `unkeyed entry after keyed entries` or `beyond FRAUD_AUDIT_LEGACY_MAX_SEQ`: someone wrote old-format rows to
+   avoid the key.
 3. `entries were removed` or `missing from the chain`: rows after the last anchor's `seq` were cut off.
 4. `MAC does not match the audit key`: the anchor file was edited, or the key differs from the one that wrote it.
+5. `anchor chain broken`: a line was removed from the anchors file or the lines were reordered.

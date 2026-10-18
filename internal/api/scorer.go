@@ -230,10 +230,13 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 		gctx, gcancel := context.WithTimeout(ctx, PostgresTimeout)
 		_, storedHash, gerr := s.d.Decisions.GetByTransaction(gctx, tx.TransactionId)
 		gcancel()
-		if gerr == nil {
-			if err := checkReplay(storedHash, reqHash); err != nil {
-				return nil, err
-			}
+		if gerr != nil {
+			// Never return a decision that could not be matched to this request (D-057); the caller retries.
+			span.SetStatus(otelcodes.Error, "duplicate not verifiable")
+			return nil, status.Error(codes.Unavailable, "decision for this transaction_id could not be verified; retry")
+		}
+		if err := checkReplay(storedHash, reqHash); err != nil {
+			return nil, err
 		}
 		span.SetAttributes(attribute.Bool("app.idempotent_replay", true))
 		decisionAttributes(span, stored) // describe the decision returned, not the discarded one

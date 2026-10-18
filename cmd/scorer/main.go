@@ -2,7 +2,7 @@
 //
 //	scorer               run the service
 //	scorer healthcheck   probe /healthz (container HEALTHCHECK)
-//	scorer audit-verify  recompute the audit_log hash chain (and check FRAUD_AUDIT_ANCHORS) and exit non-zero when it is broken
+//	scorer audit-verify  recompute the audit_log chain and check the anchors in FRAUD_AUDIT_ANCHORS (required outside dev)
 //	scorer audit-anchor  verify the chain, then append its head to FRAUD_AUDIT_ANCHORS (storage outside the database)
 //	scorer migrate       apply goose migrations with FRAUD_PG_MIGRATE_DSN (owner role)
 package main

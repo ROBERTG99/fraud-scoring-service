@@ -16,12 +16,13 @@ COPY . .
 ARG VERSION=dev
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     go build -ldflags "-s -w -X github.com/ROBERTG99/fraud-scoring-service/internal/buildinfo.Version=${VERSION}" -o /out/scorer ./cmd/scorer
-RUN mkdir -p /out/spool
+RUN mkdir -p /out/spool /out/audit
 
 FROM ${RUNTIME_IMAGE} AS scorer
 COPY --from=build /out/scorer /scorer
-# The spool is the only path the scorer writes; compose mounts a volume here over a read-only root (D-055).
+# The spool and the audit anchors are the only paths the scorer writes; compose mounts a volume here over a read-only root (D-055).
 COPY --from=build --chown=65532:65532 /out/spool /var/lib/fraud/spool
+COPY --from=build --chown=65532:65532 /out/audit /var/lib/fraud/audit
 ENV FRAUD_SPOOL_DIR=/var/lib/fraud/spool
 USER 65532:65532
 EXPOSE 8510 8511 8516

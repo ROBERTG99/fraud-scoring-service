@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/ROBERTG99/fraud-scoring-service/internal/auth"
@@ -55,8 +56,16 @@ func auditVerify(anchor bool) int {
 		return fail(2, err)
 	}
 	path := os.Getenv("FRAUD_AUDIT_ANCHORS")
-	if anchor && path == "" {
+	switch {
+	case path == "" && (anchor || !auth.DevMode()):
+		// Without anchors a cut-off chain still verifies: outside dev mode that is not a verification (D-057).
 		return fail(2, errors.New("FRAUD_AUDIT_ANCHORS (a file outside the database) is not set"))
+	case path == "":
+		fmt.Fprintf(os.Stderr, "%s: warning: FRAUD_AUDIT_ANCHORS not set; removed newest entries cannot be detected\n", cmd)
+	}
+	legacyMaxSeq, err := strconv.ParseInt(envOr("FRAUD_AUDIT_LEGACY_MAX_SEQ", "0"), 10, 64)
+	if err != nil || legacyMaxSeq < 0 {
+		return fail(2, fmt.Errorf("FRAUD_AUDIT_LEGACY_MAX_SEQ must be a sequence number >= 0, got %q", os.Getenv("FRAUD_AUDIT_LEGACY_MAX_SEQ")))
 	}
 	anchors, err := readAnchors(path, anchor) // the first audit-anchor creates the file
 	if err != nil {
@@ -67,7 +76,7 @@ func auditVerify(anchor bool) int {
 		return fail(2, err)
 	}
 	defer pool.Close()
-	n, head, err := store.VerifyAudit(ctx, pool, key, anchors)
+	n, head, err := store.VerifyAudit(ctx, pool, key, anchors, legacyMaxSeq)
 	if err != nil {
 		return fail(1, fmt.Errorf("%w (after %d verified entries)", err, n))
 	}
@@ -75,7 +84,11 @@ func auditVerify(anchor bool) int {
 	if !anchor || n == 0 {
 		return 0
 	}
-	line, err := json.Marshal(store.NewAuditAnchor(key, head, time.Now()))
+	var prev *store.AuditAnchor
+	if len(anchors) > 0 {
+		prev = &anchors[len(anchors)-1]
+	}
+	line, err := json.Marshal(store.NewAuditAnchor(key, head, time.Now(), prev))
 	if err != nil {
 		return fail(2, err)
 	}

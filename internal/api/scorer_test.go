@@ -117,7 +117,8 @@ type memDecisions struct {
 	byTx    map[string]store.DecisionRecord
 	commits int
 	err     error
-	legacy  bool // rows written before request hashes existed
+	legacy  bool  // rows written before request hashes existed
+	getErr  error // GetByTransaction fails
 }
 
 func (m *memDecisions) Commit(_ context.Context, rec store.DecisionRecord) (*fraudv1.Decision, error) {
@@ -140,6 +141,9 @@ func (m *memDecisions) Commit(_ context.Context, rec store.DecisionRecord) (*fra
 func (m *memDecisions) GetByTransaction(_ context.Context, txID string) (*fraudv1.Decision, []byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.getErr != nil {
+		return nil, nil, m.getErr
+	}
 	if r, ok := m.byTx[txID]; ok {
 		if m.legacy {
 			return r.Decision, nil, nil
@@ -415,15 +419,34 @@ func TestReplayWithDifferentContentsIsRejected(t *testing.T) {
 	if _, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: changed}); status.Code(err) != codes.AlreadyExists {
 		t.Fatalf("same transaction_id, different amount: %v, want AlreadyExists", err)
 	}
-	// The Postgres fallback (Redis miss) checks the stored hash too.
+	// A Redis miss reaches Commit, whose ON CONFLICT returns the stored decision: its hash is checked too.
 	h.idem.m = nil
 	if _, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: changed}); status.Code(err) != codes.AlreadyExists {
-		t.Fatalf("Postgres replay with different contents: %v, want AlreadyExists", err)
+		t.Fatalf("ON CONFLICT replay with different contents: %v, want AlreadyExists", err)
 	}
+	// Redis down: the lookup falls back to Postgres, and the hash is checked there.
+	h.idem.err = errors.New("redis down")
+	if _, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: changed}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("Postgres-fallback replay with different contents: %v, want AlreadyExists", err)
+	}
+	h.idem.err = nil
 	// Entries written before request hashes existed (no hash) still replay.
 	h.idem.hashes = nil
 	h.decisions.legacy = true
 	if d, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: changed}); err != nil || d.DecisionId != first.DecisionId {
 		t.Fatalf("legacy entry without a hash: %v %v", d, err)
+	}
+}
+
+// When a concurrent duplicate won and its request hash cannot be read, Score refuses rather than return a
+// decision it could not match to this request (M6 round-2 review: the path failed open).
+func TestDuplicateWhoseHashCannotBeReadIsRefused(t *testing.T) {
+	h := newHarness(t)
+	tx := journeyTx("0192f000-0000-7000-8000-0000000000c2")
+	winner := &fraudv1.Decision{DecisionId: "0192f000-0000-7000-8000-0000000000ab", TransactionId: tx.TransactionId}
+	h.decisions.byTx = map[string]store.DecisionRecord{tx.TransactionId: {Decision: winner, RequestHash: RequestHash(tx)}}
+	h.decisions.getErr = errors.New("postgres timeout")
+	if d, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: tx}); status.Code(err) != codes.Unavailable {
+		t.Fatalf("unverifiable duplicate: %v %v, want Unavailable", d, err)
 	}
 }

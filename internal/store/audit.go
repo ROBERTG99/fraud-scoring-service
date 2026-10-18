@@ -23,8 +23,9 @@ const auditLockKey = 724411
 
 // Audit hash algorithms (audit_log.alg, migration 00010, D-050).
 const (
-	// AuditAlgSHA256 is the first chain: unkeyed sha256 of '|'-joined fields. Verified only before the first
-	// keyed entry, so nobody can append unkeyed rows to a keyed chain.
+	// AuditAlgSHA256 is the first chain: unkeyed sha256 of '|'-joined fields. Accepted only up to a sequence
+	// number given from outside the database (legacyMaxSeq, default 0: none) and before the first keyed entry,
+	// so whoever can write the table cannot rewrite the chain as unkeyed entries (D-057).
 	AuditAlgSHA256 = 1
 	// AuditAlgHMAC is HMAC-SHA256, under a key held outside the database, of length-prefixed fields.
 	AuditAlgHMAC = 2
@@ -124,23 +125,50 @@ func AppendAudit(ctx context.Context, tx pgx.Tx, key []byte, actor, role, action
 }
 
 // AuditAnchor records the chain head outside the database, so cutting off the newest entries is detected
-// (`scorer audit-anchor` appends one per run; `scorer audit-verify -anchors` checks them all). MAC binds the
-// anchor to the audit key.
+// (`scorer audit-anchor` appends one per run; `scorer audit-verify` checks them all). MAC binds the anchor to
+// the audit key and to the previous anchor's MAC (Prev), so a line removed from the middle of the anchors file
+// breaks the chain. Removing the newest lines together with the chain's newest entries is detectable only if
+// the anchors live on storage that cannot be truncated (docs/runbook.md).
 type AuditAnchor struct {
 	Seq  int64     `json:"seq"`
 	Hash string    `json:"hash"`
 	At   time.Time `json:"at"`
+	Prev string    `json:"prev"`
 	MAC  string    `json:"mac"`
 }
 
-func anchorMAC(key []byte, seq int64, hash string, at time.Time) string {
-	return mac(key, "fraud.audit.anchor.v1", strconv.FormatInt(seq, 10), hash, at.UTC().Format(time.RFC3339Nano))
+func anchorMAC(key []byte, seq int64, hash string, at time.Time, prev string) string {
+	return mac(key, "fraud.audit.anchor.v2", strconv.FormatInt(seq, 10), hash, at.UTC().Format(time.RFC3339Nano), prev)
 }
 
-// NewAuditAnchor returns a signed anchor for the head entry.
-func NewAuditAnchor(key []byte, head AuditEntry, at time.Time) AuditAnchor {
+// NewAuditAnchor returns a signed anchor for the head entry, chained to prev (nil for the first anchor).
+func NewAuditAnchor(key []byte, head AuditEntry, at time.Time, prev *AuditAnchor) AuditAnchor {
 	at = at.UTC()
-	return AuditAnchor{Seq: head.Seq, Hash: head.Hash, At: at, MAC: anchorMAC(key, head.Seq, head.Hash, at)}
+	p := ""
+	if prev != nil {
+		p = prev.MAC
+	}
+	return AuditAnchor{Seq: head.Seq, Hash: head.Hash, At: at, Prev: p, MAC: anchorMAC(key, head.Seq, head.Hash, at, p)}
+}
+
+// CheckAnchorChain checks every anchor's MAC under key and that each one names its predecessor, in order and
+// with non-decreasing sequence numbers.
+func CheckAnchorChain(key []byte, anchors []AuditAnchor) error {
+	prev := ""
+	var seq int64
+	for i, a := range anchors {
+		if !hmac.Equal([]byte(a.MAC), []byte(anchorMAC(key, a.Seq, a.Hash, a.At, a.Prev))) {
+			return fmt.Errorf("anchor %d (seq %d at %s): MAC does not match the audit key", i+1, a.Seq, a.At.Format(time.RFC3339))
+		}
+		if a.Prev != prev {
+			return fmt.Errorf("anchor %d (seq %d): anchor chain broken, an anchor before it was removed or reordered", i+1, a.Seq)
+		}
+		if a.Seq < seq {
+			return fmt.Errorf("anchor %d: seq %d after seq %d", i+1, a.Seq, seq)
+		}
+		prev, seq = a.MAC, a.Seq
+	}
+	return nil
 }
 
 // ReadAuditAnchors parses one JSON anchor per line.
@@ -160,18 +188,19 @@ func ReadAuditAnchors(r io.Reader) ([]AuditAnchor, error) {
 	return out, sc.Err()
 }
 
-// VerifyAudit recomputes the whole chain under key and checks every anchor against it. It returns the
-// number of verified entries and the head (the zero entry when the log is empty).
-func VerifyAudit(ctx context.Context, pool *pgxpool.Pool, key []byte, anchors []AuditAnchor) (int, AuditEntry, error) {
+// VerifyAudit recomputes the whole chain under key and checks every anchor against it. Unkeyed (alg 1) entries
+// are accepted only with seq <= legacyMaxSeq. It returns the number of verified entries and the head (the zero
+// entry when the log is empty).
+func VerifyAudit(ctx context.Context, pool *pgxpool.Pool, key []byte, anchors []AuditAnchor, legacyMaxSeq int64) (int, AuditEntry, error) {
 	if err := checkKey(key); err != nil {
+		return 0, AuditEntry{}, err
+	}
+	if err := CheckAnchorChain(key, anchors); err != nil {
 		return 0, AuditEntry{}, err
 	}
 	want := map[int64]string{}
 	var maxAnchored int64
 	for _, a := range anchors {
-		if !hmac.Equal([]byte(a.MAC), []byte(anchorMAC(key, a.Seq, a.Hash, a.At))) {
-			return 0, AuditEntry{}, fmt.Errorf("anchor for seq %d at %s: MAC does not match the audit key", a.Seq, a.At.Format(time.RFC3339))
-		}
 		want[a.Seq] = a.Hash
 		maxAnchored = max(maxAnchored, a.Seq)
 	}
@@ -200,10 +229,12 @@ func VerifyAudit(ctx context.Context, pool *pgxpool.Pool, key []byte, anchors []
 		case e.Alg == AuditAlgHMAC:
 			keyed = true
 			hash, err = AuditMAC(key, e.PrevHash, e.TS, e.ActorSub, e.Role, e.Action, e.Target, e.Details)
-		case e.Alg == AuditAlgSHA256 && !keyed:
+		case e.Alg == AuditAlgSHA256 && !keyed && e.Seq <= legacyMaxSeq:
 			hash, err = AuditHash(e.PrevHash, e.TS, e.ActorSub, e.Role, e.Action, e.Target, e.Details)
-		case e.Alg == AuditAlgSHA256:
+		case e.Alg == AuditAlgSHA256 && keyed:
 			return n, head, fmt.Errorf("audit chain broken at seq %d: unkeyed entry after keyed entries", e.Seq)
+		case e.Alg == AuditAlgSHA256:
+			return n, head, fmt.Errorf("audit chain broken at seq %d: unkeyed entry beyond FRAUD_AUDIT_LEGACY_MAX_SEQ (%d)", e.Seq, legacyMaxSeq)
 		default:
 			return n, head, fmt.Errorf("audit chain broken at seq %d: unknown alg %d", e.Seq, e.Alg)
 		}
