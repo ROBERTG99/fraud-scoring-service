@@ -117,8 +117,9 @@ def _passfile_fields(line: str) -> list[str]:
     return [*fields, cur]
 
 
-# libpq's default socket directories: a socket there is "localhost" in the passfile, any other is its path.
-DEFAULT_SOCKET_DIRS = frozenset({"/var/run/postgresql", "/run/postgresql", "/tmp"})  # noqa: S108 -- names only
+# libpq's default socket directories: a socket there is "localhost" in the passfile, any other is its path. The
+# paths are only compared with the DSN's host, never opened.
+DEFAULT_SOCKET_DIRS = frozenset({"/var/run/postgresql", "/run/postgresql", "/tmp"})  # noqa: S108  # nosec B108
 
 
 def _passfile_passwords(params: dict[str, str], user: str) -> list[str]:

@@ -77,7 +77,7 @@ local stack the personas share one subject per role, so per-user limits are per 
 | gitleaks | pass | full history |
 | gosec | pass | 22 `#nosec` annotations in `cmd/` and `internal/`, each with its reason on the line; grouped below |
 | govulncheck | **not run** | `vuln.go.dev` is blocked by the build environment's network policy; the gate fails closed |
-| bandit | pass | `-ll` over `src`, `training`, `serving`, `scripts`, `evals` |
+| bandit | pass | `-ll` over `src`, `training`, `serving`, `scripts`, `evals`; one `# nosec B108`: libpq's default socket directories (`/tmp` among them) in `src/fraud_summarizer/auth.py`, compared with the DSN host and never opened |
 | pip-audit | pass | 205 locked packages, no known vulnerabilities |
 | pnpm audit (high) | pass | one accepted advisory below |
 | hadolint, checkov (Dockerfiles) | pass | |
