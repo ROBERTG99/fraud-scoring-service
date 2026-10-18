@@ -20,6 +20,6 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 FROM ${RUNTIME_IMAGE} AS scorer
 COPY --from=build /out/scorer /scorer
 USER 65532:65532
-EXPOSE 8510 8511
+EXPOSE 8510 8511 8516
 HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=10 CMD ["/scorer", "healthcheck"]
 ENTRYPOINT ["/scorer"]

@@ -126,6 +126,7 @@ def stack(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, Any]]:
                     "FRAUD_SERVICE_TOKEN": SERVICE_TOKEN,
                     "FRAUD_GRPC_ADDR": f"127.0.0.1:{grpc_port}",
                     "FRAUD_HTTP_ADDR": f"127.0.0.1:{http_port}",
+                    "FRAUD_ADMIN_ADDR": f"127.0.0.1:{_free_port()}",
                     "FRAUD_REDIS_ADDR": redis_addr,
                     "FRAUD_REDIS_PREFIX": db,  # isolates idempotency and feature keys per run
                     "FRAUD_PG_DSN": app_dsn,

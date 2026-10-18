@@ -239,10 +239,12 @@ func run(ctx context.Context, log *slog.Logger) error {
 	srv, err := newServers(ctx, serverConfig{
 		GRPCAddr: envOr("FRAUD_GRPC_ADDR", ":8510"),
 		HTTPAddr: envOr("FRAUD_HTTP_ADDR", ":8511"),
-		Auth:     api.AuthConfig{ServiceToken: serviceToken, Verifier: api.JWTVerifier{V: verifier}, Authorize: api.RBAC},
-		Limiter:  api.NewRateLimiter(rps, nil),
-		Scorer:   scorer,
-		Cases:    caseSrv,
+		// Metrics and readiness detail; Prometheus scrapes it inside the stack's network, never published.
+		AdminAddr: envOr("FRAUD_ADMIN_ADDR", "127.0.0.1:8516"),
+		Auth:      api.AuthConfig{ServiceToken: serviceToken, Verifier: api.JWTVerifier{V: verifier}, Authorize: api.RBAC},
+		Limiter:   api.NewRateLimiter(rps, nil),
+		Scorer:    scorer,
+		Cases:     caseSrv,
 		Ready: func(ctx context.Context) error {
 			if err := rdb.Ping(ctx).Err(); err != nil {
 				return fmt.Errorf("redis: %w", err)

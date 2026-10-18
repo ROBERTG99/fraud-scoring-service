@@ -59,7 +59,13 @@ func bearer(ctx context.Context) string {
 	return ""
 }
 
+// healthMethods is the gRPC health service: probes carry no credentials and learn nothing but SERVING.
+const healthMethods = "/grpc.health.v1.Health/"
+
 func (c AuthConfig) authenticate(ctx context.Context, method string) (context.Context, error) {
+	if strings.HasPrefix(method, healthMethods) {
+		return ctx, nil
+	}
 	token := bearer(ctx)
 	if token == "" {
 		return nil, status.Error(codes.Unauthenticated, "missing bearer token")

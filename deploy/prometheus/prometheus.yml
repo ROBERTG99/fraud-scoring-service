@@ -7,7 +7,7 @@ rule_files: [alerts.yml]
 
 scrape_configs:
   - job_name: scorer
-    static_configs: [{ targets: ["scorer:8511"] }]
+    static_configs: [{ targets: ["scorer:8516"] }]
   - job_name: feature-updater
     static_configs: [{ targets: ["feature-updater:8512"] }]
   - job_name: case-summarizer

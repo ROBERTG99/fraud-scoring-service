@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -18,6 +20,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -74,8 +77,10 @@ func (s *memStore) GetByTransaction(ctx context.Context, id string) (*fraudv1.De
 
 type testStack struct {
 	base     string
+	admin    string
 	grpcAddr string
 	signer   *auth.Signer
+	ready    *error // what cfg.Ready returns
 }
 
 // startStack runs the real gRPC server, interceptors and HTTP gateway with in-memory dependencies.
@@ -112,8 +117,10 @@ func startTracedStack(t *testing.T, tp trace.TracerProvider) testStack {
 	}
 	scorer := api.NewScorerServer(deps)
 	ctx, cancel := context.WithCancel(context.Background())
+	var notReady error
 	srv, err := newServers(ctx, serverConfig{
-		GRPCAddr: "127.0.0.1:0", HTTPAddr: "127.0.0.1:0",
+		GRPCAddr: "127.0.0.1:0", HTTPAddr: "127.0.0.1:0", AdminAddr: "127.0.0.1:0",
+		Ready: func(context.Context) error { return notReady },
 		Auth: api.AuthConfig{ServiceToken: "svc-token", Verifier: api.JWTVerifier{V: &auth.Verifier{Issuer: "http://issuer.test", Keys: keys}},
 			Authorize: api.RBAC},
 		Limiter:        api.NewRateLimiter(20, nil),
@@ -134,7 +141,8 @@ func startTracedStack(t *testing.T, tp trace.TracerProvider) testStack {
 			t.Errorf("serve: %v", err)
 		}
 	})
-	return testStack{base: "http://" + srv.httpLis.Addr().String(), grpcAddr: srv.grpcLis.Addr().String(), signer: signer}
+	return testStack{base: "http://" + srv.httpLis.Addr().String(), admin: "http://" + srv.adminLis.Addr().String(),
+		grpcAddr: srv.grpcLis.Addr().String(), signer: signer, ready: &notReady}
 }
 
 func do(t *testing.T, method, url, token string, body []byte) *http.Response {
@@ -193,8 +201,12 @@ func TestScoreReturnsRulesOnlyDecision(t *testing.T) {
 	if resp := do(t, http.MethodGet, st.base+"/healthz", "", nil); resp.StatusCode != http.StatusOK {
 		t.Fatalf("healthz %d", resp.StatusCode)
 	}
-	if resp := do(t, http.MethodGet, st.base+"/metrics", "", nil); resp.StatusCode != http.StatusOK {
-		t.Fatalf("metrics %d", resp.StatusCode)
+	// Metrics are on the admin listener only, not on the public Score port (audit M6 L2).
+	if resp := do(t, http.MethodGet, st.base+"/metrics", "", nil); resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("public /metrics %d, want 401 (no such route without a token)", resp.StatusCode)
+	}
+	if resp := do(t, http.MethodGet, st.admin+"/metrics", "", nil); resp.StatusCode != http.StatusOK {
+		t.Fatalf("admin metrics %d", resp.StatusCode)
 	}
 }
 
@@ -395,5 +407,37 @@ func TestGRPCMetadataOverHeaderLimitRejected(t *testing.T) {
 	}
 	if err := call(api.MaxHeaderBytes + 1); err == nil || status.Code(err) == codes.Unauthenticated {
 		t.Fatalf("metadata over %d bytes reached the auth check: %v", api.MaxHeaderBytes, err)
+	}
+}
+
+// The public /readyz says only "not ready"; the cause (hostnames, driver errors) is on the admin listener.
+func TestReadyzDetailOnlyOnAdmin(t *testing.T) {
+	st := startStack(t)
+	*st.ready = errors.New("postgres: dial tcp 10.0.0.7:5432: connection refused")
+	pub := do(t, http.MethodGet, st.base+"/readyz", "", nil)
+	body, _ := io.ReadAll(pub.Body)
+	if pub.StatusCode != http.StatusServiceUnavailable || strings.Contains(string(body), "10.0.0.7") {
+		t.Fatalf("public readyz %d %q", pub.StatusCode, body)
+	}
+	adm := do(t, http.MethodGet, st.admin+"/readyz", "", nil)
+	body, _ = io.ReadAll(adm.Body)
+	if adm.StatusCode != http.StatusServiceUnavailable || !strings.Contains(string(body), "connection refused") {
+		t.Fatalf("admin readyz %d %q", adm.StatusCode, body)
+	}
+}
+
+// gRPC health checks need no token (audit M6 L10): load balancers probe without credentials.
+func TestGRPCHealthNeedsNoToken(t *testing.T) {
+	st := startStack(t)
+	conn, err := grpc.NewClient(st.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	resp, err := healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{})
+	if err != nil || resp.Status != healthpb.HealthCheckResponse_SERVING {
+		t.Fatalf("health: %v %v", resp, err)
 	}
 }

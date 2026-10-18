@@ -15,7 +15,7 @@ sed -e 's/0.0.0.0:4317/127.0.0.1:18580/; s/0.0.0.0:4318/127.0.0.1:18581/; s/jaeg
 # On host networking Jaeger (itself a collector) already holds the internal telemetry port 8888.
 printf '  telemetry:\n    metrics:\n      level: none\n' >> "$C/collector.yaml"
 cp deploy/prometheus/alerts.yml "$C/prometheus/"
-sed -e 's/scorer:8511/127.0.0.1:18511/; s/feature-updater:8512/127.0.0.1:18512/' \
+sed -e 's/scorer:8516/127.0.0.1:18516/; s/feature-updater:8512/127.0.0.1:18512/' \
   -e 's/case-summarizer:8513/127.0.0.1:18513/; s/model-server:8514/127.0.0.1:18514/' \
   deploy/prometheus/prometheus.yml > "$C/prometheus/prometheus.yml"
 sed -e 's#http://prometheus:9090#http://127.0.0.1:18591#; s#http://jaeger:16686#http://127.0.0.1:16686#' \

@@ -38,12 +38,14 @@ const maxBody = api.MaxBodyBytes
 type serverConfig struct {
 	GRPCAddr string
 	HTTPAddr string
-	Auth     api.AuthConfig
-	Limiter  *api.RateLimiter
-	Scorer   fraudv1.ScorerServer
-	Cases    fraudv1.CaseServiceServer
-	Ready    func(ctx context.Context) error
-	Log      *slog.Logger
+	// AdminAddr serves /metrics and a detailed /readyz, kept off the public HTTP port (audit M6 L2).
+	AdminAddr string
+	Auth      api.AuthConfig
+	Limiter   *api.RateLimiter
+	Scorer    fraudv1.ScorerServer
+	Cases     fraudv1.CaseServiceServer
+	Ready     func(ctx context.Context) error
+	Log       *slog.Logger
 	// TracerProvider for gRPC server spans; nil uses the global provider (telemetry.InitTracing).
 	TracerProvider trace.TracerProvider
 }
@@ -59,12 +61,14 @@ func gatewayHeader(key string) (string, bool) {
 
 // servers is the running gRPC server (:8510) and its HTTP/JSON gateway (:8511).
 type servers struct {
-	grpc    *grpc.Server
-	http    *http.Server
-	grpcLis net.Listener
-	httpLis net.Listener
-	health  *health.Server
-	conn    *grpc.ClientConn
+	grpc     *grpc.Server
+	http     *http.Server
+	admin    *http.Server
+	grpcLis  net.Listener
+	httpLis  net.Listener
+	adminLis net.Listener
+	health   *health.Server
+	conn     *grpc.ClientConn
 }
 
 func newServers(ctx context.Context, cfg serverConfig) (*servers, error) {
@@ -100,6 +104,12 @@ func newServers(ctx context.Context, cfg serverConfig) (*servers, error) {
 		_ = grpcLis.Close()
 		return nil, err
 	}
+	adminLis, err := net.Listen("tcp", cfg.AdminAddr)
+	if err != nil {
+		_ = grpcLis.Close()
+		_ = httpLis.Close()
+		return nil, err
+	}
 
 	// The gateway calls the gRPC server over loopback so HTTP requests pass the same interceptors.
 	conn, err := grpc.NewClient(loopback(grpcLis.Addr()), grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -107,6 +117,7 @@ func newServers(ctx context.Context, cfg serverConfig) (*servers, error) {
 	if err != nil {
 		_ = grpcLis.Close()
 		_ = httpLis.Close()
+		_ = adminLis.Close()
 		return nil, err
 	}
 	gw := runtime.NewServeMux(runtime.WithRoutingErrorHandler(routingError), runtime.WithIncomingHeaderMatcher(gatewayHeader), runtime.WithMarshalerOption(runtime.MIMEWildcard, &runtime.JSONPb{
@@ -121,20 +132,32 @@ func newServers(ctx context.Context, cfg serverConfig) (*servers, error) {
 		return nil, err
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
-	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		rctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
-		defer cancel()
-		if cfg.Ready != nil {
-			if err := cfg.Ready(rctx); err != nil {
-				http.Error(w, err.Error(), http.StatusServiceUnavailable)
-				return
+	readyz := func(detail bool) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			rctx, cancel := context.WithTimeout(r.Context(), 500*time.Millisecond)
+			defer cancel()
+			if cfg.Ready != nil {
+				if err := cfg.Ready(rctx); err != nil {
+					msg := "not ready" // the cause names hosts and drivers: admin listener only
+					if detail {
+						msg = err.Error()
+					}
+					http.Error(w, msg, http.StatusServiceUnavailable)
+					return
+				}
 			}
+			_, _ = w.Write([]byte("ready"))
 		}
-		_, _ = w.Write([]byte("ready"))
-	})
-	mux.Handle("GET /metrics", promhttp.HandlerFor(telemetry.Registry, promhttp.HandlerOpts{}))
+	}
+	healthz := func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) }
+	adminMux := http.NewServeMux()
+	adminMux.HandleFunc("GET /healthz", healthz)
+	adminMux.HandleFunc("GET /readyz", readyz(true))
+	adminMux.Handle("GET /metrics", promhttp.HandlerFor(telemetry.Registry, promhttp.HandlerOpts{}))
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", healthz)
+	mux.HandleFunc("GET /readyz", readyz(false))
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Reject anonymous calls before the gateway decodes the body, so a malformed body without
 		// credentials is a 401, not a 400. The gRPC interceptors still verify the token itself.
@@ -171,7 +194,9 @@ func newServers(ctx context.Context, cfg serverConfig) (*servers, error) {
 	}))
 	hsrv := &http.Server{Handler: mux, ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second,
 		MaxHeaderBytes: api.MaxHeaderBytes}
-	return &servers{grpc: gs, http: hsrv, grpcLis: grpcLis, httpLis: httpLis, health: hs, conn: conn}, nil
+	asrv := &http.Server{Handler: adminMux, ReadHeaderTimeout: 2 * time.Second, ReadTimeout: 5 * time.Second,
+		WriteTimeout: 10 * time.Second, MaxHeaderBytes: api.MaxHeaderBytes}
+	return &servers{grpc: gs, http: hsrv, admin: asrv, grpcLis: grpcLis, httpLis: httpLis, adminLis: adminLis, health: hs, conn: conn}, nil
 }
 
 var routes = httpRoutes()
@@ -241,15 +266,17 @@ func loopback(a net.Addr) string {
 
 // serve blocks until ctx is cancelled or a server fails, then shuts both down.
 func (s *servers) serve(ctx context.Context) error {
-	errc := make(chan error, 2)
+	errc := make(chan error, 3)
 	go func() { errc <- s.grpc.Serve(s.grpcLis) }()
-	go func() {
-		if err := s.http.Serve(s.httpLis); !errors.Is(err, http.ErrServerClosed) {
-			errc <- err
-			return
-		}
-		errc <- nil
-	}()
+	for srv, lis := range map[*http.Server]net.Listener{s.http: s.httpLis, s.admin: s.adminLis} {
+		go func() {
+			if err := srv.Serve(lis); !errors.Is(err, http.ErrServerClosed) {
+				errc <- err
+				return
+			}
+			errc <- nil
+		}()
+	}
 	var err error
 	select {
 	case <-ctx.Done():
@@ -264,6 +291,7 @@ func (s *servers) shutdown() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = s.http.Shutdown(ctx)
+	_ = s.admin.Shutdown(ctx)
 	stopped := make(chan struct{})
 	go func() { s.grpc.GracefulStop(); close(stopped) }()
 	select {

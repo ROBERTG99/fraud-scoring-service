@@ -46,7 +46,7 @@ trap cleanup EXIT
 BENTOML_DO_NOT_TRACK=true FRAUD_MODEL_DIR=$PWD/artifacts/model FRAUD_MODEL_CACHE=$B/model-cache MLFLOW_TRACKING_URI= \
   setsid "$PY" -m bentoml serve serving.bentoml.service:FraudModel --host 127.0.0.1 --port 19514 >"$B/model.log" 2>&1 &
 pids+=($!)
-FRAUD_GRPC_ADDR=127.0.0.1:19510 FRAUD_HTTP_ADDR=127.0.0.1:19511 FRAUD_MODEL_URL=http://127.0.0.1:19514 \
+FRAUD_GRPC_ADDR=127.0.0.1:19510 FRAUD_HTTP_ADDR=127.0.0.1:19511 FRAUD_ADMIN_ADDR=127.0.0.1:19516 FRAUD_MODEL_URL=http://127.0.0.1:19514 \
   FRAUD_SPOOL_DIR=$B/spool FRAUD_RULES_DIR=rules FRAUD_FEATURE_SPEC=features/spec.yaml \
   setsid "$B/bin/scorer" >"$B/scorer.log" 2>&1 &
 pids+=($!)

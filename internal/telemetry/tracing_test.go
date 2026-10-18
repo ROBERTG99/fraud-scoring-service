@@ -7,7 +7,9 @@ import (
 	"log/slog"
 	"testing"
 
+	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestLogsCarryTheTraceID(t *testing.T) {
@@ -57,5 +59,56 @@ func TestTraceparentRoundTrip(t *testing.T) {
 	}
 	if Traceparent(context.Background()) != "" {
 		t.Fatal("a context without a span has no traceparent")
+	}
+}
+
+// A caller cannot switch off the scorer's spans by sending an unsampled traceparent (audit M6 L9).
+func TestRemoteUnsampledParentIsStillSampled(t *testing.T) {
+	rec := tracetest.NewSpanRecorder()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSampler(Sampler()), sdktrace.WithSpanProcessor(rec))
+	ctx := ContextFromTraceparent(context.Background(), "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-00")
+	_, span := tp.Tracer("t").Start(ctx, "fraud.score")
+	span.End()
+	ended := rec.Ended()
+	if len(ended) != 1 || !ended[0].SpanContext().IsSampled() {
+		t.Fatalf("spans %d, sampled %v", len(ended), len(ended) == 1 && ended[0].SpanContext().IsSampled())
+	}
+	if ended[0].Parent().SpanID().String() != "00f067aa0ba902b7" {
+		t.Fatal("the span must still join the caller's trace")
+	}
+}
+
+// Baggage is caller-controlled data with no use here: it is not propagated.
+func TestPropagatorCarriesNoBaggage(t *testing.T) {
+	for _, f := range Propagator().Fields() {
+		if f == "baggage" {
+			t.Fatal("baggage is propagated")
+		}
+	}
+}
+
+// Traceparent formats the span context directly; it matches the W3C propagator's encoding.
+func TestTraceparentMatchesThePropagator(t *testing.T) {
+	for _, sampled := range []bool{true, false} {
+		sampler := sdktrace.NeverSample()
+		if sampled {
+			sampler = sdktrace.AlwaysSample()
+		}
+		ctx, span := sdktrace.NewTracerProvider(sdktrace.WithSampler(sampler)).Tracer("t").Start(context.Background(), "op")
+		carrier := propagation.MapCarrier{}
+		propagation.TraceContext{}.Inject(ctx, carrier)
+		if got := Traceparent(ctx); got != carrier.Get("traceparent") {
+			t.Fatalf("sampled=%v: %q, propagator %q", sampled, got, carrier.Get("traceparent"))
+		}
+		span.End()
+	}
+}
+
+func BenchmarkTraceparent(b *testing.B) {
+	ctx, span := sdktrace.NewTracerProvider().Tracer("t").Start(context.Background(), "op")
+	defer span.End()
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = Traceparent(ctx)
 	}
 }

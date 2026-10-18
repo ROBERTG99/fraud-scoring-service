@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"encoding/hex"
 	"log/slog"
 	"os"
 	"time"
@@ -13,12 +14,21 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.43.0"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 // TracerName is the instrumentation scope of every span this module creates.
 const TracerName = "github.com/ROBERTG99/fraud-scoring-service"
 
-var propagator = propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
+// propagator is W3C trace context only. Baggage is caller-controlled data nothing here reads, so it is
+// neither accepted nor forwarded (audit M6 L9).
+var propagator = propagation.TraceContext{}
+
+// Sampler records every Score span, even under a caller's unsampled traceparent: the caller may join its
+// trace but cannot hide its own requests from tracing (audit M6 L9).
+func Sampler() sdktrace.Sampler {
+	return sdktrace.ParentBased(sdktrace.AlwaysSample(), sdktrace.WithRemoteParentNotSampled(sdktrace.AlwaysSample()))
+}
 
 // InitTracing installs the global tracer provider and W3C propagator (spec §14). Spans are exported over
 // OTLP/gRPC only when OTEL_EXPORTER_OTLP_ENDPOINT (or the traces-specific variable) is set, for example to
@@ -26,6 +36,8 @@ var propagator = propagation.NewCompositeTextMapPropagator(propagation.TraceCont
 func InitTracing(ctx context.Context, service string) (func(context.Context) error, error) {
 	otel.SetTextMapPropagator(propagator)
 	if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" && os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") == "" {
+		// The noop provider directly, not the global delegate: no span, no lookup per call.
+		otel.SetTracerProvider(noop.NewTracerProvider())
 		return func(context.Context) error { return nil }, nil
 	}
 	exp, err := otlptracegrpc.New(ctx) // endpoint, insecure and headers come from the OTEL_EXPORTER_OTLP_* variables
@@ -40,22 +52,36 @@ func InitTracing(ctx context.Context, service string) (func(context.Context) err
 		// Batches leave the request path; a slow collector drops spans, never delays a decision.
 		sdktrace.WithBatcher(exp, sdktrace.WithBatchTimeout(time.Second), sdktrace.WithMaxQueueSize(8192)),
 		sdktrace.WithResource(res),
+		sdktrace.WithSampler(Sampler()),
 	)
 	otel.SetTracerProvider(tp)
 	return tp.Shutdown, nil
 }
 
-// Propagator is the W3C trace-context (and baggage) propagator every service uses.
+// Propagator is the W3C trace-context propagator every service uses.
 func Propagator() propagation.TextMapPropagator { return propagator }
 
 // Tracer returns the module's tracer from the global provider.
 func Tracer() trace.Tracer { return otel.Tracer(TracerName) }
 
-// Traceparent returns the W3C traceparent of ctx's span, or "" when there is none.
+// Traceparent returns the W3C traceparent of ctx's span, or "" when there is none. It formats the span
+// context directly (one allocation) instead of injecting into a map carrier.
 func Traceparent(ctx context.Context) string {
-	carrier := propagation.MapCarrier{}
-	propagator.Inject(ctx, carrier)
-	return carrier.Get("traceparent")
+	sc := trace.SpanContextFromContext(ctx)
+	if !sc.IsValid() {
+		return ""
+	}
+	var buf [55]byte // "00-" + 32 + "-" + 16 + "-" + 2
+	tid, sid := sc.TraceID(), sc.SpanID()
+	n := copy(buf[:], "00-")
+	n += hex.Encode(buf[n:], tid[:])
+	buf[n] = '-'
+	n++
+	n += hex.Encode(buf[n:], sid[:])
+	buf[n] = '-'
+	n++
+	hex.Encode(buf[n:], []byte{byte(sc.TraceFlags() & trace.FlagsSampled)})
+	return string(buf[:])
 }
 
 // ContextFromTraceparent returns ctx carrying the remote span context of a W3C traceparent.
