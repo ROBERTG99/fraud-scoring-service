@@ -136,7 +136,8 @@ func run(ctx context.Context, log *slog.Logger) error {
 	rdb := features.NewRedisClient(envOr("FRAUD_REDIS_ADDR", "127.0.0.1:8530"))
 	defer func() { _ = rdb.Close() }()
 	// Pub/sub for rule reloads holds a connection without a read deadline; keep it off the scoring pool.
-	sub := redis.NewClient(&redis.Options{Addr: envOr("FRAUD_REDIS_ADDR", "127.0.0.1:8530")})
+	user, pass := features.RedisCredentials()
+	sub := redis.NewClient(&redis.Options{Addr: envOr("FRAUD_REDIS_ADDR", "127.0.0.1:8530"), Username: user, Password: pass})
 	defer func() { _ = sub.Close() }()
 
 	pool, err := openPool(ctx, envOr("FRAUD_PG_DSN", "postgres://fraud_app:fraud_app@127.0.0.1:8520/fraud?sslmode=disable"), 32)

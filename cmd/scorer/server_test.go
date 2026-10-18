@@ -49,12 +49,12 @@ type memStore struct {
 	m  map[string]*fraudv1.Decision
 }
 
-func (s *memStore) Get(_ context.Context, id string) (*fraudv1.Decision, error) {
+func (s *memStore) Get(_ context.Context, id string) (*fraudv1.Decision, []byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.m[id], nil
+	return s.m[id], nil, nil
 }
-func (s *memStore) Put(context.Context, *fraudv1.Decision) error { return nil }
+func (s *memStore) Put(context.Context, *fraudv1.Decision, []byte) error { return nil }
 func (s *memStore) Commit(_ context.Context, rec store.DecisionRecord) (*fraudv1.Decision, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -64,12 +64,12 @@ func (s *memStore) Commit(_ context.Context, rec store.DecisionRecord) (*fraudv1
 	s.m[rec.Decision.TransactionId] = proto.Clone(rec.Decision).(*fraudv1.Decision)
 	return rec.Decision, nil
 }
-func (s *memStore) GetByTransaction(ctx context.Context, id string) (*fraudv1.Decision, error) {
-	d, _ := s.Get(ctx, id)
+func (s *memStore) GetByTransaction(ctx context.Context, id string) (*fraudv1.Decision, []byte, error) {
+	d, _, _ := s.Get(ctx, id)
 	if d == nil {
-		return nil, store.ErrNotFound
+		return nil, nil, store.ErrNotFound
 	}
-	return d, nil
+	return d, nil, nil
 }
 
 type testStack struct {

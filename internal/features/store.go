@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
@@ -62,11 +63,20 @@ func NewStore(rdb redis.Scripter, prefix string, spec *Spec) *Store {
 	return &Store{rdb: rdb, prefix: prefix, spec: spec}
 }
 
+// RedisCredentials returns the Redis ACL user and password from FRAUD_REDIS_USERNAME and FRAUD_REDIS_PASSWORD
+// (empty: no AUTH, the local test stack). Deployments give each service its own ACL user (audit M6 M3).
+func RedisCredentials() (username, password string) {
+	return os.Getenv("FRAUD_REDIS_USERNAME"), os.Getenv("FRAUD_REDIS_PASSWORD")
+}
+
 // NewRedisClient builds a client tuned for the scoring path (pool 256, short timeouts). Socket
 // timeouts are disabled so the caller's context deadline (8 ms on Score) governs every call.
 func NewRedisClient(addr string) *redis.Client {
+	user, pass := RedisCredentials()
 	return redis.NewClient(&redis.Options{
 		Addr:                  addr,
+		Username:              user,
+		Password:              pass,
 		PoolSize:              256,
 		MinIdleConns:          32,
 		DialTimeout:           200 * time.Millisecond,
@@ -81,8 +91,11 @@ func NewRedisClient(addr string) *redis.Client {
 // NewUpdaterRedisClient builds a client for the feature-updater: batches of pipelined scripts can take
 // longer than a single Score call, so only the per-batch context deadline (2 s) bounds them.
 func NewUpdaterRedisClient(addr string) *redis.Client {
+	user, pass := RedisCredentials()
 	return redis.NewClient(&redis.Options{
 		Addr:                  addr,
+		Username:              user,
+		Password:              pass,
 		PoolSize:              32,
 		DialTimeout:           time.Second,
 		ReadTimeout:           -1,

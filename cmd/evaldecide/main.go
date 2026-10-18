@@ -87,13 +87,13 @@ func (m caseModel) Predict(context.Context, string, [][]float32) (model.Predicti
 
 type memory struct{}
 
-func (memory) Get(context.Context, string) (*fraudv1.Decision, error) { return nil, nil }
-func (memory) Put(context.Context, *fraudv1.Decision) error           { return nil }
+func (memory) Get(context.Context, string) (*fraudv1.Decision, []byte, error) { return nil, nil, nil }
+func (memory) Put(context.Context, *fraudv1.Decision, []byte) error           { return nil }
 func (memory) Commit(_ context.Context, r store.DecisionRecord) (*fraudv1.Decision, error) {
 	return r.Decision, nil
 }
-func (memory) GetByTransaction(context.Context, string) (*fraudv1.Decision, error) {
-	return nil, store.ErrNotFound
+func (memory) GetByTransaction(context.Context, string) (*fraudv1.Decision, []byte, error) {
+	return nil, nil, store.ErrNotFound
 }
 
 func decide(ctx context.Context, eng *rules.Engine, spec *features.Spec, id string, in Input) Output {

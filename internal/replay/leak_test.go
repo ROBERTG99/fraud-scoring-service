@@ -33,20 +33,20 @@ type memDecisions struct {
 	m  map[string]*fraudv1.Decision
 }
 
-func (d *memDecisions) Get(_ context.Context, id string) (*fraudv1.Decision, error) {
+func (d *memDecisions) Get(_ context.Context, id string) (*fraudv1.Decision, []byte, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return d.m[id], nil
+	return d.m[id], nil, nil
 }
-func (d *memDecisions) Put(context.Context, *fraudv1.Decision) error { return nil }
+func (d *memDecisions) Put(context.Context, *fraudv1.Decision, []byte) error { return nil }
 func (d *memDecisions) Commit(_ context.Context, r store.DecisionRecord) (*fraudv1.Decision, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.m[r.Decision.TransactionId] = r.Decision
 	return r.Decision, nil
 }
-func (d *memDecisions) GetByTransaction(context.Context, string) (*fraudv1.Decision, error) {
-	return nil, store.ErrNotFound
+func (d *memDecisions) GetByTransaction(context.Context, string) (*fraudv1.Decision, []byte, error) {
+	return nil, nil, store.ErrNotFound
 }
 
 // explaining scores with explain=true and keeps the feature vector per transaction.

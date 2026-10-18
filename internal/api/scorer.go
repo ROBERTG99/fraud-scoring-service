@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"log/slog"
 	"strings"
@@ -43,16 +45,19 @@ type FeatureStore interface {
 
 // Idempotency caches decisions by transaction_id (Redis fr:idem:score:{tx_id}). Get returns (nil, nil)
 // on a miss.
+// Both stores keep the SHA-256 of the request with the decision (RequestHash), so a replay with the same
+// transaction_id but different contents is refused instead of answered (audit M6 M3). A nil hash marks an
+// entry written before hashes existed; it replays as before.
 type Idempotency interface {
-	Get(ctx context.Context, transactionID string) (*fraudv1.Decision, error)
-	Put(ctx context.Context, d *fraudv1.Decision) error
+	Get(ctx context.Context, transactionID string) (*fraudv1.Decision, []byte, error)
+	Put(ctx context.Context, d *fraudv1.Decision, requestHash []byte) error
 }
 
 // DecisionStore persists a decision before the response. Commit returns the stored decision, which is
 // an earlier decision when the transaction_id already exists (ON CONFLICT: the first decision wins).
 type DecisionStore interface {
 	Commit(ctx context.Context, rec store.DecisionRecord) (*fraudv1.Decision, error)
-	GetByTransaction(ctx context.Context, transactionID string) (*fraudv1.Decision, error)
+	GetByTransaction(ctx context.Context, transactionID string) (*fraudv1.Decision, []byte, error)
 }
 
 // Publisher sends events.transaction asynchronously; it must never block.
@@ -120,7 +125,11 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 	ctx, span := s.d.Tracer.Start(ctx, "fraud.score")
 	defer span.End()
 
-	if d := s.lookup(ctx, tx.TransactionId); d != nil {
+	reqHash := RequestHash(tx)
+	if d, storedHash := s.lookup(ctx, tx.TransactionId); d != nil {
+		if err := checkReplay(storedHash, reqHash); err != nil {
+			return nil, err
+		}
 		span.SetAttributes(attribute.Bool("app.idempotent_replay", true))
 		decisionAttributes(span, d)
 		return d, nil
@@ -191,7 +200,8 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 	rec := store.DecisionRecord{Decision: decision, AccountID: tx.AccountId, Features: featureMap, AmountMinor: tx.AmountMinor,
 		Currency: tx.Currency, Event: transactionEvent(tx, channel, asOf),
 		Tx: store.TxAttrs{AmountMinor: tx.AmountMinor, Currency: tx.Currency, MerchantID: defaultMerchant(tx.MerchantId), MerchantName: tx.MerchantName,
-			MCC: tx.Mcc, Channel: channel, Country: tx.Country, IPPrefix: tx.IpPrefix, DeviceID: tx.DeviceId, EventTS: asOf.UTC().Format(time.RFC3339Nano)}}
+			MCC: tx.Mcc, Channel: channel, Country: tx.Country, IPPrefix: tx.IpPrefix, DeviceID: tx.DeviceId, EventTS: asOf.UTC().Format(time.RFC3339Nano)},
+		RequestHash: reqHash}
 	decision.LatencyMs = float32(time.Since(start).Seconds() * 1000)
 	decisionAttributes(span, decision)
 	rec.TraceParent = telemetry.Traceparent(ctx) // carried by the outbox to the decisions topic header
@@ -210,12 +220,21 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 		return nil, status.Error(codes.Unavailable, "decision could not be persisted")
 	}
 	if stored.DecisionId != decision.DecisionId {
-		// A concurrent duplicate won the race: return its decision.
+		// The transaction_id was already decided (a concurrent duplicate won the race, or the Redis entry
+		// expired): return that decision, unless the request differs from the one it answered.
+		gctx, gcancel := context.WithTimeout(ctx, PostgresTimeout)
+		_, storedHash, gerr := s.d.Decisions.GetByTransaction(gctx, tx.TransactionId)
+		gcancel()
+		if gerr == nil {
+			if err := checkReplay(storedHash, reqHash); err != nil {
+				return nil, err
+			}
+		}
 		return cloneResponse(stored, false), nil
 	}
 
 	ictx, icancel := context.WithTimeout(ctx, RedisTimeout)
-	if err := s.d.Idempotency.Put(ictx, decision); err != nil {
+	if err := s.d.Idempotency.Put(ictx, decision, reqHash); err != nil {
 		s.d.Log.Debug("idempotency put failed", "err", err)
 	}
 	icancel()
@@ -279,26 +298,47 @@ func endSpan(span trace.Span, err error) {
 	span.End()
 }
 
-func (s *ScorerServer) lookup(ctx context.Context, txID string) *fraudv1.Decision {
+// RequestHash is the SHA-256 of the transaction's deterministic protobuf encoding: identical retries hash
+// identically, any changed field changes it.
+func RequestHash(tx *fraudv1.Transaction) []byte {
+	b, err := proto.MarshalOptions{Deterministic: true}.Marshal(tx)
+	if err != nil {
+		return nil
+	}
+	sum := sha256.Sum256(b)
+	return sum[:]
+}
+
+// checkReplay refuses a replay whose request differs from the one the stored decision answered. A nil
+// stored hash is an entry from before request hashes existed and replays unchecked.
+func checkReplay(stored, request []byte) error {
+	if stored != nil && !bytes.Equal(stored, request) {
+		return status.Error(codes.AlreadyExists, "transaction_id already decided for a different request")
+	}
+	return nil
+}
+
+// lookup returns a stored decision and its request hash: Redis first, Postgres when Redis fails.
+func (s *ScorerServer) lookup(ctx context.Context, txID string) (*fraudv1.Decision, []byte) {
 	ictx, icancel := context.WithTimeout(ctx, RedisTimeout)
-	d, err := s.d.Idempotency.Get(ictx, txID)
+	d, hash, err := s.d.Idempotency.Get(ictx, txID)
 	icancel()
 	if err == nil {
 		if d != nil {
-			return cloneResponse(d, false)
+			return cloneResponse(d, false), hash
 		}
-		return nil
+		return nil, nil
 	}
 	pctx, pcancel := context.WithTimeout(ctx, PostgresTimeout)
 	defer pcancel()
-	d, perr := s.d.Decisions.GetByTransaction(pctx, txID)
+	d, hash, perr := s.d.Decisions.GetByTransaction(pctx, txID)
 	if perr != nil && !errors.Is(perr, context.DeadlineExceeded) {
 		s.d.Log.Debug("postgres idempotency lookup failed", "err", perr)
 	}
 	if d != nil {
-		return cloneResponse(d, false)
+		return cloneResponse(d, false), hash
 	}
-	return nil
+	return nil, nil
 }
 
 func cloneResponse(d *fraudv1.Decision, withFeatures bool) *fraudv1.Decision {

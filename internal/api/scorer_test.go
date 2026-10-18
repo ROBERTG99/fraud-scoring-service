@@ -75,37 +75,39 @@ func (m *fakeModel) Predict(ctx context.Context, alias string, rows [][]float32)
 }
 
 type memIdem struct {
-	mu   sync.Mutex
-	m    map[string]*fraudv1.Decision
-	err  error
-	gets int
+	mu     sync.Mutex
+	m      map[string]*fraudv1.Decision
+	hashes map[string][]byte
+	err    error
+	gets   int
 }
 
-func (i *memIdem) Get(_ context.Context, txID string) (*fraudv1.Decision, error) {
+func (i *memIdem) Get(_ context.Context, txID string) (*fraudv1.Decision, []byte, error) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	i.gets++
 	if i.err != nil {
-		return nil, i.err
+		return nil, nil, i.err
 	}
 	d, ok := i.m[txID]
 	if !ok {
-		return nil, nil
+		return nil, nil, nil
 	}
-	return proto.Clone(d).(*fraudv1.Decision), nil
+	return proto.Clone(d).(*fraudv1.Decision), i.hashes[txID], nil
 }
 
-func (i *memIdem) Put(_ context.Context, d *fraudv1.Decision) error {
+func (i *memIdem) Put(_ context.Context, d *fraudv1.Decision, requestHash []byte) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	if i.err != nil {
 		return i.err
 	}
 	if i.m == nil {
-		i.m = map[string]*fraudv1.Decision{}
+		i.m, i.hashes = map[string]*fraudv1.Decision{}, map[string][]byte{}
 	}
 	if _, ok := i.m[d.TransactionId]; !ok {
 		i.m[d.TransactionId] = proto.Clone(d).(*fraudv1.Decision)
+		i.hashes[d.TransactionId] = requestHash
 	}
 	return nil
 }
@@ -115,6 +117,7 @@ type memDecisions struct {
 	byTx    map[string]store.DecisionRecord
 	commits int
 	err     error
+	legacy  bool // rows written before request hashes existed
 }
 
 func (m *memDecisions) Commit(_ context.Context, rec store.DecisionRecord) (*fraudv1.Decision, error) {
@@ -134,13 +137,16 @@ func (m *memDecisions) Commit(_ context.Context, rec store.DecisionRecord) (*fra
 	return rec.Decision, nil
 }
 
-func (m *memDecisions) GetByTransaction(_ context.Context, txID string) (*fraudv1.Decision, error) {
+func (m *memDecisions) GetByTransaction(_ context.Context, txID string) (*fraudv1.Decision, []byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if r, ok := m.byTx[txID]; ok {
-		return r.Decision, nil
+		if m.legacy {
+			return r.Decision, nil, nil
+		}
+		return r.Decision, r.RequestHash, nil
 	}
-	return nil, nil
+	return nil, nil, nil
 }
 
 type countingPublisher struct {
@@ -387,5 +393,36 @@ func TestEventTimeIsBounded(t *testing.T) {
 	}
 	if err := score("0192f000-0000-7000-8000-0000000001b1", now.Add(time.Hour)); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("future event_ts with the past bound off: %v", err)
+	}
+}
+
+// TestReplayWithDifferentContentsIsRejected: security audit M6 M3. A replay is matched on transaction_id;
+// without comparing contents, a reused id (or a planted idempotency entry) returned an unrelated decision.
+func TestReplayWithDifferentContentsIsRejected(t *testing.T) {
+	h := newHarness(t)
+	tx := journeyTx("0192f000-0000-7000-8000-0000000000c1")
+	first, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: tx})
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: proto.Clone(tx).(*fraudv1.Transaction)})
+	if err != nil || again.DecisionId != first.DecisionId {
+		t.Fatalf("identical replay: %v %v", again, err)
+	}
+	changed := proto.Clone(tx).(*fraudv1.Transaction)
+	changed.AmountMinor = 1
+	if _, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: changed}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("same transaction_id, different amount: %v, want AlreadyExists", err)
+	}
+	// The Postgres fallback (Redis miss) checks the stored hash too.
+	h.idem.m = nil
+	if _, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: changed}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("Postgres replay with different contents: %v, want AlreadyExists", err)
+	}
+	// Entries written before request hashes existed (no hash) still replay.
+	h.idem.hashes = nil
+	h.decisions.legacy = true
+	if d, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: changed}); err != nil || d.DecisionId != first.DecisionId {
+		t.Fatalf("legacy entry without a hash: %v %v", d, err)
 	}
 }

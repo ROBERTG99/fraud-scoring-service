@@ -264,8 +264,8 @@ func (w *GroupWriter) flush(all []*pending) {
 const insertDecisionSQL = `
 WITH ins AS (
   INSERT INTO decisions (decision_id, transaction_id, account_id, action, score, reason_codes, model_version, rules_version,
-                         degraded, features, latency_ms, decided_at, tx)
-  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $16)
+                         degraded, features, latency_ms, decided_at, tx, request_sha256)
+  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $16, $18)
   ON CONFLICT DO NOTHING
   RETURNING decision_id
 ), ob AS (
@@ -306,7 +306,7 @@ func (w *GroupWriter) insertBatch(ctx context.Context, recs []DecisionRecord) ([
 		}
 		b.Queue(insertDecisionSQL, d.DecisionId, d.TransactionId, r.AccountID, ActionName(d.Action), score, codes, d.ModelVersion,
 			d.RulesVersion, d.Degraded, string(feats), d.LatencyMs, d.DecidedAt.AsTime(), string(r.OutboxPayload()), uuid.NewString(), r.Priority(),
-			string(attrs), r.TraceParent)
+			string(attrs), r.TraceParent, r.RequestHash)
 	}
 	br := tx.SendBatch(ctx, b)
 	inserted := make([]bool, len(recs))
@@ -337,7 +337,7 @@ func (w *GroupWriter) insertBatch(ctx context.Context, recs []DecisionRecord) ([
 		}
 		for i := range recs {
 			if out[i] == nil {
-				out[i] = existing[recs[i].Decision.TransactionId]
+				out[i] = existing[recs[i].Decision.TransactionId].decision
 				if out[i] == nil {
 					out[i] = recs[i].Decision // conflicted on decision_id only (replay of the same decision)
 				}
@@ -354,23 +354,30 @@ type querier interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
-func fetchDecisions(ctx context.Context, q querier, txIDs []string) (map[string]*fraudv1.Decision, error) {
+// storedDecision is a decision row and the hash of the request that produced it (nil before migration 00008).
+type storedDecision struct {
+	decision    *fraudv1.Decision
+	requestHash []byte
+}
+
+func fetchDecisions(ctx context.Context, q querier, txIDs []string) (map[string]storedDecision, error) {
 	rows, err := q.Query(ctx, `SELECT decision_id::text, transaction_id, action, score, reason_codes, model_version, rules_version, degraded,
-		latency_ms, decided_at FROM decisions WHERE transaction_id = ANY($1)`, txIDs)
+		latency_ms, decided_at, request_sha256 FROM decisions WHERE transaction_id = ANY($1)`, txIDs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := map[string]*fraudv1.Decision{}
+	out := map[string]storedDecision{}
 	for rows.Next() {
 		var (
 			d         fraudv1.Decision
 			action    string
 			score     *float32
 			decidedAt time.Time
+			hash      []byte
 		)
 		if err := rows.Scan(&d.DecisionId, &d.TransactionId, &action, &score, &d.ReasonCodes, &d.ModelVersion, &d.RulesVersion,
-			&d.Degraded, &d.LatencyMs, &decidedAt); err != nil {
+			&d.Degraded, &d.LatencyMs, &decidedAt, &hash); err != nil {
 			return nil, err
 		}
 		d.Action = fraudv1.Action(fraudv1.Action_value["ACTION_"+action])
@@ -379,18 +386,18 @@ func fetchDecisions(ctx context.Context, q querier, txIDs []string) (map[string]
 			d.Score = *score
 		}
 		d.DecidedAt = timestamppb.New(decidedAt)
-		out[d.TransactionId] = &d
+		out[d.TransactionId] = storedDecision{decision: &d, requestHash: hash}
 	}
 	return out, rows.Err()
 }
 
-// GetByTransaction returns the stored decision for a transaction, or (nil, nil).
-func (w *GroupWriter) GetByTransaction(ctx context.Context, txID string) (*fraudv1.Decision, error) {
+// GetByTransaction returns the stored decision for a transaction and its request hash, or nils.
+func (w *GroupWriter) GetByTransaction(ctx context.Context, txID string) (*fraudv1.Decision, []byte, error) {
 	m, err := fetchDecisions(ctx, w.pool, []string{txID})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return m[txID], nil
+	return m[txID].decision, m[txID].requestHash, nil
 }
 
 // errBreakerOpen marks batches spooled without trying Postgres.

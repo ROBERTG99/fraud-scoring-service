@@ -3,6 +3,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -84,6 +85,7 @@ func TestCommitBeforeRespond(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond*20)
 	defer cancel()
 	review := record(1, fraudv1.Action_ACTION_REVIEW)
+	review.RequestHash = bytes.Repeat([]byte{7}, 32)
 	got, err := w.Commit(ctx, review)
 	if err != nil {
 		t.Fatal(err)
@@ -122,11 +124,14 @@ func TestCommitBeforeRespond(t *testing.T) {
 	if n := count(t, pool, "SELECT count(*) FROM decision_outbox"); n != 2 {
 		t.Fatalf("outbox rows %d, want 2", n)
 	}
-	stored, err := w.GetByTransaction(ctx, review.Decision.TransactionId)
+	stored, hash, err := w.GetByTransaction(ctx, review.Decision.TransactionId)
 	if err != nil || stored == nil || stored.DecisionId != review.Decision.DecisionId || len(stored.ReasonCodes) != 2 {
 		t.Fatalf("GetByTransaction %+v %v", stored, err)
 	}
-	if missing, err := w.GetByTransaction(ctx, "0192f000-0000-7000-8000-000000000999"); missing != nil || err != nil {
+	if !bytes.Equal(hash, review.RequestHash) {
+		t.Fatalf("request hash %x, want %x", hash, review.RequestHash)
+	}
+	if missing, _, err := w.GetByTransaction(ctx, "0192f000-0000-7000-8000-000000000999"); missing != nil || err != nil {
 		t.Fatalf("missing tx: %v %v", missing, err)
 	}
 }
