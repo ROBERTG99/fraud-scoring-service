@@ -27,9 +27,10 @@ EMAIL = re.compile(
     r"|localhost\b|\[[0-9A-Fa-f.:]{2,45}\])"
 )
 SSN = re.compile(r"(?<!\d)\d{3}[- .]\d{2}[- .]\d{4}(?!\d)|(?i:\bssn\b|social security)\W{0,3}\d{9}(?!\d)")
-# Dates and times are not phone numbers: ISO dates, optionally followed by a time.
+# Dates and times are not phone numbers: ISO dates, optionally followed by a valid time that does not run on
+# into more ":NN" groups (a card written in pairs after a date, round-3 audit).
 DATE_TIME = re.compile(
-    r"\b\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?)?\b"
+    r"\b\d{4}-\d{2}-\d{2}(?:[ T](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?(?!:?\d))?\b"
     r"|\b\d{4}/\d{1,2}/\d{1,2}\b|\b\d{1,2}/\d{1,2}/\d{4}\b"
 )
 # IPv4 addresses and prefixes are not phone numbers (facts carry /24 prefixes, spec §15).
@@ -42,7 +43,7 @@ HEX_ID = re.compile(
 # A run of digit groups: optional leading "+", groups optionally in parentheses, separated by whitespace (one
 # or two characters) or by one of - . / _ , : with at most one space either side. The surrounding characters
 # are judged in _redact_run; which separators a card or a phone accepts is decided in _is_card and _is_phone.
-SEP = r"(?:[ \t\r\n]{1,2}|[ \t]?[-./_,:][ \t]?)"
+SEP = r"(?:[ \t\r\n]{1,3}|[ \t]?[-./_,:|;*]{1,2}[ \t]?)"
 RUN = re.compile(r"\+?\(?\d+\)?(?:(?:" + SEP + r"|(?<=\)))\(?\d+\)?)*")
 PHONE_SEPS = frozenset({"", " ", "-", ".", "/", "_"})
 # A contiguous 13-19 digit number glued to letters ("PAN4111...", "...1111EXP") is still a card; so is a
@@ -53,7 +54,20 @@ DASHES = dict.fromkeys(
     [ord(c) for c in "\u2010\u2011\u2012\u2013\u2014\u2015\u2212\ufe58\ufe63\uff0d"], ord("-")
 )
 FULL_STOPS = dict.fromkeys([ord(c) for c in "\u3002\uff0e\uff61"], ord("."))
-CARD_SHAPES = ((4, 4, 4, 4), (4, 4, 4, 4, 3), (4, 6, 5), (4, 6, 4))
+CARD_SHAPES = (
+    (4, 4, 4, 4),
+    (4, 4, 4, 4, 3),
+    (4, 6, 5),
+    (4, 6, 4),
+    (4, 4, 5),
+    (4, 4, 4, 3),
+    (4, 4, 4, 1),
+    (4, 3, 3, 3),
+)
+# Whitespace that is not a space, tab, CR or LF (vertical tab, form feed, NEL, line and paragraph separators).
+EXOTIC_SPACE = dict.fromkeys([0x0B, 0x0C, 0x1C, 0x1D, 0x1E, 0x1F, 0x85, 0x2028, 0x2029], ord("\n"))
+# A run of 20+ digits holds a Luhn-valid 13-19 digit window almost always: it is redacted whole.
+LONG_DIGITS = re.compile(r"(?<!\d)\d{20,}(?!\d)")
 
 
 def luhn_ok(digits: str) -> bool:
@@ -73,7 +87,8 @@ def normalise(text: str) -> str:
     text = unicodedata.normalize("NFKC", text)
     text = "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
     # NUL is dropped too: it delimits the placeholders of held identifiers in _once.
-    return text.translate(DASHES).translate(FULL_STOPS).replace("%40", "@").replace("\x00", "")
+    text = text.translate(DASHES).translate(FULL_STOPS).translate(EXOTIC_SPACE)
+    return text.replace("%40", "@").replace("\x00", "")
 
 
 @dataclass(frozen=True)
@@ -83,6 +98,7 @@ class _Group:
     digits: str
     opens: bool  # starts with "+" or "(": the start of a phone number
     sep: str  # separator before this group: "" (first), " " (whitespace), the punctuation, or it + "~" if spaced
+    plus: bool  # starts with "+": a phone, never a card ("(" may open either)
 
 
 def _groups(run: str) -> list[_Group]:
@@ -91,13 +107,15 @@ def _groups(run: str) -> list[_Group]:
         token, raw = m.group(2), m.group(1) or ""
         punct = raw.strip()
         sep = (punct + "~" if punct != raw else punct) if punct else (" " if raw else "")
-        out.append(_Group(m.start(2), m.end(2), re.sub(r"\D", "", token), token[0] in "+(", sep))
+        out.append(
+            _Group(m.start(2), m.end(2), re.sub(r"\D", "", token), token[0] in "+(", sep, token[0] == "+")
+        )
     return out
 
 
 def _is_card(gs: list[_Group]) -> bool:
     digits = "".join(g.digits for g in gs)
-    if not (13 <= len(digits) <= 19 and luhn_ok(digits)) or gs[0].opens:
+    if not (13 <= len(digits) <= 19 and luhn_ok(digits)) or gs[0].plus:
         return False
     if len(gs) == 1:
         return True
@@ -237,6 +255,9 @@ def _once(text: str) -> str:
     text = HEX_ID.sub(_hold_hex, text)
     for pattern in (DATE_TIME, IPV4):  # identifiers that contain digits but are not PII
         text = pattern.sub(_hold, text)
+    text = LONG_DIGITS.sub(
+        lambda m: CARD_LABEL if any(map(luhn_ok, _digit_windows(m.group(0)))) else m.group(0), text
+    )
     text = GLUED_CARD.sub(lambda m: CARD_LABEL if luhn_ok(m.group(0)) else m.group(0), text)
     text = RUN.sub(_redact_run, text)
     text = EXTENSION.sub(PHONE_LABEL, text)

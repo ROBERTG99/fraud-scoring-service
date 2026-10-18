@@ -108,9 +108,16 @@ def _check_feature_spec(model_dir: Path) -> None:
 
 class ModelRuntime:
     def __init__(
-        self, model_dir: str | None = None, cache_dir: str | None = None, use_mlflow: bool | None = None
+        self,
+        model_dir: str | None = None,
+        cache_dir: str | None = None,
+        use_mlflow: bool | None = None,
+        require_pin: bool | None = None,
     ) -> None:
         self.model_dir = Path(model_dir) if model_dir else None
+        # Outside FRAUD_ENV=dev, a local or cached model needs FRAUD_MODEL_SHA256_<ALIAS>: its model_meta.json
+        # sits next to it, so it cannot vouch for it (D-063). Offline tools on a given artifact pass False.
+        self.require_pin = os.environ.get("FRAUD_ENV") != "dev" if require_pin is None else require_pin
         # Not a fixed /tmp path, which another local user could pre-create or symlink (bandit B108).
         default_cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "fraud-model"
         self.cache_dir = Path(cache_dir or os.environ.get("FRAUD_MODEL_CACHE") or default_cache)
@@ -165,6 +172,9 @@ class ModelRuntime:
     def _install(self, alias: str, model_dir: Path, source: str) -> LoadedModel:
         _check_feature_spec(model_dir)
         model = (model_dir / "model.onnx").read_bytes()
+        pin = f"FRAUD_MODEL_SHA256_{alias.upper()}"
+        if self.require_pin and source != "mlflow" and not os.environ.get(pin):
+            raise ModelNotReadyError(f"{source} model for @{alias} needs {pin} outside FRAUD_ENV=dev")
         _check_digest(alias, model_dir, model, source)
         loaded = LoadedModel(
             alias=alias,

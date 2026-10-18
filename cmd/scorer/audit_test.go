@@ -77,3 +77,11 @@ func TestAuditVerifyRefusesAnEmptyAnchorsFileOutsideDev(t *testing.T) {
 		t.Fatalf("dev mode: %v", err)
 	}
 }
+
+func TestMigrateRefusesTheDevelopmentOwnerOutsideDev(t *testing.T) {
+	t.Setenv("FRAUD_ENV", "")
+	t.Setenv("FRAUD_PG_MIGRATE_DSN", "postgres://fraud:fraud@127.0.0.1:1/fraud?sslmode=disable")
+	if code := migrate(); code != 2 {
+		t.Fatalf("migrate with the development owner outside dev: exit %d, want 2", code)
+	}
+}

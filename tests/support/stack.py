@@ -60,7 +60,9 @@ def fresh_database(work: Path) -> Iterator[Database]:
         if not scorer.exists():
             build_go(work, "scorer")
         subprocess.run(
-            [str(scorer), "migrate"], env={**os.environ, "FRAUD_PG_MIGRATE_DSN": owner}, check=True
+            [str(scorer), "migrate"],
+            env={**os.environ, "FRAUD_ENV": "dev", "FRAUD_PG_MIGRATE_DSN": owner},
+            check=True,
         )
         yield db
     finally:

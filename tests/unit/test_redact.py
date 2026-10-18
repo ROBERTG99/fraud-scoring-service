@@ -259,3 +259,55 @@ def test_no_digit_of_adjacent_pii_survives_in_every_card_shape() -> None:
         text = "amount 94000 then " + rng.choice((" ", ", ", " / ", "_", "; ", "\n")).join(items) + " end"
         out = redact_text(text)
         assert re.sub(r"\D", "", out) == "94000", (text, out)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Security audit round 3 (finding 2).
+        "(4111, 1111, 1111, 1111)",
+        "(3782 - 822463 - 10005",  # Amex 4-6-5 opening with "("
+        "4111|1111|1111|1111",
+        "4111;1111;1111;1111",
+        "4111*1111*1111*1111",
+        "4111 -- 1111 -- 1111 -- 1111",
+        "4111   1111   1111   1111",
+        "4111\x0b1111\x0b1111\x0b1111",
+        "4111\x0c1111\x0c1111\x0c1111",
+        "4111\u00851111\u00851111\u00851111",
+        "4111 1111 1111 1111",
+        "4222 2222 2222 2",  # a 13-digit card written 4-4-4-1
+        "4222 222 222 222",  # and 4-3-3-3
+        "ref 0000000041111111111111110000000000",  # a card inside a long run of digits
+    ],
+)
+def test_round_three_card_layouts_leave_no_digit_run(text: str) -> None:
+    out = redact_text(text)
+    assert not re.search(r"\d{2}", out), f"{text!r} -> {out!r}"
+
+
+def test_no_card_survives_in_any_layout_or_context() -> None:
+    """Seeded fuzz in the security auditor's round-3 shape: cards of 13-19 digits, split every common way and
+    by every separator, between prefixes and suffixes that are themselves numbers, dates, IPs or hex. No 8 of
+    the card's digits in a row may reach the output (D-063)."""
+    rng = random.Random(23)
+    seps = [" ", "-", ".", "/", "_", ",", ":", "\t", "\n", " - ", ", ", "  ", "\r\n", " : ", " / ", "|"]
+    before = ["", "card ", "PAN: ", "x ", "Tel +44 20 7946 0958 ", "on 2024-05-01 ", "ip 10.1.2.0/24 ",
+              "id deadbeefdeadbeefdeadbeefdeadbeef ", "amt 12.50, ", "(", '"', "#"]  # fmt: skip
+    after = ["", " exp 12/29", " thanks", ", 415-555-2671", ")", '"', " 99", ".", " 2024-05-01"]
+    splits = {13: [[4, 4, 5], [4, 4, 4, 1], [4, 3, 3, 3]], 14: [[4, 6, 4]], 15: [[4, 6, 5], [4, 4, 4, 3]],
+              16: [[4, 4, 4, 4], [8, 8], [2] * 8], 19: [[4, 4, 4, 4, 3]]}  # fmt: skip
+    for _ in range(5_000):
+        n = rng.choice([13, 14, 15, 16, 16, 16, 17, 18, 19])
+        while True:
+            d = rng.choice("3456") + "".join(rng.choice("0123456789") for _ in range(n - 1))
+            if luhn_ok(d):
+                break
+        sizes = rng.choice([[n], [1] * n, *splits.get(n, [])])
+        groups, pos = [], 0
+        for k in sizes:
+            groups.append(d[pos : pos + k])
+            pos += k
+        text = rng.choice(before) + rng.choice(seps).join(groups) + rng.choice(after)
+        digits = re.sub(r"\D", "", redact_text(text))
+        assert not any(d[i : i + 8] in digits for i in range(n - 7)), (text, redact_text(text))

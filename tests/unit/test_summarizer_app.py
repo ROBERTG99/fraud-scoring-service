@@ -392,11 +392,24 @@ def test_dev_database_credentials_only_in_dev(monkeypatch: pytest.MonkeyPatch) -
     for dsn in (
         "postgresql://fraud_summarizer:fraud_summarizer@127.0.0.1:8520/fraud",
         "postgresql://fraud_summarizer@db/fraud",
-        "not a url",
+        "not a url at all",
     ):
         with pytest.raises(ValueError, match="database DSN"):
             check_database_dsn(dsn)
     check_database_dsn("postgresql://fraud_summarizer:from-a-secret@db/fraud?sslmode=verify-full")
+    # Round-3 audit: what libpq would use, not the URL text.
+    monkeypatch.delenv("PGPASSWORD", raising=False)
+    monkeypatch.setenv("PGPASSFILE", "/nonexistent/pgpass")
+    for dsn in (
+        "postgresql://fraud_summarizer:x@db/fraud?password=fraud_summarizer",
+        "postgresql://fraud%5Fsummarizer:fraud%5Fsummarizer@db/fraud",
+        "host=db user=fraud_summarizer password=fraud_summarizer dbname=fraud",
+    ):
+        with pytest.raises(ValueError, match="database DSN"):
+            check_database_dsn(dsn)
+    check_database_dsn("host=db user=fraud_summarizer password=from-a-secret dbname=fraud")
+    monkeypatch.setenv("PGPASSWORD", "from-the-environment")
+    check_database_dsn("postgresql://fraud_summarizer@db/fraud")
     monkeypatch.setenv("FRAUD_ENV", "dev")
     check_database_dsn("postgresql://fraud_summarizer:fraud_summarizer@127.0.0.1:8520/fraud")
 

@@ -16,6 +16,12 @@ ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests" / "fixtures" / "model"
 
 
+@pytest.fixture(autouse=True)
+def _dev_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A local stack: model_meta.json's digest is enough. Outside dev a pin is required (tested below)."""
+    monkeypatch.setenv("FRAUD_ENV", "dev")
+
+
 @pytest.fixture
 def model_dir(tmp_path: Path) -> Path:
     d = tmp_path / "model"
@@ -222,3 +228,20 @@ def test_a_model_without_any_recorded_digest_is_refused(model_dir: Path, tmp_pat
     status = rt.load_all()
     assert not rt.ready()
     assert "no recorded sha256" in status["production"]
+
+
+def test_outside_dev_a_local_model_needs_a_pinned_digest(
+    model_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round-3 audit: model_meta.json sits next to the model, so whoever swaps one swaps both (D-047)."""
+    monkeypatch.delenv("FRAUD_ENV")
+    monkeypatch.delenv("FRAUD_MODEL_SHA256_PRODUCTION", raising=False)
+    rt = ModelRuntime(model_dir=str(model_dir), cache_dir=str(tmp_path / "cache"), use_mlflow=False)
+    with pytest.raises(ModelNotReadyError, match="FRAUD_MODEL_SHA256_PRODUCTION"):
+        rt.load("production")
+    monkeypatch.setenv("FRAUD_MODEL_SHA256_PRODUCTION", _sha(model_dir / "model.onnx"))
+    assert rt.load("production").source == "local"
+    # An offline evaluation of a given artifact may opt out explicitly.
+    monkeypatch.delenv("FRAUD_MODEL_SHA256_PRODUCTION")
+    trusted = ModelRuntime(model_dir=str(model_dir), use_mlflow=False, require_pin=False)
+    assert trusted.load("production").source == "local"

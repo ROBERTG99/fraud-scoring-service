@@ -312,7 +312,8 @@ def evaluate(data_dir: Path, model_dir: Path, max_fpr: float = 0.01) -> Report:
     order = np.asarray([pos[tx] for tx in fm.transaction_id], dtype=np.int64)
     split = np.asarray(labels.split)[order]
     y_all = labels.is_fraud[order]
-    model = ModelRuntime(model_dir=str(model_dir), use_mlflow=False).load("production")
+    # The artifact under evaluation is the one given here, checked against its model_meta.json (D-063).
+    model = ModelRuntime(model_dir=str(model_dir), use_mlflow=False, require_pin=False).load("production")
 
     def part(name: str) -> EvalData:
         mask = split == name

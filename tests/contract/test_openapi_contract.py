@@ -97,7 +97,9 @@ def stack(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, Any]]:
     owner_dsn = f"{base}/{db}?sslmode=disable"
     app_dsn = owner_dsn.replace("fraud:fraud@", "fraud_app:fraud_app@", 1)
     subprocess.run(
-        [str(work / "scorer"), "migrate"], env={**env, "FRAUD_PG_MIGRATE_DSN": owner_dsn}, check=True
+        [str(work / "scorer"), "migrate"],
+        env={**env, "FRAUD_ENV": "dev", "FRAUD_PG_MIGRATE_DSN": owner_dsn},
+        check=True,
     )
 
     issuer_port, grpc_port, http_port = _free_port(), _free_port(), _free_port()

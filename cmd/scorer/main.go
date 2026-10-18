@@ -275,6 +275,10 @@ func migrate() int {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	dsn := envOr("FRAUD_PG_MIGRATE_DSN", "postgres://fraud:fraud@127.0.0.1:8520/fraud?sslmode=disable")
+	if err := auth.CheckDatabaseDSN(dsn); err != nil { // the owner role too (round-3 audit)
+		fmt.Fprintln(os.Stderr, "migrate:", err)
+		return 2
+	}
 	if err := store.MigrateUp(ctx, dsn); err != nil {
 		fmt.Fprintln(os.Stderr, "migrate:", err)
 		return 1

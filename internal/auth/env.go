@@ -1,10 +1,11 @@
 package auth
 
 import (
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // DevMode reports FRAUD_ENV=dev: the local stacks (compose, seed_host.sh, tests) where the dev-issuer may
@@ -30,20 +31,25 @@ func CheckJWKSURL(raw string) error {
 	}
 }
 
-// CheckDatabaseDSN refuses, outside dev mode, a Postgres DSN without a password or with the development
-// password the migrations give every service role (its own name; security audit round 2, N8). The defaults
-// built into the services are such DSNs, so a deployment that forgets FRAUD_PG_DSN fails closed.
+// CheckDatabaseDSN refuses, outside dev mode, database credentials without a password (or client
+// certificate), or with the development password the migrations give every service role (its own name;
+// security audit round 2, N8). It reads the configuration pgx itself parses (URL or keyword/value, query
+// parameters, PGPASSWORD, the passfile), so a "?password=" override cannot slip past it (round 3). The
+// defaults built into the services are development DSNs, so a deployment that forgets FRAUD_PG_DSN fails closed.
 func CheckDatabaseDSN(dsn string) error {
 	if DevMode() {
 		return nil
 	}
-	u, err := url.Parse(dsn)
-	if err != nil || u.User == nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") {
-		return errors.New("database DSN: expected postgres://user:password@host/db")
+	cfg, err := pgconn.ParseConfig(dsn)
+	if err != nil {
+		return fmt.Errorf("database DSN: %w", err)
 	}
-	pw, ok := u.User.Password()
-	if !ok || pw == "" || pw == u.User.Username() {
-		return fmt.Errorf("database DSN for role %s: development credentials are allowed only with FRAUD_ENV=dev", u.User.Username())
+	certAuth := cfg.TLSConfig != nil && len(cfg.TLSConfig.Certificates) > 0
+	switch {
+	case cfg.Password == "" && !certAuth:
+		return fmt.Errorf("database DSN for role %s: no password or client certificate", cfg.User)
+	case cfg.Password != "" && cfg.Password == cfg.User:
+		return fmt.Errorf("database DSN for role %s: development credentials are allowed only with FRAUD_ENV=dev", cfg.User)
 	}
 	return nil
 }

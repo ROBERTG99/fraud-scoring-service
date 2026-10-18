@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import getpass
 import json
 import math
 import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urlsplit
 
@@ -33,16 +35,30 @@ def check_jwks_url(url: str) -> None:
 
 
 def check_database_dsn(dsn: str) -> None:
-    """Refuse, outside FRAUD_ENV=dev, a DSN without a password or with the migrations' development password
-    (the role's own name), as internal/auth.CheckDatabaseDSN (security audit round 2, N8)."""
+    """Refuse, outside FRAUD_ENV=dev, credentials without a password (or client certificate or passfile) or
+    with the migrations' development password (the role's own name), as internal/auth.CheckDatabaseDSN. Reads
+    what libpq would use: URL or keyword/value, decoded, query parameters, PGUSER and PGPASSWORD (round 3)."""
     if os.environ.get("FRAUD_ENV") == "dev":
         return
-    u = urlsplit(dsn)
-    if u.scheme not in ("postgres", "postgresql") or not u.username:
-        raise ValueError("database DSN: expected postgresql://user:password@host/db")
-    if not u.password or u.password == u.username:
+    from psycopg import ProgrammingError
+    from psycopg.conninfo import conninfo_to_dict
+
+    try:
+        params = conninfo_to_dict(dsn)
+    except ProgrammingError as exc:
+        raise ValueError(f"database DSN: {exc}") from exc
+    user = str(params.get("user") or os.environ.get("PGUSER") or getpass.getuser())
+    password = str(params.get("password") or os.environ.get("PGPASSWORD") or "")
+    if not password:
+        passfile = Path(
+            str(params.get("passfile") or os.environ.get("PGPASSFILE") or Path.home() / ".pgpass")
+        )
+        if params.get("sslcert") or passfile.is_file():
+            return  # certificate or passfile authentication: nothing here to compare
+        raise ValueError(f"database DSN for role {user}: no password, client certificate or passfile")
+    if password == user:
         raise ValueError(
-            f"database DSN for role {u.username}: development credentials are allowed only with FRAUD_ENV=dev"
+            f"database DSN for role {user}: development credentials are allowed only with FRAUD_ENV=dev"
         )
 
 
