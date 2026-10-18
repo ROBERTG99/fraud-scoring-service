@@ -142,6 +142,8 @@ type Transaction struct {
 	DeviceId      string                 `protobuf:"bytes,8,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"` // salted SHA-256
 	IpPrefix      string                 `protobuf:"bytes,9,opt,name=ip_prefix,json=ipPrefix,proto3" json:"ip_prefix,omitempty"` // /24 only
 	Country       string                 `protobuf:"bytes,10,opt,name=country,proto3" json:"country,omitempty"`                  // ISO 3166-1 alpha-2
+	// When the transaction happened. Optional (server time when absent); must lie within
+	// [now - 24 h, now + 5 min], or Score answers INVALID_ARGUMENT: it is the as-of time of the feature windows.
 	EventTs       *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=event_ts,json=eventTs,proto3" json:"event_ts,omitempty"`
 	MerchantName  string                 `protobuf:"bytes,12,opt,name=merchant_name,json=merchantName,proto3" json:"merchant_name,omitempty"` // synthetic display name; untrusted text, never a model or rule input
 	unknownFields protoimpl.UnknownFields

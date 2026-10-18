@@ -36,7 +36,8 @@ def build_go(out_dir: Path, *names: str) -> dict[str, Path]:
 class Database:
     name: str
     owner_dsn: str  # role fraud (migrations, fixtures)
-    app_dsn: str  # role fraud_app (services)
+    app_dsn: str  # role fraud_app (scorer)
+    summarizer_dsn: str  # role fraud_summarizer (case summarizer, D-043)
 
 
 @contextmanager
@@ -48,7 +49,12 @@ def fresh_database(work: Path) -> Iterator[Database]:
         conn.execute(f"CREATE DATABASE {name}")  # generated identifier
     base = admin.split("?", 1)[0].rsplit("/", 1)[0]
     owner = f"{base}/{name}?sslmode=disable"
-    db = Database(name, owner, owner.replace("fraud:fraud@", "fraud_app:fraud_app@", 1))
+    db = Database(
+        name,
+        owner,
+        owner.replace("fraud:fraud@", "fraud_app:fraud_app@", 1),
+        owner.replace("fraud:fraud@", "fraud_summarizer:fraud_summarizer@", 1),
+    )
     try:
         scorer = work / "scorer"
         if not scorer.exists():

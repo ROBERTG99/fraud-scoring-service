@@ -137,7 +137,7 @@ async def test_consumer_writes_summary_for_review_event(database: Database) -> N
     finally:
         await producer.stop()
 
-    pool = PostgresRepository.create_pool(database.app_dsn)
+    pool = PostgresRepository.create_pool(database.summarizer_dsn)
     await pool.open()
     repo = PostgresRepository(pool)
     gateway = build_gateway(load(env={"FRAUD_SUMMARY_PROVIDER": "fake"}))

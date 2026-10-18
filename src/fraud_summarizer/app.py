@@ -103,7 +103,7 @@ async def _production_services() -> tuple[Services, Callable[[], Awaitable[None]
     configure_logging("case-summarizer")  # production only: tests keep pytest's log capture
     from fraud_summarizer.repository import PostgresRepository
 
-    dsn = os.environ.get("FRAUD_SUMMARIZER_PG_DSN", "postgresql://fraud_app:fraud_app@127.0.0.1:8520/fraud")
+    dsn = os.environ.get("FRAUD_SUMMARIZER_PG_DSN", "postgresql://fraud_summarizer:fraud_summarizer@127.0.0.1:8520/fraud")
     pool = PostgresRepository.create_pool(dsn)
     await pool.open(wait=False)
     repo = PostgresRepository(pool)

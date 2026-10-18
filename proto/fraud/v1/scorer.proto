@@ -35,6 +35,8 @@ message Transaction {
   string device_id = 8; // salted SHA-256
   string ip_prefix = 9; // /24 only
   string country = 10; // ISO 3166-1 alpha-2
+  // When the transaction happened. Optional (server time when absent); must lie within
+  // [now - 24 h, now + 5 min], or Score answers INVALID_ARGUMENT: it is the as-of time of the feature windows.
   google.protobuf.Timestamp event_ts = 11;
   string merchant_name = 12; // synthetic display name; untrusted text, never a model or rule input
 }

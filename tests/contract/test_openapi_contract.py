@@ -15,6 +15,7 @@ import urllib.error
 import urllib.request
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -152,7 +153,8 @@ def stack(tmp_path_factory: pytest.TempPathFactory) -> Iterator[dict[str, Any]]:
                 "country": "US",
                 "ip_prefix": "203.0.113.0/24",
                 "device_id": "ab" * 32,
-                "event_ts": "2026-09-20T10:03:00Z",
+                # Within Score's accepted window (D-041): a minute ago.
+                "event_ts": (datetime.now(UTC) - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
             }
             _post(f"{base_url}/v1/score", {"transaction": tx}, SERVICE_TOKEN)
         yield {"base_url": base_url, "tokens": tokens}
@@ -182,6 +184,12 @@ schema = schemathesis.pytest.from_fixture("api_schema").exclude(path="/v1/metric
 def test_api_conforms_to_openapi(case: Case, stack: dict[str, Any]) -> None:
     op = case.operation.definition.raw.get("operationId", "")
     token = SERVICE_TOKEN if op == "Scorer_Score" else stack["tokens"][OPERATION_PERSONA.get(op, "analyst-1")]
+    body = case.body if isinstance(case.body, dict) else None
+    tx = body.get("transaction") if body else None
+    if isinstance(tx, dict) and isinstance(tx.get("event_ts"), str):
+        # The accepted window ([now - 24 h, now + 5 min], D-041) depends on the clock, which OpenAPI cannot
+        # express (the field description states it); keep event_ts inside it so the rest is still checked.
+        tx["event_ts"] = (datetime.now(UTC) - timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     if case.query:
         # page_token is opaque (issued by the server); arbitrary strings are a correct 400, and the token
         # round trip is covered by internal/store TestListCases* (see docs/DECISIONS.md D-020).

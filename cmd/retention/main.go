@@ -3,7 +3,7 @@
 // older than 7 days, step records and processed messages older than 90 days, and account events older than
 // 400 days, in short batches. The audit log is never deleted (D-040). Run it daily; it is idempotent.
 //
-// Env: FRAUD_PG_DSN (the fraud_app role), FRAUD_RETENTION_BATCH (rows per batch, default 5000).
+// Env: FRAUD_PG_DSN (the fraud_retention role, D-043), FRAUD_RETENTION_BATCH (rows per batch, default 5000).
 package main
 
 import (
@@ -31,7 +31,7 @@ func main() {
 		os.Exit(2)
 	}
 	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	pool, err := pgxpool.New(cctx, envOr("FRAUD_PG_DSN", "postgres://fraud_app:fraud_app@127.0.0.1:8520/fraud?sslmode=disable"))
+	pool, err := pgxpool.New(cctx, envOr("FRAUD_PG_DSN", "postgres://fraud_retention:fraud_retention@127.0.0.1:8520/fraud?sslmode=disable"))
 	cancel()
 	if err != nil {
 		log.Error("connect", "err", err)

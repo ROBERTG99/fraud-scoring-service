@@ -449,7 +449,11 @@ export interface components {
         | "USD";
       /** salted SHA-256 */
       device_id: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description When the transaction happened. Optional (server time when absent); must lie within
+       *     [now - 24 h, now + 5 min], or Score answers INVALID_ARGUMENT: it is the as-of time of the feature windows.
+       */
       event_ts?: string;
       /** /24 only */
       ip_prefix: string;

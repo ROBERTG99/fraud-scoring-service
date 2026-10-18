@@ -17,7 +17,7 @@ import (
 func TestRetentionDeletesOnlyExpiredRows(t *testing.T) {
 	dsn := migratedDB(t)
 	pool := newPool(t, dsn)
-	app := newPool(t, testutil.WithUser(t, dsn, "fraud_app", "fraud_app")) // the role cmd/retention runs as
+	app := newPool(t, testutil.WithUser(t, dsn, "fraud_retention", "fraud_retention")) // the role cmd/retention runs as
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	w, err := NewGroupWriter(pool, relayWriterConfig(t), quiet)
