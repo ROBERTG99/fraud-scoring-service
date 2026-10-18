@@ -342,6 +342,14 @@ def test_a_word_value_still_verifies() -> None:
         "falsepositive",
         "close_the_case",
         "Not\u00a0fraud",
+        # Security audit round 6: any punctuation joins a phrase.
+        "false.positive",
+        "false/positive",
+        "false\u00b7positive",
+        "false+positive",
+        "false~alarm",
+        "not\u2010fraud",
+        "let it - through",
     ],
 )
 def test_clearing_words_joined_by_hyphens_or_underscores_are_dropped(clearing: str) -> None:
@@ -352,7 +360,7 @@ def test_clearing_words_joined_by_hyphens_or_underscores_are_dropped(clearing: s
     assert screen_checks([f"{clearing}, close"]) == []
 
 
-def test_words_that_only_contain_a_clearing_word_are_kept() -> None:
+def test_clearing_words_inside_other_words_are_kept_and_plurals_dropped() -> None:
     from fraud_summarizer.faithfulness import screen_checks
 
     checks = [

@@ -525,6 +525,54 @@ def test_the_dsn_check_parses_service_files_and_hosts_as_libpq(
     check_database_dsn("host=/var/run/postgresql dbname=fraud user=fraud_summarizer")  # the default directory
 
 
+def test_the_dsn_check_follows_libpq_on_duplicates_line_ends_and_host_keys(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Security audit round 6, checked against libpq: the first duplicate key wins, only "\\n" ends a line, an
+    empty password option ignores PGPASSWORD, hostaddr keys the passfile, and a socket path may match itself."""
+    from fraud_summarizer.auth import check_database_dsn
+
+    for var in (
+        "FRAUD_ENV",
+        "PGPASSWORD",
+        "PGUSER",
+        "PGHOST",
+        "PGHOSTADDR",
+        "PGPORT",
+        "PGDATABASE",
+        "PGSERVICE",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PGPASSFILE", str(tmp_path / "none"))
+    dev = "fraud_summarizer:fraud_summarizer"
+
+    def refused(dsn: str) -> None:
+        with pytest.raises(ValueError, match="database DSN"):
+            check_database_dsn(dsn)
+
+    services = tmp_path / "pg_service.conf"
+    monkeypatch.setenv("PGSERVICEFILE", str(services))
+    services.write_text("[dup]\nuser=fraud_summarizer\npassword=fraud_summarizer\npassword=strong\n")
+    refused("service=dup dbname=fraud")
+    services.write_text("[cr]\nuser=fraud_summarizer\n#note\rpassword=strong\npassword=fraud_summarizer\n")
+    refused("service=cr dbname=fraud")
+
+    passfile = tmp_path / "pgpass"
+    monkeypatch.setenv("PGPASSFILE", str(passfile))
+    passfile.write_text(f"#old\r*:*:*:fraud_summarizer:strong\n*:*:*:{dev}\n")
+    refused("host=db dbname=fraud user=fraud_summarizer")
+    passfile.write_text(f"*:*:*:{dev}\n")
+    monkeypatch.setenv("PGPASSWORD", "strong")
+    refused("host=db dbname=fraud user=fraud_summarizer password=")  # libpq ignores PGPASSWORD here
+    check_database_dsn("host=db dbname=fraud user=fraud_summarizer")  # PGPASSWORD wins over the passfile
+    monkeypatch.delenv("PGPASSWORD")
+    passfile.write_text(f"localhost:5432:fraud:fraud_summarizer:strong\n10.0.0.5:5432:fraud:{dev}\n")
+    refused("hostaddr=10.0.0.5 dbname=fraud user=fraud_summarizer")
+    passfile.write_text(f"localhost:5432:fraud:fraud_summarizer:strong\n/tmp:5432:fraud:{dev}\n")
+    refused("host=/tmp dbname=fraud user=fraud_summarizer")
+
+
 def test_public_readyz_names_no_cause(
     client: TestClient, store: Store, monkeypatch: pytest.MonkeyPatch
 ) -> None:

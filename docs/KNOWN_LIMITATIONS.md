@@ -173,11 +173,27 @@ quote drops it. The console should show quoted merchant names as data (they are 
 ## Redaction gaps that remain
 
 Card digits are found in groups joined by up to 8 characters that are not letters or digits, by percent
-escapes and by HTML entities (D-064, D-065). Out of scope: separators of 9 or more characters, separators
+escapes and by HTML entities (D-064 to D-066); an escape or entity is decoded only into a digit, a space, "@"
+or plain punctuation. Out of scope: separators of 9 or more characters, separators
 that contain letters or digits other than those escapes, card layouts other than the common shapes and equal
 groups, a card written as an IPv4 address or inside a UUID (held as identifiers), a card split by an email or
 a date, and a phone glued to the extension of the item before it (`x12415-555-2671`). Only merchant names
 (at most 120 characters) reach a provider as third-party free text.
+
+## Merged card windows remove numbers from lists
+
+The wide pass redacts every Luhn-valid window of groups in a card layout, equal groups included (D-065), so
+a merchant name holding a list of numbers (prices such as "12.99, 45.10, ...", versions such as
+"2.10.3 / 4.5.6", two 8-digit references) can lose some of them when a window passes Luhn by chance. The
+eval datasets are unchanged (`uv run python scripts/redact_parity.py --rev 1b7c746`: 0 of 6,488 unique values
+differ).
+
+## The clearing screen drops some ordinary phrases
+
+Clearing phrases match with any punctuation or none between their words (D-065, D-066), so statements such
+as "3 prior non-fraud chargebacks", "safe-to-spend balance", "a no-fraud-history segment" or "checks-out
+flow" are dropped. That is the safe direction: an unverified item is left out of the summary, never
+added. No fact key, rule or prompt in the repository contains such a phrase, and `make eval` passes.
 
 ## Faithfulness drops natural phrasing
 

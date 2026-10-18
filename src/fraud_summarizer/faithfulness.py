@@ -35,10 +35,11 @@ _CLEARING_WORDS = (
     r"|verified (?:partner|merchant|customer|account|seller)"
 )
 # Words are delimited by anything but a letter or digit ("_approve_" too), and the words of a phrase may be
-# joined by spaces, "_" or "-", or not at all ("false-positive", "false_alarm", "falsealarm" once a zero-width
-# space is removed; security audit round 5).
+# joined by up to five characters that are not letters or digits, or by none ("false-positive", "false_alarm",
+# "false.positive", "not\u2010fraud", "falsealarm" once a zero-width space is removed; security audit rounds 5
+# and 6).
 CLEARING = re.compile(
-    r"(?<![^\W_])(?:" + _CLEARING_WORDS.replace(" ", r"[\s_-]*") + r")(?![^\W_])", re.IGNORECASE
+    r"(?<![^\W_])(?:" + _CLEARING_WORDS.replace(" ", r"[\W_]{0,5}") + r")(?![^\W_])", re.IGNORECASE
 )
 
 

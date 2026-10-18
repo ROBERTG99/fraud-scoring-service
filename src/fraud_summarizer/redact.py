@@ -11,19 +11,19 @@ and redaction repeats until nothing changes. Phone groups may be separated by sp
 lists of numbers in prose are kept. Card groups may be separated by any run of up to 8 characters that are not
 letters or digits: a second pass redacts every Luhn-valid window of groups in a card layout (overlapping
 windows merge into one label), and of the run pass and this pass in either order, the result that leaves fewer
-digits is kept (security audit round 4). Percent-encoded and HTML-entity text is redacted as written and as
-decoded, and the decoded result is used when it redacts more (round 5). Out of scope: names, postal addresses, IBANs, obfuscated addresses
+digits is kept (security audit round 4). Percent escapes and HTML entities that stand for a digit, a space, "@"
+or plain punctuation are decoded, never into letters, quotes, brackets or control characters, so decoding
+cannot change what a prompt says or close its facts fence (round 6). Out of scope: names, postal addresses, IBANs, obfuscated addresses
 ("john(at)example"), masked card numbers and bare 9-digit SSNs without an "SSN" keyword (docs/security.md).
 """
 
 from __future__ import annotations
 
+import functools
 import html
-import itertools
 import re
 import unicodedata
 from dataclasses import dataclass
-from urllib.parse import unquote
 
 CARD_LABEL, PHONE_LABEL = "[REDACTED_CARD]", "[REDACTED_PHONE]"
 
@@ -267,14 +267,27 @@ def _wide_card_layout(shape: tuple[int, ...]) -> bool:
     return 13 <= sum(shape) <= 19 and (shape in CARD_SHAPES or shape in WIDE_SHAPES or len(set(shape)) == 1)
 
 
-def _readings(run: str, window: list[tuple[int, int, bool]]) -> list[tuple[tuple[int, ...], str]]:
-    """The (shape, digits) readings of a window of groups: a group right after "%" may start with the two hex
-    digits of an escape ("%40", "%20") or with card digits, so both readings count (M6 review round 5)."""
-    choices = [[(a, b)] + ([(a + 2, b)] if pct else []) for a, b, pct in window]
-    return [
-        (tuple(b - a for a, b in combo), "".join(run[a:b] for a, b in combo))
-        for combo in itertools.product(*choices)
-    ]
+@functools.cache
+def _layouts(k: int) -> tuple[tuple[int, ...], ...]:
+    """The card layouts with k groups: card shapes, the wide pass's extra shapes and equal groups."""
+    fixed = [shape for shape in (*CARD_SHAPES, *sorted(WIDE_SHAPES)) if len(shape) == k]
+    equal = [(n,) * k for n in range(1, 20) if 13 <= n * k <= 19]
+    return tuple(dict.fromkeys(fixed + equal))
+
+
+def _layout_digits(run: str, window: list[tuple[int, int, bool]], shape: tuple[int, ...]) -> str | None:
+    """The window's digits read in this layout: a group right after "%" may start with the two hex digits of an
+    escape ("%40", "%20") or with card digits, and the layout says which (M6 review round 5). One check per
+    layout, so the cost is linear in the groups (round 6: every combination of readings was tried)."""
+    out = []
+    for (a, b, pct), n in zip(window, shape, strict=True):
+        if b - a == n:
+            out.append(run[a:b])
+        elif pct and b - a - 2 == n:
+            out.append(run[a + 2 : b])
+        else:
+            return None
+    return "".join(out)
 
 
 def _wide_cards(m: re.Match[str], merge: bool = True) -> str:
@@ -297,7 +310,12 @@ def _wide_cards(m: re.Match[str], merge: bool = True) -> str:
             window = groups[i : j + 1]
             if sum(b - a - 2 * pct for a, b, pct in window) > MAX_WINDOW_DIGITS:
                 break
-            if any(_wide_card_layout(shape) and luhn_ok(d) for shape, d in _readings(run, window)):
+            if any(
+                _wide_card_layout(shape)
+                and (d := _layout_digits(run, window, shape)) is not None
+                and luhn_ok(d)
+                for shape in _layouts(len(window))
+            ):
                 found = j
                 a, b = groups[i][0], groups[j][1]
                 if spans and a <= spans[-1][1]:
@@ -379,24 +397,36 @@ def _fixpoint(text: str) -> str:
     return out
 
 
-def _removed(before: str, after: str) -> tuple[int, int]:
-    return (_digits_left(before) - _digits_left(after), after.count("[REDACTED_"))
+# What a percent escape or an HTML entity may decode to: digits, spaces and punctuation that only separates.
+# Letters, quotes, brackets, "<", ">", backticks, backslashes, "%", "&" and control characters stay encoded, so
+# decoding cannot change what a prompt says or close its facts fence (M6 review round 6).
+SAFE_DECODED = frozenset("0123456789 @-./,:;|*+_~#!?=^$")
+ESCAPE = re.compile(r"%([0-9A-Fa-f]{2})|&(#[0-9]{1,7};|#[xX][0-9A-Fa-f]{1,6};|[A-Za-z][A-Za-z0-9]{1,31};)")
+
+
+def _decode_safe(m: re.Match[str]) -> str:
+    if m.group(1) is not None:
+        ch = chr(int(m.group(1), 16))
+    else:
+        ch = unicodedata.normalize("NFKC", html.unescape("&" + m.group(2)))  # "&nbsp;" is a space
+    return ch if ch in SAFE_DECODED else m.group(0)
+
+
+def decode_escapes(text: str) -> str:
+    return ESCAPE.sub(_decode_safe, text)
 
 
 def redact_text(text: str) -> str:
-    """Redact the text as written and as decoded (percent escapes, HTML entities), and keep the decoded result
-    only when it redacts more digits, or as many digits and more items. "%40" is ambiguous: an "@" in
-    "pay%404111..." but a separator before the card group "4046" in "...~%4046...", so neither reading alone
-    is safe (M6 review round 5)."""
+    """Two candidates, keeping the one that leaves fewer digits: redact as written, then decode what is left and
+    redact again; or decode, then redact. "%40" is ambiguous: an "@" in "pay%404111..." but a separator before
+    the card group "4046" in "...~%4046...", so neither order alone is safe (rounds 5 and 6)."""
     plain = normalise(text)
-    out = _fixpoint(plain)
-    decoded = normalise(html.unescape(unquote(text, errors="replace")))
-    if decoded != plain:
-        dout = _fixpoint(decoded)
-        if _removed(decoded, dout) > _removed(plain, out):
-            return dout
-    return out
+    first = _fixpoint(decode_escapes(_fixpoint(plain)))
+    decoded = decode_escapes(plain)
+    if decoded == plain:
+        return first
+    return min((first, _fixpoint(decoded)), key=_digits_left)
 
 
 def contains_pii(text: str) -> bool:
-    return redact_text(text) != normalise(text)
+    return redact_text(text) != decode_escapes(normalise(text))

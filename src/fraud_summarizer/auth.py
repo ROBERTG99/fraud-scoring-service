@@ -52,37 +52,44 @@ def check_database_dsn(dsn: str) -> None:
     if service:
         params = _service_params(service) | params  # the DSN's own parameters win
     user = params.get("user") or os.environ.get("PGUSER") or getpass.getuser()
-    password = params.get("password") or os.environ.get("PGPASSWORD")
-    # libpq tries every host in turn, each with its own passfile entry when no password is set (round 5).
-    passwords = [password] if password else _passfile_passwords(params, user)
-    for pw in passwords:
+    # A password option that is present, even empty, hides PGPASSWORD; an empty one falls to the passfile (round 6).
+    password = params["password"] if "password" in params else os.environ.get("PGPASSWORD", "")
+    # libpq tries every host in turn, each with its own passfile entry when no password is set (round 5). A
+    # socket path may be looked up as "localhost" or as itself, so both count (round 6).
+    candidates = [[password]] if password else _passfile_passwords(params, user)
+    for cands in candidates:
+        if user in cands:
+            raise ValueError(
+                f"database DSN for role {user}: development credentials are allowed only with FRAUD_ENV=dev"
+            )
+        pw = next((c for c in cands if c), "")
         if not pw:
             cert = params.get("sslcert") or os.environ.get("PGSSLCERT")
             sslmode = params.get("sslmode") or os.environ.get("PGSSLMODE") or "prefer"
             if cert and sslmode != "disable" and Path(cert).is_file():
                 continue  # certificate authentication: nothing here to compare
             raise ValueError(f"database DSN for role {user}: no password or client certificate")
-        if pw == user:
-            raise ValueError(
-                f"database DSN for role {user}: development credentials are allowed only with FRAUD_ENV=dev"
-            )
+
+
+LIBPQ_SPACE = " \t\r\v\f"  # what C's isspace() strips, not every Unicode line break as str.strip() does
 
 
 def _service_params(service: str) -> dict[str, str]:
     """The named section of the libpq service file (PGSERVICEFILE, ~/.pg_service.conf, then
-    PGSYSCONFDIR/pg_service.conf), parsed as libpq does: each line stripped, "#" comments, "[name]" sections,
-    key=value lines and nothing else (round 5: ConfigParser read an indented line as a continuation)."""
+    PGSYSCONFDIR/pg_service.conf), parsed as libpq does: lines end at "\\n" only, each is stripped, "#"
+    comments, "[name]" sections, key=value lines and nothing else, and the first value of a key wins (rounds 5
+    and 6: ConfigParser read an indented line as a continuation)."""
     candidates = [os.environ.get("PGSERVICEFILE") or str(Path.home() / ".pg_service.conf")]
     if os.environ.get("PGSYSCONFDIR"):
         candidates.append(str(Path(os.environ["PGSYSCONFDIR"]) / "pg_service.conf"))
     for path in candidates:
         try:
-            lines = Path(path).read_text(errors="replace").splitlines()
+            lines = Path(path).read_bytes().decode(errors="replace").split("\n")  # no universal newlines
         except OSError:
             continue
         found: dict[str, str] | None = None
         for n, raw in enumerate(lines, 1):
-            line = raw.strip()
+            line = raw.strip(LIBPQ_SPACE)
             if not line or line.startswith("#"):
                 continue
             if line.startswith("["):
@@ -95,7 +102,7 @@ def _service_params(service: str) -> dict[str, str]:
             key, eq, value = line.partition("=")
             if not eq:
                 raise ValueError(f"database DSN: service file {path}, line {n}: not key=value")
-            found[key.strip()] = value.strip()
+            found.setdefault(key.strip(LIBPQ_SPACE), value.strip(LIBPQ_SPACE))
         if found is not None:
             return found
     raise ValueError(f"database DSN: service {service!r} not found")
@@ -117,38 +124,46 @@ def _passfile_fields(line: str) -> list[str]:
     return [*fields, cur]
 
 
-# libpq's default socket directories: a socket there is "localhost" in the passfile, any other is its path. The
-# paths are only compared with the DSN's host, never opened.
-DEFAULT_SOCKET_DIRS = frozenset({"/var/run/postgresql", "/run/postgresql", "/tmp"})  # noqa: S108  # nosec B108
-
-
-def _passfile_passwords(params: dict[str, str], user: str) -> list[str]:
-    """For each host libpq would try, the password of the first matching passfile entry ("" for none)."""
+def _passfile_passwords(params: dict[str, str], user: str) -> list[list[str]]:
+    """For each host libpq would try, the passwords of the first matching passfile entry ("" for none): one
+    for a host name or address, two for a socket path, which libpq looks up as "localhost" when it is its
+    compiled default directory and as the path otherwise (round 6: both count, failing closed)."""
     path = Path(params.get("passfile") or os.environ.get("PGPASSFILE") or Path.home() / ".pgpass")
     try:
-        lines = path.read_text(errors="replace").splitlines()
+        lines = path.read_bytes().decode(errors="replace").split("\n")  # no universal newlines
     except OSError:
         lines = []
     entries = [
         fields
-        for line in lines
-        if line.strip() and not line.startswith("#")
+        for raw in lines
+        for line in [raw.rstrip("\r")]
+        if line.strip(LIBPQ_SPACE) and not line.startswith("#")
         for fields in [_passfile_fields(line)]
         if len(fields) == 5
     ]
-    hosts = (params.get("host") or os.environ.get("PGHOST") or "localhost").split(",")
+    # libpq matches the passfile on host, or on hostaddr when no host is given (round 6).
+    names = (
+        params.get("host")
+        or os.environ.get("PGHOST")
+        or params.get("hostaddr")
+        or os.environ.get("PGHOSTADDR")
+    )
+    hosts = (names or "localhost").split(",")
     ports = (params.get("port") or os.environ.get("PGPORT") or "5432").split(",")
     dbname = params.get("dbname") or os.environ.get("PGDATABASE") or user
+
+    def lookup(host: str, port: str) -> str:
+        want = (host, port, dbname, user)
+        return next(
+            (f[4] for f in entries if all(x in ("*", w) for x, w in zip(f[:4], want, strict=True))), ""
+        )
+
     out = []
     for i, raw_host in enumerate(hosts):
         host = raw_host.strip() or "localhost"
-        if host.startswith("/") and host.rstrip("/") in DEFAULT_SOCKET_DIRS:
-            host = "localhost"
         port = (ports[i] if len(ports) == len(hosts) else ports[0]).strip() or "5432"
-        want = (host, port, dbname, user)
-        out.append(
-            next((f[4] for f in entries if all(x in ("*", w) for x, w in zip(f[:4], want, strict=True))), "")
-        )
+        names_tried = ["localhost", host] if host.startswith("/") else [host]
+        out.append([lookup(h, port) for h in names_tried])
     return out
 
 
