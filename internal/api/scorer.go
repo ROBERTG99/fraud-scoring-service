@@ -163,7 +163,7 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 	modelOK := false
 	if featuresOK {
 		mctx, mcancel := context.WithTimeout(ctx, ModelTimeout)
-		mctx, mspan := s.d.Tracer.Start(mctx, "model.predict", trace.WithAttributes(attribute.String("app.model_alias", model.AliasProduction)))
+		mctx, mspan := s.d.Tracer.Start(mctx, "model.predict", modelSpanOpts...)
 		pred, merr := s.d.Model.Predict(mctx, model.AliasProduction, [][]float32{vec.Float32()})
 		if merr == nil && len(pred.Scores) != 1 {
 			merr = errors.New("model returned no score")
@@ -182,7 +182,9 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 	env := rules.EnvFromVector(&vec, tx.Mcc, channel, tx.Country, tx.Currency)
 	matches := rs.Evaluate(&env)
 	res := decide.Combine(rs, decide.Input{Matches: matches, Score: float64(score), ModelOK: modelOK || !featuresOK, FeaturesOK: featuresOK, AmountMinor: tx.AmountMinor})
-	rspan.SetAttributes(attribute.Int("app.rules.matched", len(matches)))
+	if rspan.IsRecording() {
+		rspan.SetAttributes(attribute.Int("app.rules.matched", len(matches)))
+	}
 	rspan.End()
 
 	featureMap := vec.Map()
@@ -211,6 +213,9 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 	stored, err := s.d.Decisions.Commit(pctx, rec)
 	endSpan(pspan, err)
 	pcancel()
+	if err != nil {
+		span.SetStatus(otelcodes.Error, "decision not persisted")
+	}
 	if errors.Is(err, store.ErrOverloaded) {
 		return nil, status.Error(codes.ResourceExhausted, "decision queue full")
 	}
@@ -230,6 +235,8 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 				return nil, err
 			}
 		}
+		span.SetAttributes(attribute.Bool("app.idempotent_replay", true))
+		decisionAttributes(span, stored) // describe the decision returned, not the discarded one
 		return cloneResponse(stored, false), nil
 	}
 
@@ -259,7 +266,6 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 	return out, nil
 }
 
-// lookup returns a stored decision for a replayed transaction_id: Redis first, Postgres when Redis fails.
 // checkEventTime rejects an event_ts outside [now - MaxEventAge, now + MaxEventSkew] (audit M6 H2).
 func (s *ScorerServer) checkEventTime(ts, now time.Time) error {
 	maxAge := s.d.MaxEventAge
@@ -278,6 +284,9 @@ func (s *ScorerServer) checkEventTime(ts, now time.Time) error {
 // decisionAttributes records the decision on the Score span (identifiers are synthetic; no account, device
 // or merchant attributes).
 func decisionAttributes(span trace.Span, d *fraudv1.Decision) {
+	if !span.IsRecording() {
+		return // no attribute slices built when tracing is off
+	}
 	span.SetAttributes(
 		attribute.String("app.decision.id", d.DecisionId),
 		attribute.String("app.transaction_id", d.TransactionId),
@@ -289,6 +298,9 @@ func decisionAttributes(span trace.Span, d *fraudv1.Decision) {
 		attribute.String("app.rules_version", d.RulesVersion),
 	)
 }
+
+// modelSpanOpts is built once: the attribute is the same on every call.
+var modelSpanOpts = []trace.SpanStartOption{trace.WithAttributes(attribute.String("app.model_alias", model.AliasProduction))}
 
 func endSpan(span trace.Span, err error) {
 	if err != nil {

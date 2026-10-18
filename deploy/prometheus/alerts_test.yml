@@ -54,3 +54,57 @@ tests:
             exp_annotations:
               summary: Oldest unsent decision in the outbox is older than 60 s
               runbook: docs/runbook.md#outboxunsentage
+
+  # Near the thresholds (M6 review), so moving either threshold breaks a test. Buckets 40 ms and 60 ms, all
+  # observations under 60 ms; histogram_quantile interpolates p95 = 40 + 20 * (0.95 - f) / (1 - f) ms for a
+  # fraction f under 40 ms: f = 11/12 gives 48 ms (no alert), f = 7/8 gives 52 ms (alert).
+  - interval: 1m
+    input_series:
+      - series: fraud_score_latency_seconds_bucket{le="0.04"}
+        values: 0+5500x25
+      - series: fraud_score_latency_seconds_bucket{le="0.06"}
+        values: 0+6000x25
+      - series: fraud_score_latency_seconds_bucket{le="+Inf"}
+        values: 0+6000x25
+    alert_rule_test:
+      - { eval_time: 24m, alertname: ScoreLatencyHigh, exp_alerts: [] }
+  - interval: 1m
+    input_series:
+      - series: fraud_score_latency_seconds_bucket{le="0.04"}
+        values: 0+5250x25
+      - series: fraud_score_latency_seconds_bucket{le="0.06"}
+        values: 0+6000x25
+      - series: fraud_score_latency_seconds_bucket{le="+Inf"}
+        values: 0+6000x25
+    alert_rule_test:
+      - eval_time: 24m
+        alertname: ScoreLatencyHigh
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations:
+              summary: Score p95 latency above 50 ms over 5 minutes
+              runbook: docs/runbook.md#scorelatencyhigh
+
+  # 0.8% degraded for 40 minutes: no alert. 1.2%: fires.
+  - interval: 1m
+    input_series:
+      - series: fraud_decisions_total{action="APPROVE"}
+        values: 0+6000x40
+      - series: fraud_degraded_total{reason="features"}
+        values: 0+48x40
+    alert_rule_test:
+      - { eval_time: 40m, alertname: DegradedDecisions, exp_alerts: [] }
+  - interval: 1m
+    input_series:
+      - series: fraud_decisions_total{action="APPROVE"}
+        values: 0+6000x40
+      - series: fraud_degraded_total{reason="features"}
+        values: 0+72x40
+    alert_rule_test:
+      - eval_time: 40m
+        alertname: DegradedDecisions
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: More than 1% of decisions degraded (model or features unavailable) over 10 minutes
+              runbook: docs/runbook.md#degradeddecisions

@@ -329,8 +329,14 @@ func TestScoreContinuesTheCallersTrace(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status %d", resp.StatusCode)
 	}
-	if hr := do(t, http.MethodGet, st.base+"/readyz", "", nil); hr.StatusCode == 0 {
-		t.Fatal("readyz")
+	// A real gRPC health check (no token needed, D-052) must not produce a span: the filter is exercised.
+	conn, err := grpc.NewClient(st.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{}); err != nil {
+		t.Fatal(err)
 	}
 	spans := map[string]sdktrace.ReadOnlySpan{}
 	for _, s := range rec.Ended() {

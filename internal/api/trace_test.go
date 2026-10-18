@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	fraudv1 "github.com/ROBERTG99/fraud-scoring-service/gen/go/fraud/v1"
+	"github.com/ROBERTG99/fraud-scoring-service/internal/store"
 )
 
 func traced(t *testing.T) (*harness, *tracetest.SpanRecorder, trace.Tracer) {
@@ -92,6 +93,44 @@ func TestDegradedScoreMarksTheSpan(t *testing.T) {
 			if s.Status().Code.String() != "Error" {
 				t.Fatalf("model.predict status %v, want Error", s.Status())
 			}
+		}
+	}
+}
+
+// A Score that fails to persist is an error on fraud.score itself, not only on its postgres.commit child.
+func TestFailedCommitMarksTheScoreSpan(t *testing.T) {
+	for _, commitErr := range []error{store.ErrOverloaded, errors.New("spool full")} {
+		h, rec, _ := traced(t)
+		h.decisions.err = commitErr
+		if _, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: journeyTx("0192f000-0000-7000-8000-0000000000e3")}); err == nil {
+			t.Fatal("expected an error")
+		}
+		for _, s := range rec.Ended() {
+			if s.Name() == "fraud.score" && s.Status().Code.String() != "Error" {
+				t.Fatalf("%v: fraud.score status %v, want Error", commitErr, s.Status())
+			}
+		}
+	}
+}
+
+// When a concurrent duplicate won the race, the span describes the decision returned, not the one discarded.
+func TestDuplicateScoreSpanDescribesTheReturnedDecision(t *testing.T) {
+	h, rec, _ := traced(t)
+	tx := journeyTx("0192f000-0000-7000-8000-0000000000e4")
+	winner := &fraudv1.Decision{DecisionId: "0192f000-0000-7000-8000-0000000000aa", TransactionId: tx.TransactionId,
+		Action: fraudv1.Action_ACTION_APPROVE, RulesVersion: "2026.10.2", ModelVersion: "fraud-gbdt/1"}
+	h.decisions.byTx = map[string]store.DecisionRecord{tx.TransactionId: {Decision: winner, RequestHash: RequestHash(tx)}}
+	d, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: tx})
+	if err != nil || d.DecisionId != winner.DecisionId {
+		t.Fatalf("%v %v", d, err)
+	}
+	for _, s := range rec.Ended() {
+		if s.Name() != "fraud.score" {
+			continue
+		}
+		a := attrs(s)
+		if a["app.decision.id"].AsString() != winner.DecisionId || a["app.decision.action"].AsString() != "APPROVE" || !a["app.idempotent_replay"].AsBool() {
+			t.Fatalf("span attributes %v describe the discarded decision", a)
 		}
 	}
 }

@@ -182,3 +182,13 @@ func TestServiceRolesAreLeastPrivilege(t *testing.T) {
 		t.Fatalf("cascade as fraud_retention left %d cases", n)
 	}
 }
+
+// Retention deletes decisions and the outbox rows cascade: the foreign key needs an index, or every deleted
+// decision scans decision_outbox (M6 review).
+func TestOutboxDecisionIDIsIndexed(t *testing.T) {
+	pool := newPool(t, migratedDB(t))
+	n := count(t, pool, `SELECT count(*) FROM pg_indexes WHERE tablename = 'decision_outbox' AND indexdef LIKE '%(decision_id)%'`)
+	if n != 1 {
+		t.Fatalf("decision_outbox(decision_id) indexes: %d, want 1", n)
+	}
+}
