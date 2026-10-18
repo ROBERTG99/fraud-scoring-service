@@ -35,31 +35,91 @@ def check_jwks_url(url: str) -> None:
 
 
 def check_database_dsn(dsn: str) -> None:
-    """Refuse, outside FRAUD_ENV=dev, credentials without a password (or client certificate or passfile) or
-    with the migrations' development password (the role's own name), as internal/auth.CheckDatabaseDSN. Reads
-    what libpq would use: URL or keyword/value, decoded, query parameters, PGUSER and PGPASSWORD (round 3)."""
+    """Refuse, outside FRAUD_ENV=dev, credentials without a password or client certificate, or with the
+    migrations' development password (the role's own name), as internal/auth.CheckDatabaseDSN. Resolves what
+    libpq would use: URL or keyword/value, decoded, query parameters, the service file, PGUSER, PGPASSWORD,
+    the matching passfile entry, and a client certificate only when it exists and TLS is on (round 3 and 4)."""
     if os.environ.get("FRAUD_ENV") == "dev":
         return
     from psycopg import ProgrammingError
     from psycopg.conninfo import conninfo_to_dict
 
     try:
-        params = conninfo_to_dict(dsn)
+        params = {k: str(v) for k, v in conninfo_to_dict(dsn).items() if v is not None}
     except ProgrammingError as exc:
         raise ValueError(f"database DSN: {exc}") from exc
-    user = str(params.get("user") or os.environ.get("PGUSER") or getpass.getuser())
-    password = str(params.get("password") or os.environ.get("PGPASSWORD") or "")
+    service = params.get("service") or os.environ.get("PGSERVICE")
+    if service:
+        params = _service_params(service) | params  # the DSN's own parameters win
+    user = params.get("user") or os.environ.get("PGUSER") or getpass.getuser()
+    password = params.get("password") or os.environ.get("PGPASSWORD") or _passfile_password(params, user)
     if not password:
-        passfile = Path(
-            str(params.get("passfile") or os.environ.get("PGPASSFILE") or Path.home() / ".pgpass")
-        )
-        if params.get("sslcert") or passfile.is_file():
-            return  # certificate or passfile authentication: nothing here to compare
-        raise ValueError(f"database DSN for role {user}: no password, client certificate or passfile")
+        cert = params.get("sslcert") or os.environ.get("PGSSLCERT")
+        sslmode = params.get("sslmode") or os.environ.get("PGSSLMODE") or "prefer"
+        if cert and sslmode != "disable" and Path(cert).is_file():
+            return  # certificate authentication: nothing here to compare
+        raise ValueError(f"database DSN for role {user}: no password or client certificate")
     if password == user:
         raise ValueError(
             f"database DSN for role {user}: development credentials are allowed only with FRAUD_ENV=dev"
         )
+
+
+def _service_params(service: str) -> dict[str, str]:
+    """The named section of the libpq service file (PGSERVICEFILE, ~/.pg_service.conf, then
+    PGSYSCONFDIR/pg_service.conf)."""
+    import configparser
+
+    candidates = [os.environ.get("PGSERVICEFILE") or str(Path.home() / ".pg_service.conf")]
+    if os.environ.get("PGSYSCONFDIR"):
+        candidates.append(str(Path(os.environ["PGSYSCONFDIR"]) / "pg_service.conf"))
+    for path in candidates:
+        conf = configparser.ConfigParser(interpolation=None)
+        try:
+            conf.read(path)
+        except configparser.Error as exc:
+            raise ValueError(f"database DSN: service file {path}: {exc}") from exc
+        if conf.has_section(service):
+            return dict(conf.items(service))
+    raise ValueError(f"database DSN: service {service!r} not found")
+
+
+def _passfile_fields(line: str) -> list[str]:
+    fields: list[str] = []
+    cur, escaped = "", False
+    for ch in line:
+        if escaped:
+            cur, escaped = cur + ch, False
+        elif ch == "\\":
+            escaped = True
+        elif ch == ":" and len(fields) < 4:
+            fields.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    return [*fields, cur]
+
+
+def _passfile_password(params: dict[str, str], user: str) -> str:
+    """The password of the first passfile entry that matches the connection, as libpq looks it up."""
+    path = Path(params.get("passfile") or os.environ.get("PGPASSFILE") or Path.home() / ".pgpass")
+    try:
+        lines = path.read_text(errors="replace").splitlines()
+    except OSError:
+        return ""
+    host = (params.get("host") or os.environ.get("PGHOST") or "localhost").split(",")[0]
+    if host.startswith("/"):
+        host = "localhost"  # libpq matches a Unix socket as "localhost"
+    port = (params.get("port") or os.environ.get("PGPORT") or "5432").split(",")[0]
+    dbname = params.get("dbname") or os.environ.get("PGDATABASE") or user
+    want = (host, port, dbname, user)
+    for line in lines:
+        if not line.strip() or line.startswith("#"):
+            continue
+        fields = _passfile_fields(line)
+        if len(fields) == 5 and all(f in ("*", w) for f, w in zip(fields[:4], want, strict=True)):
+            return fields[4]
+    return ""
 
 
 class InvalidTokenError(Exception):

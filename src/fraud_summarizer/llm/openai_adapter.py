@@ -11,7 +11,7 @@ from typing import Any
 
 import openai
 
-from fraud_summarizer.llm.types import ProviderError, ProviderRequest, ProviderResponse
+from fraud_summarizer.llm.types import ProviderError, ProviderRequest, ProviderResponse, Usage
 
 
 class OpenAIProvider:
@@ -48,7 +48,7 @@ class OpenAIProvider:
                 exc.status_code, f"openai {exc.status_code}: {exc.message}"
             ) from exc
         usage = resp.usage
-        billed = (
+        billed = Usage(
             str(resp.model),
             int(getattr(usage, "input_tokens", 0) or 0),
             int(getattr(usage, "output_tokens", 0) or 0),

@@ -9,6 +9,7 @@ import logging
 import time
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import jwt
@@ -412,6 +413,65 @@ def test_dev_database_credentials_only_in_dev(monkeypatch: pytest.MonkeyPatch) -
     check_database_dsn("postgresql://fraud_summarizer@db/fraud")
     monkeypatch.setenv("FRAUD_ENV", "dev")
     check_database_dsn("postgresql://fraud_summarizer:fraud_summarizer@127.0.0.1:8520/fraud")
+
+
+def test_the_dsn_check_reads_passfiles_services_and_certificates_as_libpq(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Security audit round 4 (L1): any existing passfile or sslcert passed without being read."""
+    from fraud_summarizer.auth import check_database_dsn
+
+    for var in (
+        "FRAUD_ENV",
+        "PGPASSWORD",
+        "PGUSER",
+        "PGHOST",
+        "PGPORT",
+        "PGDATABASE",
+        "PGSERVICE",
+        "PGSSLCERT",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PGPASSFILE", str(tmp_path / "none"))
+    passfile = tmp_path / "pgpass"
+    url = "postgresql://fraud_summarizer@db/fraud"
+
+    def refused(dsn: str) -> None:
+        with pytest.raises(ValueError, match="database DSN"):
+            check_database_dsn(dsn)
+
+    for content in ("", "# only a comment\n", "otherhost:5432:fraud:fraud_summarizer:real\n"):
+        passfile.write_text(content)
+        refused(f"{url}?passfile={passfile}")  # no entry for this connection: no password
+    passfile.write_text("db:5432:fraud:fraud_summarizer:fraud_summarizer\n")
+    refused(f"{url}?passfile={passfile}")
+    monkeypatch.setenv("PGPASSFILE", str(passfile))
+    refused(url)
+    passfile.write_text("*:*:*:fraud_summarizer:fraud_summarizer\n")
+    refused(url)
+    passfile.write_text("db\\:x:*:*:*:wrong\n*:5432:fraud:fraud_summarizer:from\\:a-secret\n")
+    check_database_dsn(url)
+    monkeypatch.setenv("PGPASSFILE", str(tmp_path / "none"))
+    refused(f"{url}?passfile=/etc/hostname")
+
+    cert = tmp_path / "client.crt"
+    refused(f"{url}?sslcert={cert}&sslmode=require")  # the certificate does not exist
+    cert.write_text("cert")
+    refused(f"{url}?sslcert={cert}&sslmode=disable")  # never sent without TLS
+    check_database_dsn(f"{url}?sslcert={cert}&sslmode=verify-full")
+
+    services = tmp_path / "pg_service.conf"
+    services.write_text(
+        "[prod]\nhost=db\nuser=fraud_summarizer\npassword=from-a-secret\n"
+        "[dev]\nhost=db\nuser=fraud_summarizer\npassword=fraud_summarizer\n"
+    )
+    monkeypatch.setenv("PGSERVICEFILE", str(services))
+    check_database_dsn("service=prod dbname=fraud")
+    refused("service=dev dbname=fraud")
+    refused("service=missing dbname=fraud")
+    monkeypatch.setenv("PGSERVICE", "dev")
+    refused("dbname=fraud")
 
 
 def test_public_readyz_names_no_cause(

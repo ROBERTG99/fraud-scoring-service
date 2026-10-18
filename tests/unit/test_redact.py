@@ -195,6 +195,30 @@ def test_email_pattern_is_linear() -> None:
     assert time.perf_counter() - t0 < 0.5
 
 
+def test_window_search_is_linear_in_the_groups(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Security audit round 4: "1;" x 1000 took 6.7 s (19 s with three candidate passes) because every window
+    of a run was tried. Windows stop at 19 digits, so doubling a run doubles the windows tried, not more."""
+    from fraud_summarizer import redact
+
+    calls = 0
+    is_card = redact._is_card
+
+    def counting(gs: list[redact._Group]) -> bool:
+        nonlocal calls
+        calls += 1
+        return is_card(gs)
+
+    monkeypatch.setattr(redact, "_is_card", counting)
+    for unit in ("1;", "1 ", "(1)"):
+        counts = []
+        for n in (200, 400):
+            calls = 0
+            redact_text(unit * n)
+            counts.append(calls)
+        assert counts[1] <= 2.2 * counts[0], (unit, counts)
+        assert counts[1] <= 19 * 3 * 400 * 2, (unit, counts)  # at most 19 windows per group, per pass
+
+
 def test_ip_prefixes_are_kept() -> None:
     assert redact_text("ip 64.192.210.0/24 and 10.0.0.1") == "ip 64.192.210.0/24 and 10.0.0.1"
 
@@ -223,6 +247,11 @@ def test_ip_prefixes_are_kept() -> None:
         "ph415-555-2671",
         "Tel_415-555-2671",
         "call415 555 2671",
+        # M6 review round 4: mixed separators touching letters.
+        "Tel(415) 555-2671",
+        "Call Us(415) 555-2671",
+        "ph(415)555-2671",
+        "ACME PAN4111-1111 1111-1111",
     ],
 )
 def test_round_two_layouts_leave_no_digit_run(text: str) -> None:
@@ -311,3 +340,50 @@ def test_no_card_survives_in_any_layout_or_context() -> None:
         text = rng.choice(before) + rng.choice(seps).join(groups) + rng.choice(after)
         digits = re.sub(r"\D", "", redact_text(text))
         assert not any(d[i : i + 8] in digits for i in range(n - 7)), (text, redact_text(text))
+
+
+# Security audit round 4 (M2): any separator one step outside a fixed list leaked the whole card.
+ROUND_FOUR_SEPARATORS = ["    ", "\t\t\t\t", "\n\n\n\n", "\r\n\r\n", "---", " --- ", "-\n", ".\n", ",\n", "  -  ", " ,  ",
+                         "\u00b7", "\u2022", "~", "+", "=", "'", "#"]  # fmt: skip
+SEPARATOR_CHARS = " \t\n\r-.,:;|*/_~+='#\u00b7\u2022()[]{}<>!?&%$^\"\\"
+
+
+def test_no_card_survives_any_short_separator_run() -> None:
+    """Seeded fuzz: card groups in a card shape, separated by any run of 1-8 non-alphanumeric characters (the
+    same run at every gap, or a different one at each), between the round-3 prefixes and suffixes. No 8 of the
+    card's digits in a row may reach the output (D-064)."""
+    rng = random.Random(29)
+    before = ["", "card ", "Card: ", "note: customer said ", "PAN", "Tel +44 20 7946 0958 ", "on 2024-05-01 ",
+              "id deadbeefdeadbeefdeadbeefdeadbeef ", "amt 12.50, ", "(", '"']  # fmt: skip
+    after = ["", " thanks", ".", "EXP", " exp 12/29", ", 415-555-2671", " 99", ")"]
+    shapes = {13: [[4, 4, 5], [4, 3, 3, 3]], 14: [[4, 6, 4]], 15: [[4, 6, 5], [4, 4, 4, 3]],
+              16: [[4, 4, 4, 4]], 19: [[4, 4, 4, 4, 3]]}  # fmt: skip
+    for k in range(6_000):
+        n = rng.choice([13, 14, 15, 16, 16, 16, 19])
+        while True:
+            d = rng.choice("3456") + "".join(rng.choice("0123456789") for _ in range(n - 1))
+            if luhn_ok(d):
+                break
+        sizes = rng.choice(shapes[n])
+        groups, pos = [], 0
+        for size in sizes:
+            groups.append(d[pos : pos + size])
+            pos += size
+
+        def sep() -> str:
+            if rng.random() < 0.3:
+                return rng.choice(ROUND_FOUR_SEPARATORS)
+            return "".join(rng.choice(SEPARATOR_CHARS) for _ in range(rng.randint(1, 8)))
+
+        uniform = sep()
+        seps = [uniform if k % 2 else sep() for _ in groups[1:]]
+        text = rng.choice(before) + groups[0] + "".join(s + g for s, g in zip(seps, groups[1:], strict=True))
+        text += rng.choice(after)
+        digits = re.sub(r"\D", "", redact_text(text))
+        assert not any(d[i : i + 8] in digits for i in range(n - 7)), (text, redact_text(text))
+
+
+@pytest.mark.parametrize("sep", ROUND_FOUR_SEPARATORS)
+def test_round_four_separators_are_card_separators(sep: str) -> None:
+    out = redact_text(f"card {sep.join(['4480', '4336', '5923', '9424'])} thanks")
+    assert out == "card [REDACTED_CARD] thanks", repr(out)

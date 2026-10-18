@@ -11,7 +11,7 @@ from typing import Any, cast
 import anthropic
 from anthropic.types import MessageParam, OutputConfigParam, TextBlockParam
 
-from fraud_summarizer.llm.types import ProviderError, ProviderRequest, ProviderResponse
+from fraud_summarizer.llm.types import ProviderError, ProviderRequest, ProviderResponse, Usage
 
 
 class AnthropicProvider:
@@ -55,10 +55,13 @@ class AnthropicProvider:
                 exc.status_code, f"anthropic {exc.status_code}: {exc.message}"
             ) from exc
         usage = msg.usage
-        billed = (
+        # input_tokens excludes cache writes and reads, which are priced apart (security audit round 4).
+        billed = Usage(
             str(msg.model),
-            int(usage.input_tokens or 0) + int(getattr(usage, "cache_creation_input_tokens", 0) or 0),
+            int(usage.input_tokens or 0),
             int(usage.output_tokens or 0),
+            cache_write_tokens=int(getattr(usage, "cache_creation_input_tokens", 0) or 0),
+            cache_read_tokens=int(getattr(usage, "cache_read_input_tokens", 0) or 0),
         )
         if msg.stop_reason == "refusal":
             category = getattr(getattr(msg, "stop_details", None), "category", None)
@@ -75,11 +78,10 @@ class AnthropicProvider:
         return ProviderResponse(
             text=text,
             model=msg.model,
-            input_tokens=int(usage.input_tokens or 0)
-            + int(getattr(usage, "cache_creation_input_tokens", 0) or 0),
-            output_tokens=int(usage.output_tokens or 0),
+            input_tokens=billed.input_tokens,
+            output_tokens=billed.output_tokens,
             stop_reason=str(msg.stop_reason),
-            cache_read_tokens=int(getattr(usage, "cache_read_input_tokens", 0) or 0),
-            cache_write_tokens=int(getattr(usage, "cache_creation_input_tokens", 0) or 0),
+            cache_read_tokens=billed.cache_read_tokens,
+            cache_write_tokens=billed.cache_write_tokens,
             extra={"request_id": getattr(msg, "_request_id", None)},
         )

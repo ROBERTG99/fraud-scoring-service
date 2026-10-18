@@ -21,7 +21,7 @@ from opentelemetry import trace
 
 from fraud_summarizer.llm.budget import DailyBudget
 from fraud_summarizer.llm.routes import RouteConfig
-from fraud_summarizer.llm.types import Provider, ProviderError, ProviderRequest, ProviderResponse
+from fraud_summarizer.llm.types import Provider, ProviderError, ProviderRequest, ProviderResponse, Usage
 from fraud_summarizer.metrics import LLM_CALLS, LLM_COST
 from fraud_summarizer.redact import redact_text
 from fraud_summarizer.schemas import provider_schema
@@ -153,16 +153,26 @@ class LLMGateway:
                     except ProviderError as exc:
                         err = exc
                         billed_model = model
+                        billed: Usage | None = None
                         if exc.usage is not None and cost == 0.0:
                             # A response was billed but is unusable (refusal, max_tokens): charge it (D-062).
-                            billed_model, *usage = exc.usage
-                            tokens = (usage[0], usage[1])
+                            billed = exc.usage
                         elif exc.kind in ("timeout", "connection") and cost == 0.0:
                             # The provider may bill a request we stopped waiting for: charge the prompt
                             # (about 4 characters per token) and the whole max_tokens (D-059, D-062).
-                            tokens = ((len(safe_system) + len(safe_user)) // 4 + 1, route.max_tokens)
-                        if tokens != (0, 0) and cost == 0.0:
-                            cost = self.config.cost_usd(billed_model, *tokens)
+                            billed = Usage(
+                                model, (len(safe_system) + len(safe_user)) // 4 + 1, route.max_tokens
+                            )
+                        if billed is not None:
+                            billed_model = billed.model
+                            tokens = (billed.input_tokens, billed.output_tokens)
+                            cost = self.config.cost_usd(
+                                billed.model,
+                                billed.input_tokens,
+                                billed.output_tokens,
+                                cache_write_tokens=billed.cache_write_tokens,
+                                cache_read_tokens=billed.cache_read_tokens,
+                            )
                             LLM_COST.labels(route=route_name, model=billed_model).inc(cost)
                             if self.budget is not None:
                                 self.budget.charge(cost)

@@ -26,6 +26,7 @@ from fraud_summarizer.llm.cassettes import CassetteStore, cassette_key
 from fraud_summarizer.llm.fake import FakeLLM
 from fraud_summarizer.llm.openai_adapter import OpenAIProvider
 from fraud_summarizer.llm.routes import load
+from fraud_summarizer.llm.types import Usage
 from fraud_summarizer.schemas import CaseSummaryOutput, case_summary_json_schema
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "llm" / "adapters"
@@ -315,7 +316,7 @@ async def test_adapters_against_cassettes() -> None:
             await AnthropicProvider(client=client).complete(request("claude-haiku-5-5"))
         assert exc.value.kind == kind and exc.value.retryable is retryable, path_file
         if kind == "refusal":  # billed, though unusable: the usage travels with the error (D-062)
-            assert exc.value.usage == ("claude-haiku-5-5", 1180, 0)
+            assert exc.value.usage == Usage("claude-haiku-5-5", 1180, 0)
 
     seen = []
     oclient = mock_client(openai.AsyncOpenAI, {"/v1/responses": (200, "openai_responses_ok.json")}, seen)
@@ -328,7 +329,7 @@ async def test_adapters_against_cassettes() -> None:
     with pytest.raises(ProviderError) as oexc:
         await OpenAIProvider(client=oclient).complete(request("gpt-6-luna"))
     assert oexc.value.kind == "refusal"
-    assert oexc.value.usage == ("gpt-6-luna", 1100, 8)
+    assert oexc.value.usage == Usage("gpt-6-luna", 1100, 8)
 
 
 async def test_fake_is_deterministic_and_cassettes_win(tmp_path: Path) -> None:
@@ -478,7 +479,7 @@ async def test_billed_errors_are_charged_to_the_budget() -> None:
     from fraud_summarizer.llm.budget import DailyBudget
 
     budget = DailyBudget(1.0)
-    cut = ProviderError("truncated", kind="max_tokens", usage=("claude-haiku-5-5", 1000, 2048))
+    cut = ProviderError("truncated", kind="max_tokens", usage=Usage("claude-haiku-5-5", 1000, 2048))
     p = Scripted([cut])
     gw = LLMGateway(load(env={"FRAUD_SUMMARY_PROVIDER": "anthropic"}), {"anthropic": p}, budget=budget)
     with pytest.raises(GatewayExhaustedError) as exc:
@@ -496,3 +497,72 @@ async def test_a_connection_error_is_charged_an_estimate() -> None:
     with pytest.raises(GatewayExhaustedError):
         await run(gw)
     assert budget.spent_usd > 0.001  # the request may have reached the provider
+
+
+async def test_truncated_responses_carry_their_usage_and_are_charged() -> None:
+    """M6 review round 4: Anthropic stop_reason max_tokens and OpenAI status incomplete, from cassettes, carry
+    the billed usage (cache writes and reads priced as on success), and the gateway charges it."""
+    from fraud_summarizer.llm.budget import DailyBudget
+
+    client = mock_client(
+        anthropic.AsyncAnthropic, {"/v1/messages": (200, "anthropic_messages_max_tokens.json")}, []
+    )
+    with pytest.raises(ProviderError) as exc:
+        await AnthropicProvider(client=client).complete(request("claude-haiku-5-5"))
+    assert exc.value.kind == "max_tokens" and not exc.value.retryable
+    assert exc.value.usage == Usage(
+        "claude-haiku-5-5", 1180, 2048, cache_write_tokens=600, cache_read_tokens=512
+    )
+    oclient = mock_client(
+        openai.AsyncOpenAI, {"/v1/responses": (200, "openai_responses_incomplete.json")}, []
+    )
+    with pytest.raises(ProviderError) as oexc:
+        await OpenAIProvider(client=oclient).complete(request("gpt-6-luna"))
+    assert oexc.value.kind == "max_tokens" and oexc.value.usage == Usage("gpt-6-luna", 1100, 2048)
+
+    config = load(env={"FRAUD_SUMMARY_PROVIDER": "anthropic"})
+    for name, provider in (
+        (
+            "anthropic",
+            AnthropicProvider(
+                client=mock_client(
+                    anthropic.AsyncAnthropic,
+                    {"/v1/messages": (200, "anthropic_messages_max_tokens.json")},
+                    [],
+                )
+            ),
+        ),
+        (
+            "openai",
+            OpenAIProvider(
+                client=mock_client(
+                    openai.AsyncOpenAI, {"/v1/responses": (200, "openai_responses_incomplete.json")}, []
+                )
+            ),
+        ),
+    ):
+        budget = DailyBudget(1.0)
+        cfg = load(env={"FRAUD_SUMMARY_PROVIDER": name})
+        gw = LLMGateway(cfg, {name: provider}, budget=budget)
+        with pytest.raises(GatewayExhaustedError) as gexc:
+            await run(gw)
+        model = "claude-haiku-5-5" if name == "anthropic" else "gpt-6-luna"
+        once = (
+            config.cost_usd(model, 1180, 2048, cache_write_tokens=600, cache_read_tokens=512)
+            if name == "anthropic"
+            else config.cost_usd(model, 1100, 2048)
+        )
+        attempts = gexc.value.attempts
+        assert once > 0 and all(a.cost_usd == pytest.approx(once) for a in attempts), name
+        assert budget.spent_usd == pytest.approx(once * len(attempts)), name
+
+
+def test_anthropic_cache_writes_are_charged_once() -> None:
+    """Security audit round 4 (info): a cache write was counted as input and again as a cache write (2.25x)."""
+    import asyncio
+
+    client = mock_client(
+        anthropic.AsyncAnthropic, {"/v1/messages": (200, "anthropic_messages_cache_write.json")}, []
+    )
+    resp = asyncio.run(AnthropicProvider(client=client).complete(request("claude-haiku-5-5")))
+    assert (resp.input_tokens, resp.cache_write_tokens, resp.cache_read_tokens) == (1180, 600, 512)

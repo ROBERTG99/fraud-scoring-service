@@ -229,7 +229,16 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 	if stored.DecisionId != decision.DecisionId {
 		// The transaction_id was already decided (a concurrent duplicate won the race, or the Redis entry
 		// expired): return that decision, unless the request differs from the one it answered. The hash
-		// comes from the same ON CONFLICT read as the decision (D-057).
+		// comes from the same ON CONFLICT read as the decision (D-057). The stored decision goes back into
+		// Redis first, so the next replay, matching or not, is answered there and does not add to the feature
+		// store again (D-064).
+		if len(storedHash) == sha256.Size {
+			ictx, icancel := context.WithTimeout(ctx, RedisTimeout)
+			if err := s.d.Idempotency.Put(ictx, stored, storedHash); err != nil {
+				s.d.Log.Debug("idempotency put failed", "err", err)
+			}
+			icancel()
+		}
 		if err := checkReplay(storedHash, reqHash); err != nil {
 			return nil, err
 		}

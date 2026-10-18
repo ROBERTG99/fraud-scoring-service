@@ -446,6 +446,31 @@ func TestReplayWithDifferentContentsIsRejected(t *testing.T) {
 // When a concurrent duplicate won, Commit's ON CONFLICT returns the stored request hash with the stored
 // decision, so the check needs no second read that could fail or time out (M6 round 2: the path failed open,
 // then a 30 ms re-read timed out under load).
+// A decision found by the commit (its Redis entry expired, failed its MAC after a key rotation, or was never
+// written) goes back into Redis, so the next replay is answered there and adds nothing to the feature store
+// (security audit round 4, L2 and L3).
+func TestAConflictRestoresTheIdempotencyEntry(t *testing.T) {
+	h := newHarness(t)
+	tx := journeyTx("0192f000-0000-7000-8000-0000000000c3")
+	winner := &fraudv1.Decision{DecisionId: "0192f000-0000-7000-8000-0000000000ac", TransactionId: tx.TransactionId}
+	h.decisions.byTx = map[string]store.DecisionRecord{tx.TransactionId: {Decision: winner, RequestHash: RequestHash(tx)}}
+	changed := proto.Clone(tx).(*fraudv1.Transaction)
+	changed.AmountMinor = 777777
+	if _, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: changed}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("replay with another request: %v, want AlreadyExists", err)
+	}
+	calls, commits := h.feats.calls, h.decisions.commits
+	if _, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: changed}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("second replay: %v, want AlreadyExists", err)
+	}
+	if d, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: tx}); err != nil || d.DecisionId != winner.DecisionId {
+		t.Fatalf("replay with the same request: %v %v", d, err)
+	}
+	if h.feats.calls != calls || h.decisions.commits != commits {
+		t.Fatalf("replays after the first reached the feature store (%d calls) or Postgres (%d commits)", h.feats.calls-calls, h.decisions.commits-commits)
+	}
+}
+
 func TestDuplicateIsCheckedWithTheHashCommitReturns(t *testing.T) {
 	h := newHarness(t)
 	tx := journeyTx("0192f000-0000-7000-8000-0000000000c2")

@@ -84,14 +84,36 @@ def _names(statement: str, value: str) -> bool:
     return pattern.search(" ".join(statement.split()) if code else _norm(statement)) is not None
 
 
-def _without(statement: str, values: list[str]) -> str:
-    """statement with every whole-token occurrence of the values removed: what it says beyond the fact."""
-    out = " ".join(statement.split())
-    # Codes first: removing a plain value casefolds the text, after which a code could no longer be found.
-    for value in sorted(values, key=lambda v: not _token(v)[1]):
-        pattern, code = _token(value)
-        out = pattern.sub(" ", out) if code else pattern.sub(" ", _norm(out))
-    return out
+def _first_spans(text: str, values: list[str]) -> list[tuple[int, int]]:
+    """The span of the first whole-token occurrence of each value in text: one cited occurrence per value."""
+    spans = []
+    for value in values:
+        _, code = _token(value)
+        needle = re.escape(" ".join(value.split()))
+        flags = 0 if code else re.IGNORECASE
+        m = re.search(rf"(?<![0-9A-Za-z_]){needle}(?![0-9A-Za-z_])", text, flags)
+        if m:
+            spans.append(m.span())
+    return spans
+
+
+def _clears_outside(text: str, spans: list[tuple[int, int]]) -> bool:
+    """Whether clearing language starts at any word of text and does not lie wholly inside one span. Every
+    word start is tried, so a match inside a cited value cannot hide one that runs past it."""
+    for i, ch in enumerate(text):
+        if not ch.isalnum() or (i > 0 and text[i - 1].isalnum()):
+            continue
+        m = CLEARING.match(text, i)
+        if m and not any(a <= m.start() and m.end() <= b for a, b in spans):
+            return True
+    return False
+
+
+def _blank(text: str, spans: list[tuple[int, int]]) -> str:
+    out = list(text)
+    for a, b in spans:
+        out[a:b] = " " * (b - a)
+    return "".join(out)
 
 
 def _screenable(text: str) -> str:
@@ -111,14 +133,20 @@ def check_item(fact_key: str, statement: str, facts: dict[str, str]) -> CheckedI
     raw = facts[fact_key]
     text = _screenable(statement)
     value = _as_number(raw)
+    free_text = fact_key.endswith(FREE_TEXT_SUFFIXES)
     items = [i for i in [raw, *raw.split(",")] if i.strip()] if value is None else []
-    # The fact's own value is set aside first: a merchant called "Genuine Parts Co" may be quoted, and an IP
-    # prefix or version number may be cited; anything else the statement says is screened and checked.
-    rest = _without(text, items) if items else text
-    if CLEARING.search(rest):
+    # One occurrence of the fact's value is set aside: a merchant called "Genuine Parts Co" may be quoted, and
+    # an IP prefix or version number may be cited. Clearing language anywhere else, a repeat of the value
+    # included, drops the statement, and so do numbers beyond the fact. Free text is set aside whole, never by
+    # its comma pieces: a merchant named "Approve" or "Shop, not fraud" must not let the statement say it
+    # again (M6 review round 4, security audit round 4 M1).
+    t = " ".join(text.split())
+    spans = _first_spans(t, [raw] if free_text else items)
+    rest = _blank(t, spans)
+    if _clears_outside(t, spans) or CLEARING.search(" ".join(rest.split())):
         return CheckedItem(fact_key, statement, False, "clears the case")
     if value is None:
-        if fact_key.endswith(FREE_TEXT_SUFFIXES):
+        if free_text:
             long_enough = len(_norm(raw).replace(" ", "")) >= MIN_QUOTE_CHARS
             carried = long_enough and _norm(raw) in _norm(text)
         else:

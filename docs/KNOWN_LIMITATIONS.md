@@ -149,6 +149,26 @@ keyword precedes them. Two more over-redactions are accepted (D-061): a 10–11 
 becomes a phone ("order 1234567890th"), and a list of four 4-digit numbers that happens to pass Luhn becomes a
 card ("ids 1111,2222,3333,4444").
 
+## Audit key rotation
+
+The audit chain records no key id, so entries verify only under the key that wrote them; rotating
+`FRAUD_AUDIT_KEY` needs a new chain (`docs/runbook.md`, Key rotation). A key id per entry and a list of retired
+keys for verification would allow rotation in place.
+
+## A replay after a lost idempotency value adds one feature event
+
+When a transaction's Redis value is missing (expired, failed its MAC after a key change, or never written
+because the 8 ms put failed), a replay is scored before Postgres finds the conflict, so the feature store gains
+the replayed event once, even when the replay is then refused with ALREADY_EXISTS. The conflict path writes the
+stored decision back to Redis, so later replays are answered there (`TestAConflictRestoresTheIdempotencyEntry`,
+D-064). Deduplicating feature events on the transaction_id across accounts would remove the residual.
+
+## A merchant name may carry clearing words
+
+Faithfulness sets one occurrence of a merchant name aside before the clearing screen (D-062, D-064): a
+statement that only quotes a merchant called "Not Fraud Ltd" is kept, while any clearing word outside that
+quote drops it. The console should show quoted merchant names as data (they are rendered as text, never HTML).
+
 ## Faithfulness drops natural phrasing
 
 A statement must carry its fact (D-059, D-061): "The device is new." citing `feature.new_device` is dropped

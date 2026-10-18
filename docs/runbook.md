@@ -82,7 +82,34 @@ none); set it once, from the last unkeyed `seq` at upgrade time, and keep it out
 5. `anchor chain broken`: a line was removed from the anchors file or the lines were reordered.
 
 Anchors written before D-057 (no `prev` field) fail with "MAC does not match": start a new anchors file with
-`scorer audit-anchor` after verifying the chain once without it in dev mode. Outside dev mode the services take
-their database credentials only from a `postgres://user:password@host/db` URL with a real password
-(`FRAUD_PG_DSN`, `FRAUD_SUMMARIZER_PG_DSN`); key=value DSNs and passwords from `PGPASSWORD` or a passfile are
-refused (D-059).
+`scorer audit-anchor` after verifying the chain once without it in dev mode.
+
+## Database credentials outside dev mode
+
+Outside `FRAUD_ENV=dev` the scorer, `scorer migrate`, `audit-verify` and the case summarizer judge the
+credentials the driver would use (D-059, D-063, D-064): a URL or keyword/value DSN (`FRAUD_PG_DSN`,
+`FRAUD_PG_MIGRATE_DSN`, `FRAUD_SUMMARIZER_PG_DSN`), its query parameters, `PGUSER` and `PGPASSWORD`, the
+matching passfile entry and, in the summarizer, a libpq service file. They refuse to start with no password
+(unless a client certificate is configured and TLS is on) or with the migrations' development password, which
+is the role's own name. Exit code 2 and the role name in the log mean: set a real password from a secret.
+
+## Model pin outside dev mode
+
+Outside `FRAUD_ENV=dev` the model server loads a local (`FRAUD_MODEL_DIR`) or cached model only when
+`FRAUD_MODEL_SHA256_<ALIAS>` (for example `FRAUD_MODEL_SHA256_PRODUCTION`, upper case alias) holds its
+SHA-256 (D-063): a `model_meta.json` next to the file cannot vouch for it. Set one pin per alias the server
+serves, from the registry version you promote (`make register-model`). The cache fallback of spec §4.7 (MLflow
+down) also needs the pin; without it the server stays not-ready and the scorer decides rules-only, which is
+the safe failure. `scripts/bench_model.py` and the offline evaluation serve a just-trained model and run in
+dev mode or with `require_pin=False`.
+
+## Key rotation
+
+`FRAUD_AUDIT_KEY` keys the audit chain and, through a derived key, the Redis idempotency values (D-050,
+D-062). Every scorer replica must run the same key: a replica with another key reads the others' idempotency
+values as forged and deletes them. Changing the key is not supported for the audit chain in this version:
+entries written under the old key verify only under it (`docs/KNOWN_LIMITATIONS.md`). If the key leaks, stop
+the scorers, run `scorer audit-anchor` and `audit-verify` under the old key, archive the anchors file and the
+verification output with the old key, and start a new database or a new chain under the new key. The Redis
+values need nothing: under a new key they read as misses, and the first retry of each transaction finds the
+decision in Postgres and writes its value again (D-064).

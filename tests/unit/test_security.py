@@ -244,3 +244,85 @@ def test_numbers_beyond_a_cited_value_are_still_checked() -> None:
 
     facts = {"tx.ip_prefix": "203.0.113.0/24"}
     assert not check_item("tx.ip_prefix", "203.0.113.0/24 was seen 5 times.", facts).verified
+
+
+@pytest.mark.parametrize(
+    ("value", "statement"),
+    [
+        # M6 review round 4: a merchant name is set aside once and whole, never piece by piece, so a name
+        # that holds clearing words cannot carry the same words again in the statement.
+        ("Approve", "Merchant Approve; approve the transaction."),
+        (
+            "Acme, approve, legitimate",
+            "Merchant 'Acme, approve, legitimate'. The payment is legitimate; approve it.",
+        ),
+        ("Shop, not fraud", "Merchant Shop, not fraud: this is not fraud."),
+        (
+            "Trusted, Verified merchant",
+            "Merchant Trusted, Verified merchant is a verified merchant, trusted.",
+        ),
+    ],
+)
+def test_a_merchant_name_cannot_carry_clearing_words_twice(value: str, statement: str) -> None:
+    from fraud_summarizer.faithfulness import check_item
+
+    key = "event.transaction.0.merchant_name"
+    assert not check_item(key, statement, {key: value}).verified
+
+
+@pytest.mark.parametrize(
+    ("key", "statement"),
+    [
+        # M6 review round 4: whole-token matching on its own, with no clearing word to catch the statement.
+        ("tx.country", "Customer status is fine."),
+        ("decision.action", "An analyst need not review it."),
+        ("tx.country", "Funds sent to us."),
+    ],
+)
+def test_short_codes_do_not_match_inside_words_or_in_lower_case(key: str, statement: str) -> None:
+    from fraud_summarizer.faithfulness import check_item
+
+    facts = {"tx.country": "US", "decision.action": "REVIEW"}
+    assert not check_item(key, statement, facts).verified
+
+
+def test_recommended_checks_are_screened_after_normalisation() -> None:
+    from fraud_summarizer.faithfulness import screen_checks
+
+    checks = [
+        "Confirm the device with the customer.",
+        "Ａｐｐｒｏｖｅ the payment.",  # fullwidth "Approve"
+        "Rel\u200beases the funds? No: release the funds.",
+        "Dis­miss the alert.",  # a soft hyphen (Cf) inside the word
+    ]
+    assert screen_checks(checks) == checks[:1]
+
+
+@pytest.mark.parametrize(
+    ("key", "value", "statement"),
+    [
+        # Security audit round 4 (M1 b): a word value set aside at every occurrence let its repeats clear the case.
+        ("decision.degraded", "false", "degraded is false; this is a false alarm"),
+        ("decision.degraded", "false", "degraded false - a false positive, close it"),
+        ("decision.degraded", "false", "Degraded: false positive."),
+        (
+            "event.transaction.0.merchant_name",
+            "Genuine Parts Co",
+            "Paid at Genuine Parts Co, a genuine purchase.",
+        ),
+        ("event.transaction.0.merchant_name", "Not", "Merchant Not fraud."),
+    ],
+)
+def test_clearing_words_count_only_inside_one_cited_value(key: str, value: str, statement: str) -> None:
+    from fraud_summarizer.faithfulness import check_item
+
+    assert not check_item(key, statement, {key: value}).verified
+
+
+def test_a_word_value_still_verifies() -> None:
+    from fraud_summarizer.faithfulness import check_item
+
+    facts = {"decision.degraded": "false"}
+    assert check_item(
+        "decision.degraded", "The decision was not degraded (degraded is false).", facts
+    ).verified

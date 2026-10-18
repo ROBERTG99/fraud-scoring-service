@@ -51,6 +51,8 @@ def main() -> int:
             **os.environ,
             "FRAUD_MODEL_DIR": str(model_dir),
             "FRAUD_MODEL_CACHE": str(ROOT / ".cache" / "model-cache"),
+            # A local benchmark serves the just-trained, unpinned model: development mode only (D-063).
+            "FRAUD_ENV": "dev",
         }
         env.pop("MLFLOW_TRACKING_URI", None)
         proc = subprocess.Popen(

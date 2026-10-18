@@ -95,6 +95,27 @@ func TestRedisIdempotencyRejectsForgedValues(t *testing.T) {
 			t.Fatalf("%s value left in place", name)
 		}
 	}
+	// The MAC binds the transaction_id and the request hash (M6 review round 4): a genuine value copied to
+	// another transaction's key, or with its request hash changed, is not served and is removed.
+	if err := idem.Put(ctx, &fraudv1.Decision{DecisionId: "d1", TransactionId: "tx1", Action: fraudv1.Action_ACTION_REVIEW}, hash); err != nil {
+		t.Fatal(err)
+	}
+	rehashed := append([]byte{}, raw...)
+	copy(rehashed[6:6+32], bytes.Repeat([]byte{4}, 32))
+	for name, kv := range map[string]struct {
+		tx string
+		v  []byte
+	}{"copied": {"tx9", raw}, "rehashed": {"tx1", rehashed}} {
+		if err := rdb.Set(ctx, idem.redisKey(kv.tx), kv.v, time.Minute).Err(); err != nil {
+			t.Fatal(err)
+		}
+		if d, h, err := idem.Get(ctx, kv.tx); err != nil || d != nil || h != nil {
+			t.Fatalf("%s value served: %v %x %v", name, d, h, err)
+		}
+		if n := rdb.Exists(ctx, idem.redisKey(kv.tx)).Val(); n != 0 {
+			t.Fatalf("%s value left in place", name)
+		}
+	}
 	other := NewRedisIdempotency(rdb, testutil.UniqueName("f"), []byte("a different key, also 32 bytes!!"))
 	if err := other.Put(ctx, &fraudv1.Decision{DecisionId: "d2", TransactionId: "tx2"}, hash); err != nil {
 		t.Fatal(err)
