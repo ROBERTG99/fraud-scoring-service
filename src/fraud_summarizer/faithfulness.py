@@ -21,17 +21,24 @@ from dataclasses import dataclass
 NUMBER = re.compile(r"(?<![A-Za-z_\d.])-?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)")
 
 
-# Facts whose value is free text written by third parties, not a code, number or timestamp.
+# Facts whose value is free text written by third parties, not a code, number or timestamp. Every other fact
+# is a code, enum or validated value, whose comma pieces may be cited one by one: a fact that could hold
+# third-party text must be listed here, or its pieces could carry clearing words (M6 review round 5).
 FREE_TEXT_SUFFIXES = (".merchant_name",)
 MIN_QUOTE_CHARS = 4
 # Language that clears a case. A summary describes evidence and checks; it never recommends the outcome.
-CLEARING = re.compile(
-    r"\b(?:approv\w*|authori[sz]\w*|unblock\w*|whitelist\w*|allowlist\w*|benign|dismiss\w*|reputable"
+_CLEARING_WORDS = (
+    r"approv\w*|authori[sz]\w*|unblock\w*|whitelist\w*|allowlist\w*|benign|dismiss\w*|reputable"
     r"|releas\w* (?:the )?(?:payment|funds|hold|transaction)|let (?:it|the \w+) (?:through|go)"
-    r"|(?:clear|close) (?:the )?(?:case|alert)|not (?:a )?fraud\w*|no fraud|false positive|legitimate|genuine"
-    r"|trusted|safe to|legit\b|false alarm|ok(?:ay)? to (?:proceed|pay|approve|go)|checks out"
-    r"|verified (?:partner|merchant|customer|account|seller))\b",
-    re.IGNORECASE,
+    r"|(?:clear|close) (?:the )?(?:case|alert)|not (?:a )?fraud\w*|non fraud\w*|no fraud|false positive\w*|legitimate"
+    r"|genuine|trusted|safe to|legit|false alarm\w*|ok(?:ay)? to (?:proceed|pay|approve|go)|checks out"
+    r"|verified (?:partner|merchant|customer|account|seller)"
+)
+# Words are delimited by anything but a letter or digit ("_approve_" too), and the words of a phrase may be
+# joined by spaces, "_" or "-", or not at all ("false-positive", "false_alarm", "falsealarm" once a zero-width
+# space is removed; security audit round 5).
+CLEARING = re.compile(
+    r"(?<![^\W_])(?:" + _CLEARING_WORDS.replace(" ", r"[\s_-]*") + r")(?![^\W_])", re.IGNORECASE
 )
 
 

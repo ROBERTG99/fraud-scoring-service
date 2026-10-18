@@ -474,6 +474,57 @@ def test_the_dsn_check_reads_passfiles_services_and_certificates_as_libpq(
     refused("dbname=fraud")
 
 
+def test_the_dsn_check_parses_service_files_and_hosts_as_libpq(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Security audit round 5: ConfigParser read an indented line as a continuation; only the first host and
+    "localhost" for every socket directory were looked up in the passfile."""
+    from fraud_summarizer.auth import check_database_dsn
+
+    for var in (
+        "FRAUD_ENV",
+        "PGPASSWORD",
+        "PGUSER",
+        "PGHOST",
+        "PGPORT",
+        "PGDATABASE",
+        "PGSERVICE",
+        "PGSSLCERT",
+    ):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PGPASSFILE", str(tmp_path / "none"))
+
+    def refused(dsn: str) -> None:
+        with pytest.raises(ValueError, match="database DSN"):
+            check_database_dsn(dsn)
+
+    services = tmp_path / "pg_service.conf"
+    services.write_text("[cont]\npassword=fraud_summarizer\n  user=fraud_summarizer\n")
+    monkeypatch.setenv("PGSERVICEFILE", str(services))
+    monkeypatch.setenv("PGUSER", "app")
+    refused("service=cont dbname=fraud")  # libpq reads the indented line as user=fraud_summarizer
+    monkeypatch.delenv("PGUSER")
+    services.write_text("[bad]\nhost: db\n")
+    refused("service=bad dbname=fraud")
+    services.write_text("# comment\n[ok]\n  host = db \nuser=fraud_summarizer\npassword=from-a-secret\n")
+    check_database_dsn("service=ok dbname=fraud")
+
+    passfile = tmp_path / "pgpass"
+    monkeypatch.setenv("PGPASSFILE", str(passfile))
+    passfile.write_text(
+        "a:5432:fraud:fraud_summarizer:strong\nb:5432:fraud:fraud_summarizer:fraud_summarizer\n"
+    )
+    refused("host=a,b dbname=fraud user=fraud_summarizer")  # libpq tries b with the development password
+    passfile.write_text("a:5432:fraud:fraud_summarizer:strong\nb:5432:fraud:fraud_summarizer:other\n")
+    check_database_dsn("host=a,b dbname=fraud user=fraud_summarizer")
+    passfile.write_text(
+        "localhost:5432:fraud:fraud_summarizer:strong\n/var/run/custom:5432:fraud:fraud_summarizer:fraud_summarizer\n"
+    )
+    refused("host=/var/run/custom dbname=fraud user=fraud_summarizer")
+    check_database_dsn("host=/var/run/postgresql dbname=fraud user=fraud_summarizer")  # the default directory
+
+
 def test_public_readyz_names_no_cause(
     client: TestClient, store: Store, monkeypatch: pytest.MonkeyPatch
 ) -> None:

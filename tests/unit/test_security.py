@@ -326,3 +326,38 @@ def test_a_word_value_still_verifies() -> None:
     assert check_item(
         "decision.degraded", "The decision was not degraded (degraded is false).", facts
     ).verified
+
+
+@pytest.mark.parametrize(
+    "clearing",
+    # Security audit round 5: multi-word phrases needed a literal space, and "_" defeated the word boundary.
+    [
+        "false-positive",
+        "false_alarm",
+        "non-fraud",
+        "not-fraud",
+        "__approve__",
+        "_approve_",
+        "false\u200balarm",
+        "falsepositive",
+        "close_the_case",
+        "Not\u00a0fraud",
+    ],
+)
+def test_clearing_words_joined_by_hyphens_or_underscores_are_dropped(clearing: str) -> None:
+    from fraud_summarizer.faithfulness import check_item, screen_checks
+
+    facts = {"decision.degraded": "false"}
+    assert not check_item("decision.degraded", f"Degraded is false; {clearing}.", facts).verified
+    assert screen_checks([f"{clearing}, close"]) == []
+
+
+def test_words_that_only_contain_a_clearing_word_are_kept() -> None:
+    from fraud_summarizer.faithfulness import screen_checks
+
+    checks = [
+        "Ask about the reapproval flow.",
+        "The cardholder disapproved the charge.",
+        "Check the falsepositives_log.",
+    ]
+    assert screen_checks(checks) == checks[:2]

@@ -9,16 +9,21 @@ a candidate, and the non-overlapping set that redacts the most digits wins. Text
 (fullwidth digits, no-break and thin spaces), with zero-width characters removed and Unicode dashes folded,
 and redaction repeats until nothing changes. Phone groups may be separated by spaces, "-", "." or "/" only, so
 lists of numbers in prose are kept. Card groups may be separated by any run of up to 8 characters that are not
-letters or digits: a second pass redacts Luhn-valid windows of groups in a card shape, and of the run pass
-and this pass in either order, the result that leaves fewer digits is kept (security audit round 4). Out of scope: names, postal addresses, IBANs, obfuscated addresses
+letters or digits: a second pass redacts every Luhn-valid window of groups in a card layout (overlapping
+windows merge into one label), and of the run pass and this pass in either order, the result that leaves fewer
+digits is kept (security audit round 4). Percent-encoded and HTML-entity text is redacted as written and as
+decoded, and the decoded result is used when it redacts more (round 5). Out of scope: names, postal addresses, IBANs, obfuscated addresses
 ("john(at)example"), masked card numbers and bare 9-digit SSNs without an "SSN" keyword (docs/security.md).
 """
 
 from __future__ import annotations
 
+import html
+import itertools
 import re
 import unicodedata
 from dataclasses import dataclass
+from urllib.parse import unquote
 
 CARD_LABEL, PHONE_LABEL = "[REDACTED_CARD]", "[REDACTED_PHONE]"
 
@@ -49,7 +54,7 @@ RUN = re.compile(r"\+?\(?\d+\)?(?:(?:" + SEP + r"|(?<=\)))\(?\d+\)?)*")
 PHONE_SEPS = frozenset({"", " ", "-", ".", "/", "_"})
 # A contiguous 13-19 digit number glued to letters ("PAN4111...", "...1111EXP") is still a card; so is a
 # separated one in a card shape, and a 3-3-4 phone (_card_shaped, _phone_shaped).
-GLUED_CARD = re.compile(r"(?<!\d)\d{13,19}(?!\d)")
+GLUED_CARD = re.compile(r"(?<!\d)\d{13,21}(?!\d)")  # up to 21: two digits may be a "%XX" escape
 EXTENSION = re.compile(re.escape(PHONE_LABEL) + r"\s*(?:x|ext\.?|extension)\s*\d{1,6}\b", re.IGNORECASE)
 DASHES = dict.fromkeys(
     [ord(c) for c in "\u2010\u2011\u2012\u2013\u2014\u2015\u2212\ufe58\ufe63\uff0d"], ord("-")
@@ -71,9 +76,9 @@ EXOTIC_SPACE = dict.fromkeys([0x0B, 0x0C, 0x1C, 0x1D, 0x1E, 0x1F, 0x85, 0x2028, 
 LONG_DIGITS = re.compile(r"(?<!\d)\d{20,}(?!\d)")
 # The wide card pass: digit groups (not part of a held placeholder) joined by up to 8 characters that are not
 # letters, digits or the placeholder delimiter.
-WIDE_SEP = r"[^0-9A-Za-z\x00]{1,8}"
-WIDE_GROUP = r"(?<![\d\x00])\d{1,6}(?![\d\x00])"
-WIDE_RUN = re.compile(WIDE_GROUP + r"(?:" + WIDE_SEP + WIDE_GROUP + r")+")
+WIDE_RUN = re.compile(r"(?<![\d\x00])\d+(?:[^0-9A-Za-z\x00]{1,8}\d+)+(?![\d\x00])")
+# Layouts the wide pass accepts besides CARD_SHAPES and equal groups (which the run pass knows too).
+WIDE_SHAPES = frozenset({(4, 4, 8), (8, 8), (4, 12), (6, 10), (6, 13), (6, 6, 4)})
 
 
 def luhn_ok(digits: str) -> bool:
@@ -258,31 +263,63 @@ def _redact_run(m: re.Match[str]) -> str:
     return "".join(out)
 
 
-def _wide_cards(m: re.Match[str], from_right: bool = False) -> str:
-    """Redact the Luhn-valid card-shaped windows of a run of groups joined by wide separators, greedily from
-    one end, longest window first."""
-    run = m.group(0)
-    groups = [(g.start(), g.end()) for g in re.finditer(r"\d+", run)]
-    if from_right:
-        groups = [(len(run) - b, len(run) - a) for a, b in reversed(groups)]
-        run = run[::-1]
-    out, pos, i = [], 0, 0
+def _wide_card_layout(shape: tuple[int, ...]) -> bool:
+    return 13 <= sum(shape) <= 19 and (shape in CARD_SHAPES or shape in WIDE_SHAPES or len(set(shape)) == 1)
+
+
+def _readings(run: str, window: list[tuple[int, int, bool]]) -> list[tuple[tuple[int, ...], str]]:
+    """The (shape, digits) readings of a window of groups: a group right after "%" may start with the two hex
+    digits of an escape ("%40", "%20") or with card digits, so both readings count (M6 review round 5)."""
+    choices = [[(a, b)] + ([(a + 2, b)] if pct else []) for a, b, pct in window]
+    return [
+        (tuple(b - a for a, b in combo), "".join(run[a:b] for a, b in combo))
+        for combo in itertools.product(*choices)
+    ]
+
+
+def _wide_cards(m: re.Match[str], merge: bool = True) -> str:
+    """Redact the Luhn-valid windows of groups in a card layout, joined by wide separators. With merge, every
+    such window is redacted and overlapping windows merge into one label, so a window that passes Luhn by
+    chance next to a card cannot leave the card's digits (security audit round 5; errs toward removing
+    digits); without, the shortest windows from the left, not overlapping, so a chance window does not take a
+    phone's area code (the caller keeps the better result)."""
+    run, base, text = m.group(0), m.start(), m.string
+    groups = []
+    for g in re.finditer(r"\d+", run):
+        a, b = g.span()
+        pct = text[base + a - 1 : base + a] == "%" and b - a >= 3
+        groups.append((a, b, pct))
+    spans: list[list[int]] = []
+    i = 0
     while i < len(groups):
-        for j in range(min(len(groups), i + 5), i + 1, -1):
-            window = groups[i:j]
-            digits = "".join(run[a:b] for a, b in window)
-            shape = tuple(b - a for a, b in window)
-            if from_right:
-                shape, digits = shape[::-1], digits[::-1]
-            if shape in CARD_SHAPES and luhn_ok(digits):
-                out += [run[pos : window[0][0]], CARD_LABEL[::-1] if from_right else CARD_LABEL]
-                pos, i = window[-1][1], j
+        found = None
+        for j in range(i + 1, len(groups)):
+            window = groups[i : j + 1]
+            if sum(b - a - 2 * pct for a, b, pct in window) > MAX_WINDOW_DIGITS:
                 break
-        else:
-            i += 1
+            if any(_wide_card_layout(shape) and luhn_ok(d) for shape, d in _readings(run, window)):
+                found = j
+                a, b = groups[i][0], groups[j][1]
+                if spans and a <= spans[-1][1]:
+                    spans[-1][1] = max(spans[-1][1], b)
+                else:
+                    spans.append([a, b])
+                if not merge:
+                    break
+        i = found + 1 if found is not None and not merge else i + 1
+    out, pos = [], 0
+    for a, b in spans:
+        out += [run[pos:a], CARD_LABEL]
+        pos = b
     out.append(run[pos:])
-    joined = "".join(out)
-    return joined[::-1] if from_right else joined
+    return "".join(out)
+
+
+def _glued_card(m: re.Match[str]) -> str:
+    d = m.group(0)
+    escaped = m.string[m.start() - 1 : m.start()] == "%"  # "pay%404111...": "40" is the escape's
+    card = (len(d) <= 19 and luhn_ok(d)) or (escaped and 13 <= len(d) - 2 <= 19 and luhn_ok(d[2:]))
+    return CARD_LABEL if card else d
 
 
 def _once(text: str) -> str:
@@ -307,15 +344,15 @@ def _once(text: str) -> str:
     text = LONG_DIGITS.sub(
         lambda m: CARD_LABEL if any(map(luhn_ok, _digit_windows(m.group(0)))) else m.group(0), text
     )
-    text = GLUED_CARD.sub(lambda m: CARD_LABEL if luhn_ok(m.group(0)) else m.group(0), text)
-    # The run pass and the wide card pass in both orders, the wide pass from either end, keeping the result
-    # that leaves the fewest digits: a phone window must not take the first groups of a card the wide pass
-    # would redact whole, and a wide card window (Luhn-valid by chance) must not take a phone's last groups
-    # and the start of the card after it. Ties keep the run pass first.
+    text = GLUED_CARD.sub(_glued_card, text)
+    # The run pass and the wide card pass in both orders (the wide pass merging every card window, or taking
+    # the shortest ones), keeping the result that leaves the fewest digits: a phone window must not take the
+    # first groups of a card the wide pass would redact whole, and a wide card window (Luhn-valid by chance)
+    # must not take a card's digits or a phone's area code. Ties keep the run pass first.
     narrow_first = WIDE_RUN.sub(_wide_cards, RUN.sub(_redact_run, text))
     wide_first = RUN.sub(_redact_run, WIDE_RUN.sub(_wide_cards, text))
-    wide_right_first = RUN.sub(_redact_run, WIDE_RUN.sub(lambda m: _wide_cards(m, from_right=True), text))
-    text = min((narrow_first, wide_first, wide_right_first), key=_digits_left)
+    shortest_first = RUN.sub(_redact_run, WIDE_RUN.sub(lambda m: _wide_cards(m, merge=False), text))
+    text = min((narrow_first, wide_first, shortest_first), key=_digits_left)
     text = EXTENSION.sub(PHONE_LABEL, text)
     return re.sub(r"\x00(\d+)\x00", lambda m: kept[int(m.group(1))], text)
 
@@ -332,13 +369,32 @@ def _digit_windows(s: str) -> list[str]:
     return out
 
 
-def redact_text(text: str) -> str:
-    out = normalise(text)
+def _fixpoint(text: str) -> str:
+    out = text
     for _ in range(4):  # a redaction can expose a neighbour (e.g. a phone after a card); repeat to a fixpoint
         nxt = _once(out)
         if nxt == out:
             break
         out = nxt
+    return out
+
+
+def _removed(before: str, after: str) -> tuple[int, int]:
+    return (_digits_left(before) - _digits_left(after), after.count("[REDACTED_"))
+
+
+def redact_text(text: str) -> str:
+    """Redact the text as written and as decoded (percent escapes, HTML entities), and keep the decoded result
+    only when it redacts more digits, or as many digits and more items. "%40" is ambiguous: an "@" in
+    "pay%404111..." but a separator before the card group "4046" in "...~%4046...", so neither reading alone
+    is safe (M6 review round 5)."""
+    plain = normalise(text)
+    out = _fixpoint(plain)
+    decoded = normalise(html.unescape(unquote(text, errors="replace")))
+    if decoded != plain:
+        dout = _fixpoint(decoded)
+        if _removed(decoded, dout) > _removed(plain, out):
+            return dout
     return out
 
 

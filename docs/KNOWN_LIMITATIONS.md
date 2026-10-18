@@ -159,15 +159,25 @@ keys for verification would allow rotation in place.
 
 When a transaction's Redis value is missing (expired, failed its MAC after a key change, or never written
 because the 8 ms put failed), a replay is scored before Postgres finds the conflict, so the feature store gains
-the replayed event once, even when the replay is then refused with ALREADY_EXISTS. The conflict path writes the
-stored decision back to Redis, so later replays are answered there (`TestAConflictRestoresTheIdempotencyEntry`,
-D-064). Deduplicating feature events on the transaction_id across accounts would remove the residual.
+the replayed event once per replay in flight, even when the replay is then refused with ALREADY_EXISTS. The
+conflict path writes the stored decision back to Redis, so later replays are answered there
+(`TestAConflictRestoresTheIdempotencyEntry`, D-064). Decisions stored before request hashes existed are not
+written back (Redis values need the hash) and add an event on every replay. Deduplicating feature events on the transaction_id across accounts would remove the residual.
 
 ## A merchant name may carry clearing words
 
 Faithfulness sets one occurrence of a merchant name aside before the clearing screen (D-062, D-064): a
 statement that only quotes a merchant called "Not Fraud Ltd" is kept, while any clearing word outside that
 quote drops it. The console should show quoted merchant names as data (they are rendered as text, never HTML).
+
+## Redaction gaps that remain
+
+Card digits are found in groups joined by up to 8 characters that are not letters or digits, by percent
+escapes and by HTML entities (D-064, D-065). Out of scope: separators of 9 or more characters, separators
+that contain letters or digits other than those escapes, card layouts other than the common shapes and equal
+groups, a card written as an IPv4 address or inside a UUID (held as identifiers), a card split by an email or
+a date, and a phone glued to the extension of the item before it (`x12415-555-2671`). Only merchant names
+(at most 120 characters) reach a provider as third-party free text.
 
 ## Faithfulness drops natural phrasing
 

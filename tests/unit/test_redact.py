@@ -343,6 +343,81 @@ def test_no_card_survives_in_any_layout_or_context() -> None:
 
 
 # Security audit round 4 (M2): any separator one step outside a fixed list leaked the whole card.
+def _complete(prefix: str, n: int) -> str:
+    """prefix padded with 7s to n - 1 digits and its Luhn check digit appended."""
+    body = (prefix + "7" * n)[: n - 1]
+    return next(body + c for c in "0123456789" if luhn_ok(body + c))
+
+
+def _split(digits: str, shape: tuple[int, ...], sep: str) -> str:
+    out, pos = [], 0
+    for n in shape:
+        out.append(digits[pos : pos + n])
+        pos += n
+    return sep.join(out)
+
+
+def _leaks(card: str, out: str, run: int = 6) -> bool:
+    digits = re.sub(r"\D", "", out)
+    return any(card[i : i + run] in digits for i in range(len(card) - run + 1))
+
+
+@pytest.mark.parametrize(
+    ("template", "shape", "sep"),
+    [
+        # M6 review round 5: "%40" not decoded let "40" join the card's digits.
+        ("pay%40{}", (16,), ""),
+        ("q=%40{}", (16,), ""),
+        ("x%40{}", (4, 4, 4, 4), "-"),
+        ("%40{}", (4, 4, 5), " "),
+        ("{}", (4, 4, 4, 4), "%40"),
+        # Security audit round 5: encoded separators.
+        ("{}", (4, 4, 4, 4), "%20"),
+        ("{}", (4, 4, 4, 4), "&nbsp;"),
+        ("{}", (4, 4, 4, 4), "&#32;"),
+        # Layouts the run pass knows, with wide separators or 4+ spaces.
+        ("{}", (8, 8), " \u2022 "),
+        ("{}", (8, 8), "    "),
+        ("{}", (2,) * 8, " \u2022 "),
+        ("{}", (1,) * 16, " \u2022 "),
+        ("{}", (6, 6, 4), " ~ "),
+        ("{}", (4, 4, 8), " ~ "),
+        ("{}", (4, 12), " ~ "),
+        ("{}", (6, 10), " \u2022 "),
+        ("{}", (6, 13), " ~ "),
+    ],
+)
+def test_round_five_layouts_leave_no_six_card_digits(template: str, shape: tuple[int, ...], sep: str) -> None:
+    card = _complete("453910", sum(shape))
+    text = "card " + template.format(_split(card, shape, sep)) + " thanks"
+    assert not _leaks(card, redact_text(text)), (text, redact_text(text))
+
+
+@pytest.mark.parametrize(
+    ("text", "card"),
+    [
+        # Security audit round 5: a card next to a Luhn-valid window that ties with it in digits.
+        ("1465 5145 9954 3013 5463 4728 1158 6379", "5145995430135463"),
+        ("9860 ~ 8132 ~ 4548 ~ 8636 ~ 3711 ~ 6676", "4548863637116676"),
+    ],
+)
+def test_a_card_overlapping_a_luhn_valid_window_is_redacted_whole(text: str, card: str) -> None:
+    assert luhn_ok(card)
+    assert not _leaks(card, redact_text(text)), redact_text(text)
+
+
+def test_a_wide_card_window_does_not_leave_the_phone_after_it() -> None:
+    """M6 review round 5: a 5-group window took the area code of the phone after the card."""
+    out = redact_text("x 6620\u00b77595;6943-6288, 415 555 2671")
+    assert not re.search(r"\d{3}", out), out
+
+
+def test_a_decoded_email_is_still_redacted() -> None:
+    assert redact_text("mail john&#64;example.com") == "mail [REDACTED_EMAIL]"
+    assert redact_text("mail john%40example.com") == "mail [REDACTED_EMAIL]"
+    assert redact_text("a%40b and 50%40 off") == "a%40b and 50%40 off"
+
+
 ROUND_FOUR_SEPARATORS = ["    ", "\t\t\t\t", "\n\n\n\n", "\r\n\r\n", "---", " --- ", "-\n", ".\n", ",\n", "  -  ", " ,  ",
                          "\u00b7", "\u2022", "~", "+", "=", "'", "#"]  # fmt: skip
 SEPARATOR_CHARS = " \t\n\r-.,:;|*/_~+='#\u00b7\u2022()[]{}<>!?&%$^\"\\"
@@ -350,11 +425,11 @@ SEPARATOR_CHARS = " \t\n\r-.,:;|*/_~+='#\u00b7\u2022()[]{}<>!?&%$^\"\\"
 
 def test_no_card_survives_any_short_separator_run() -> None:
     """Seeded fuzz: card groups in a card shape, separated by any run of 1-8 non-alphanumeric characters (the
-    same run at every gap, or a different one at each), between the round-3 prefixes and suffixes. No 8 of the
-    card's digits in a row may reach the output (D-064)."""
+    same run at every gap, or a different one at each), between the round-3 prefixes and suffixes. No 6 of the
+    card's digits in a row may reach the output (D-064, D-065)."""
     rng = random.Random(29)
     before = ["", "card ", "Card: ", "note: customer said ", "PAN", "Tel +44 20 7946 0958 ", "on 2024-05-01 ",
-              "id deadbeefdeadbeefdeadbeefdeadbeef ", "amt 12.50, ", "(", '"']  # fmt: skip
+              "id deadbeefdeadbeefdeadbeefdeadbeef ", "amt 12.50, ", "(", '"', "pay%40", "x %40"]  # fmt: skip
     after = ["", " thanks", ".", "EXP", " exp 12/29", ", 415-555-2671", " 99", ")"]
     shapes = {13: [[4, 4, 5], [4, 3, 3, 3]], 14: [[4, 6, 4]], 15: [[4, 6, 5], [4, 4, 4, 3]],
               16: [[4, 4, 4, 4]], 19: [[4, 4, 4, 4, 3]]}  # fmt: skip
@@ -379,8 +454,7 @@ def test_no_card_survives_any_short_separator_run() -> None:
         seps = [uniform if k % 2 else sep() for _ in groups[1:]]
         text = rng.choice(before) + groups[0] + "".join(s + g for s, g in zip(seps, groups[1:], strict=True))
         text += rng.choice(after)
-        digits = re.sub(r"\D", "", redact_text(text))
-        assert not any(d[i : i + 8] in digits for i in range(n - 7)), (text, redact_text(text))
+        assert not _leaks(d, redact_text(text)), (text, redact_text(text))
 
 
 @pytest.mark.parametrize("sep", ROUND_FOUR_SEPARATORS)

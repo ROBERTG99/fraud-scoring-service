@@ -37,9 +37,11 @@ class Attempt:
     error: str | None
     error_kind: str | None
     latency_ms: float
-    input_tokens: int = 0
+    input_tokens: int = 0  # uncached input; cache writes and reads are counted apart (D-064)
     output_tokens: int = 0
     cost_usd: float = 0.0
+    cache_write_tokens: int = 0
+    cache_read_tokens: int = 0
 
 
 @dataclass
@@ -134,7 +136,7 @@ class LLMGateway:
                         span.set_attribute("app.status", "budget")
                         raise GatewayExhaustedError(f"route {route_name}: daily LLM budget spent", attempts)
                     t0 = time.perf_counter()
-                    cost, tokens = 0.0, (0, 0)
+                    cost, tokens, cache = 0.0, (0, 0), (0, 0)
                     try:
                         resp = await self._call(provider, provider_name, req, route.timeout_s)
                         # Charged before parsing: the provider bills output we discard as invalid.
@@ -166,6 +168,7 @@ class LLMGateway:
                         if billed is not None:
                             billed_model = billed.model
                             tokens = (billed.input_tokens, billed.output_tokens)
+                            cache = (billed.cache_write_tokens, billed.cache_read_tokens)
                             cost = self.config.cost_usd(
                                 billed.model,
                                 billed.input_tokens,
@@ -188,6 +191,8 @@ class LLMGateway:
                                 resp.input_tokens,
                                 resp.output_tokens,
                                 cost,
+                                resp.cache_write_tokens,
+                                resp.cache_read_tokens,
                             )
                         )
                         LLM_CALLS.labels(route=route_name, model=resp.model, outcome="ok").inc()
@@ -196,6 +201,8 @@ class LLMGateway:
                         span.set_attribute("gen_ai.response.model", resp.model)
                         span.set_attribute("gen_ai.usage.input_tokens", resp.input_tokens)
                         span.set_attribute("gen_ai.usage.output_tokens", resp.output_tokens)
+                        span.set_attribute("app.cache_write_tokens", resp.cache_write_tokens)
+                        span.set_attribute("app.cache_read_tokens", resp.cache_read_tokens)
                         span.set_attribute("app.cost_usd", cost)
                         span.set_attribute("app.attempts", len(attempts))
                         return LLMResult(
@@ -222,6 +229,7 @@ class LLMGateway:
                             (time.perf_counter() - t0) * 1000,
                             *tokens,
                             cost,
+                            *cache,
                         )
                     )
                     if not err.retryable or n == route.attempts:

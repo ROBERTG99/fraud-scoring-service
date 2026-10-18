@@ -566,3 +566,22 @@ def test_anthropic_cache_writes_are_charged_once() -> None:
     )
     resp = asyncio.run(AnthropicProvider(client=client).complete(request("claude-haiku-5-5")))
     assert (resp.input_tokens, resp.cache_write_tokens, resp.cache_read_tokens) == (1180, 600, 512)
+
+
+async def test_attempts_record_cache_reads_and_writes() -> None:
+    """M6 review round 5: input_tokens counts uncached input only, so cache tokens are recorded apart."""
+    for name, attempt in (
+        ("anthropic_messages_cache_write.json", 0),
+        ("anthropic_messages_max_tokens.json", 0),
+    ):
+        client = mock_client(anthropic.AsyncAnthropic, {"/v1/messages": (200, name)}, [])
+        gw = LLMGateway(
+            load(env={"FRAUD_SUMMARY_PROVIDER": "anthropic"}), {"anthropic": AnthropicProvider(client=client)}
+        )
+        try:
+            res = await run(gw)
+            attempts = res.attempts
+        except GatewayExhaustedError as exc:
+            attempts = exc.attempts
+        a = attempts[attempt]
+        assert (a.input_tokens, a.cache_write_tokens, a.cache_read_tokens) == (1180, 600, 512), name

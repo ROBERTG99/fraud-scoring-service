@@ -52,35 +52,52 @@ def check_database_dsn(dsn: str) -> None:
     if service:
         params = _service_params(service) | params  # the DSN's own parameters win
     user = params.get("user") or os.environ.get("PGUSER") or getpass.getuser()
-    password = params.get("password") or os.environ.get("PGPASSWORD") or _passfile_password(params, user)
-    if not password:
-        cert = params.get("sslcert") or os.environ.get("PGSSLCERT")
-        sslmode = params.get("sslmode") or os.environ.get("PGSSLMODE") or "prefer"
-        if cert and sslmode != "disable" and Path(cert).is_file():
-            return  # certificate authentication: nothing here to compare
-        raise ValueError(f"database DSN for role {user}: no password or client certificate")
-    if password == user:
-        raise ValueError(
-            f"database DSN for role {user}: development credentials are allowed only with FRAUD_ENV=dev"
-        )
+    password = params.get("password") or os.environ.get("PGPASSWORD")
+    # libpq tries every host in turn, each with its own passfile entry when no password is set (round 5).
+    passwords = [password] if password else _passfile_passwords(params, user)
+    for pw in passwords:
+        if not pw:
+            cert = params.get("sslcert") or os.environ.get("PGSSLCERT")
+            sslmode = params.get("sslmode") or os.environ.get("PGSSLMODE") or "prefer"
+            if cert and sslmode != "disable" and Path(cert).is_file():
+                continue  # certificate authentication: nothing here to compare
+            raise ValueError(f"database DSN for role {user}: no password or client certificate")
+        if pw == user:
+            raise ValueError(
+                f"database DSN for role {user}: development credentials are allowed only with FRAUD_ENV=dev"
+            )
 
 
 def _service_params(service: str) -> dict[str, str]:
     """The named section of the libpq service file (PGSERVICEFILE, ~/.pg_service.conf, then
-    PGSYSCONFDIR/pg_service.conf)."""
-    import configparser
-
+    PGSYSCONFDIR/pg_service.conf), parsed as libpq does: each line stripped, "#" comments, "[name]" sections,
+    key=value lines and nothing else (round 5: ConfigParser read an indented line as a continuation)."""
     candidates = [os.environ.get("PGSERVICEFILE") or str(Path.home() / ".pg_service.conf")]
     if os.environ.get("PGSYSCONFDIR"):
         candidates.append(str(Path(os.environ["PGSYSCONFDIR"]) / "pg_service.conf"))
     for path in candidates:
-        conf = configparser.ConfigParser(interpolation=None)
         try:
-            conf.read(path)
-        except configparser.Error as exc:
-            raise ValueError(f"database DSN: service file {path}: {exc}") from exc
-        if conf.has_section(service):
-            return dict(conf.items(service))
+            lines = Path(path).read_text(errors="replace").splitlines()
+        except OSError:
+            continue
+        found: dict[str, str] | None = None
+        for n, raw in enumerate(lines, 1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("["):
+                if found is not None:
+                    break  # the next section ends ours
+                found = {} if line == f"[{service}]" else None
+                continue
+            if found is None:
+                continue  # libpq reads only the lines of the section it looks for
+            key, eq, value = line.partition("=")
+            if not eq:
+                raise ValueError(f"database DSN: service file {path}, line {n}: not key=value")
+            found[key.strip()] = value.strip()
+        if found is not None:
+            return found
     raise ValueError(f"database DSN: service {service!r} not found")
 
 
@@ -100,26 +117,38 @@ def _passfile_fields(line: str) -> list[str]:
     return [*fields, cur]
 
 
-def _passfile_password(params: dict[str, str], user: str) -> str:
-    """The password of the first passfile entry that matches the connection, as libpq looks it up."""
+# libpq's default socket directories: a socket there is "localhost" in the passfile, any other is its path.
+DEFAULT_SOCKET_DIRS = frozenset({"/var/run/postgresql", "/run/postgresql", "/tmp"})  # noqa: S108 -- names only
+
+
+def _passfile_passwords(params: dict[str, str], user: str) -> list[str]:
+    """For each host libpq would try, the password of the first matching passfile entry ("" for none)."""
     path = Path(params.get("passfile") or os.environ.get("PGPASSFILE") or Path.home() / ".pgpass")
     try:
         lines = path.read_text(errors="replace").splitlines()
     except OSError:
-        return ""
-    host = (params.get("host") or os.environ.get("PGHOST") or "localhost").split(",")[0]
-    if host.startswith("/"):
-        host = "localhost"  # libpq matches a Unix socket as "localhost"
-    port = (params.get("port") or os.environ.get("PGPORT") or "5432").split(",")[0]
+        lines = []
+    entries = [
+        fields
+        for line in lines
+        if line.strip() and not line.startswith("#")
+        for fields in [_passfile_fields(line)]
+        if len(fields) == 5
+    ]
+    hosts = (params.get("host") or os.environ.get("PGHOST") or "localhost").split(",")
+    ports = (params.get("port") or os.environ.get("PGPORT") or "5432").split(",")
     dbname = params.get("dbname") or os.environ.get("PGDATABASE") or user
-    want = (host, port, dbname, user)
-    for line in lines:
-        if not line.strip() or line.startswith("#"):
-            continue
-        fields = _passfile_fields(line)
-        if len(fields) == 5 and all(f in ("*", w) for f, w in zip(fields[:4], want, strict=True)):
-            return fields[4]
-    return ""
+    out = []
+    for i, raw_host in enumerate(hosts):
+        host = raw_host.strip() or "localhost"
+        if host.startswith("/") and host.rstrip("/") in DEFAULT_SOCKET_DIRS:
+            host = "localhost"
+        port = (ports[i] if len(ports) == len(hosts) else ports[0]).strip() or "5432"
+        want = (host, port, dbname, user)
+        out.append(
+            next((f[4] for f in entries if all(x in ("*", w) for x, w in zip(f[:4], want, strict=True))), "")
+        )
+    return out
 
 
 class InvalidTokenError(Exception):
