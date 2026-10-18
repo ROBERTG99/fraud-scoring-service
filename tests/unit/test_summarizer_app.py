@@ -278,3 +278,67 @@ def test_jwks_url_needs_https_outside_dev(monkeypatch: pytest.MonkeyPatch) -> No
     check_jwks_url("http://127.0.0.1:8515/.well-known/jwks.json")
     with pytest.raises(ValueError, match="JWKS URL"):
         check_jwks_url("ftp://127.0.0.1/jwks.json")
+
+
+async def test_remote_keys_single_flight_backoff_and_stale_cap() -> None:
+    """Audit M6 L3, as internal/auth TestRemoteKeysSingleFlightBackoffAndStaleCap."""
+    import httpx
+
+    from fraud_summarizer.auth import RemoteKeys
+
+    calls = 0
+    up = True
+    gate = asyncio.Event()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        await gate.wait()
+        return httpx.Response(200, json=jwks()) if up else httpx.Response(503)
+
+    now = 1_000.0
+    keys = RemoteKeys("https://issuer.test/jwks", transport=httpx.MockTransport(handler), clock=lambda: now)
+    waiting = [asyncio.create_task(keys.key("k1")) for _ in range(20)]
+    await asyncio.sleep(0.05)
+    assert calls == 1, "20 concurrent misses share one fetch"
+    gate.set()
+    await asyncio.gather(*waiting)
+
+    up = False
+    now += 11 * 60  # past fresh: the refresh fails, the stale key is served
+    await keys.key("k1")
+    await keys.key("k1")
+    assert calls == 2, "no second attempt within 10 s of a failure"
+    with pytest.raises(InvalidTokenError):
+        await keys.key("rotated")
+    assert calls == 2
+    now += 50 * 60  # an hour after the last good fetch
+    with pytest.raises(InvalidTokenError, match="jwks unavailable"):
+        await keys.key("k1")
+    up = True
+    now += 11
+    await keys.key("k1")
+
+
+async def test_remote_keys_serve_a_known_key_during_a_slow_refresh() -> None:
+    import httpx
+
+    from fraud_summarizer.auth import RemoteKeys
+
+    slow = False
+    gate = asyncio.Event()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if slow:
+            await gate.wait()
+        return httpx.Response(200, json=jwks())
+
+    now = 1_000.0
+    keys = RemoteKeys("https://issuer.test/jwks", transport=httpx.MockTransport(handler), clock=lambda: now)
+    await keys.key("k1")
+    slow, now = True, now + 11 * 60
+    refresh = asyncio.create_task(keys.key("k1"))
+    await asyncio.sleep(0.05)
+    await asyncio.wait_for(keys.key("k1"), timeout=1)  # not behind the refresh
+    gate.set()
+    await refresh

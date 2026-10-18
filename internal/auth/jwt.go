@@ -143,60 +143,119 @@ func KeysFromJWKS(doc JWKS) (StaticKeys, error) {
 	return out, nil
 }
 
-// RemoteKeys fetches and caches a JWKS URL; an unknown kid triggers at most one refresh per 10 s.
+// JWKS cache policy (audit M6 L3).
+const (
+	jwksFresh       = 10 * time.Minute // a known kid is served without a refetch
+	jwksMinInterval = 10 * time.Second // at most one fetch attempt per interval, failed or not
+	jwksMaxStale    = time.Hour        // keys this old are not used even when the issuer is down
+)
+
+// RemoteKeys fetches and caches a JWKS URL. One fetch runs at a time, outside the lock: concurrent callers
+// with a usable cached key are served at once, the others wait for that fetch. Attempts are at most one per
+// 10 s, also after a failure, and cached keys are accepted for at most an hour after the last good fetch.
 type RemoteKeys struct {
 	URL    string
 	Client *http.Client
-	mu     sync.Mutex
-	keys   StaticKeys
-	last   time.Time
+	Now    func() time.Time // nil: time.Now
+
+	mu       sync.Mutex
+	keys     StaticKeys
+	fetched  time.Time     // last successful fetch
+	tried    time.Time     // last attempt
+	lastErr  error         // of the last attempt
+	inflight chan struct{} // closed when the running fetch ends
+}
+
+func (r *RemoteKeys) now() time.Time {
+	if r.Now != nil {
+		return r.Now()
+	}
+	return time.Now()
 }
 
 // Key implements KeySource.
 func (r *RemoteKeys) Key(ctx context.Context, kid string) (ed25519.PublicKey, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if k, ok := r.keys[kid]; ok && time.Since(r.last) < 10*time.Minute {
-		return k, nil
-	}
-	if time.Since(r.last) > 10*time.Second || r.keys == nil {
-		if err := r.refresh(ctx); err != nil && r.keys == nil {
+	for {
+		r.mu.Lock()
+		now := r.now()
+		k, ok := r.keys[kid]
+		age := now.Sub(r.fetched)
+		usable := ok && age < jwksMaxStale
+		if ok && age < jwksFresh {
+			r.mu.Unlock()
+			return k, nil
+		}
+		if wait := r.inflight; wait != nil {
+			r.mu.Unlock()
+			if usable {
+				return k, nil
+			}
+			select {
+			case <-wait:
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+		if !r.tried.IsZero() && now.Sub(r.tried) < jwksMinInterval {
+			err := r.missingLocked(kid, ok)
+			r.mu.Unlock()
+			if usable {
+				return k, nil
+			}
 			return nil, err
 		}
+		done := make(chan struct{})
+		r.inflight, r.tried = done, now
+		r.mu.Unlock()
+
+		// Detached from the caller: its cancellation must not fail the fetch every waiter shares.
+		fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		keys, err := r.fetch(fctx)
+		cancel()
+		r.mu.Lock()
+		if err == nil {
+			r.keys, r.fetched = keys, r.now()
+		}
+		r.lastErr = err
+		r.inflight = nil
+		close(done)
+		r.mu.Unlock()
+		// Loop once more: the new keys, or (tried is now recent) the stale key or an error, without refetching.
 	}
-	if k, ok := r.keys[kid]; ok {
-		return k, nil
-	}
-	return nil, fmt.Errorf("unknown kid %q", kid)
 }
 
-func (r *RemoteKeys) refresh(ctx context.Context) error {
+func (r *RemoteKeys) missingLocked(kid string, known bool) error {
+	switch {
+	case r.keys == nil || known:
+		return fmt.Errorf("jwks unavailable: %v", r.lastErr)
+	case r.lastErr != nil:
+		return fmt.Errorf("unknown kid %q (jwks refresh failed: %v)", kid, r.lastErr)
+	default:
+		return fmt.Errorf("unknown kid %q", kid)
+	}
+}
+
+func (r *RemoteKeys) fetch(ctx context.Context) (StaticKeys, error) {
 	client := r.Client
 	if client == nil {
 		client = &http.Client{Timeout: 2 * time.Second}
 	}
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, r.URL, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("jwks: status %d", resp.StatusCode)
+		return nil, fmt.Errorf("jwks: status %d", resp.StatusCode)
 	}
 	var doc JWKS
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&doc); err != nil {
-		return err
+		return nil, err
 	}
-	keys, err := KeysFromJWKS(doc)
-	if err != nil {
-		return err
-	}
-	r.keys, r.last = keys, time.Now()
-	return nil
+	return KeysFromJWKS(doc)
 }
