@@ -116,7 +116,14 @@ def download_alias(alias: str, dest: Path) -> Path:
         if src.resolve() != (dest / name).resolve():
             shutil.copyfile(src, dest / name)
     meta = json.loads((dest / "model_meta.json").read_text(encoding="utf-8"))
-    meta["registry"] = {"name": MODEL_NAME, "version": str(mv.version), "alias": alias}
+    # The digest tagged at registration lives in the registry, not the artifact store: the model server checks
+    # the downloaded file against it (audit M6 M6).
+    meta["registry"] = {
+        "name": MODEL_NAME,
+        "version": str(mv.version),
+        "alias": alias,
+        "onnx_sha256": (mv.tags or {}).get("onnx_sha256", ""),
+    }
     (dest / "model_meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return dest
 

@@ -5,13 +5,19 @@ Load order per alias (spec §4.7, MLflow row):
 2. the last cached artifact in FRAUD_MODEL_CACHE/<alias>,
 3. FRAUD_MODEL_DIR (a local `make train` output; used for both aliases),
 otherwise the alias is not ready and /readyz fails.
+
+Every source is checked against the SHA-256 recorded for it before an InferenceSession is built (audit M6 M6):
+`FRAUD_MODEL_SHA256_<ALIAS>` when the deployment pins one, the registry's `onnx_sha256` version tag for an
+MLflow download (required), and the `onnx_sha256` that training wrote into model_meta.json.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
+import shutil
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,12 +47,29 @@ class LoadedModel:
         return [float(v) for v in np.asarray(out, dtype=np.float32).reshape(-1)]
 
 
-def _session(path: Path) -> ort.InferenceSession:
+def _session(model: bytes) -> ort.InferenceSession:
     opts = ort.SessionOptions()
     opts.intra_op_num_threads = 1
     opts.inter_op_num_threads = 1
     opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-    return ort.InferenceSession(path.read_bytes(), sess_options=opts, providers=["CPUExecutionProvider"])
+    return ort.InferenceSession(model, sess_options=opts, providers=["CPUExecutionProvider"])
+
+
+def _check_digest(alias: str, model_dir: Path, model: bytes, source: str) -> None:
+    """Refuse model bytes that do not match a recorded SHA-256 (the bytes hashed are the bytes loaded)."""
+    digest = hashlib.sha256(model).hexdigest()
+    meta_path = model_dir / "model_meta.json"
+    meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.is_file() else {}
+    expected = {
+        f"FRAUD_MODEL_SHA256_{alias.upper()}": os.environ.get(f"FRAUD_MODEL_SHA256_{alias.upper()}"),
+        "registry tag onnx_sha256": (meta.get("registry") or {}).get("onnx_sha256"),
+        "model_meta.json onnx_sha256": meta.get("onnx_sha256"),
+    }
+    if source == "mlflow" and not expected["registry tag onnx_sha256"]:
+        raise ModelNotReadyError("registry version has no onnx_sha256 tag; refusing an unverifiable model")
+    for where, want in expected.items():
+        if want and want.lower() != digest:
+            raise ModelNotReadyError(f"model.onnx sha256 {digest[:12]} does not match {where} {want[:12]}")
 
 
 def _version_from_meta(model_dir: Path) -> str:
@@ -111,13 +134,23 @@ class ModelRuntime:
             os.environ.setdefault("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "1")
             os.environ.setdefault("MLFLOW_HTTP_REQUEST_BACKOFF_FACTOR", "0")
             os.environ.setdefault("MLFLOW_HTTP_REQUEST_TIMEOUT", "5")
+            # Downloaded into a staging dir and verified there, so a bad artifact never replaces the cache.
+            staging = self.cache_dir / f".{alias}.download"
             try:
-                from training.registry import download_alias
+                from training import registry
 
-                download_alias(alias, cached)
-                return self._install(alias, cached, "mlflow")
-            except Exception as exc:  # MLflow down or alias missing
+                shutil.rmtree(staging, ignore_errors=True)
+                registry.download_alias(alias, staging)
+                loaded = self._install(alias, staging, "mlflow")
+                cached.mkdir(parents=True, exist_ok=True)
+                for name in ("model.onnx", "model_meta.json"):
+                    os.replace(staging / name, cached / name)
+                return loaded
+            except Exception as exc:  # MLflow down, alias missing or the artifact failed its checks
                 errors.append(f"mlflow: {exc}")
+                log.warning("registry model for @%s not loaded: %s", alias, exc)
+            finally:
+                shutil.rmtree(staging, ignore_errors=True)
         if (cached / "model.onnx").is_file():
             return self._install(alias, cached, "cache")
         if self.model_dir and (self.model_dir / "model.onnx").is_file():
@@ -126,11 +159,13 @@ class ModelRuntime:
 
     def _install(self, alias: str, model_dir: Path, source: str) -> LoadedModel:
         _check_feature_spec(model_dir)
+        model = (model_dir / "model.onnx").read_bytes()
+        _check_digest(alias, model_dir, model, source)
         loaded = LoadedModel(
             alias=alias,
             version=_version_from_meta(model_dir),
             source=source,
-            session=_session(model_dir / "model.onnx"),
+            session=_session(model),
         )
         with self._lock:
             self.models[alias] = loaded

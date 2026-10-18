@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from serving.bentoml.runtime import ModelRuntime
 from training import registry
 from training import train as T
 
@@ -45,10 +46,12 @@ def test_set_alias_production(tracking: str, trained: tuple[Path, dict[str, obje
     assert registry.version_for_alias("shadow") == reg2["version"]
     dest = registry.download_alias("shadow", out.parent / "dl")
     assert (dest / "model.onnx").read_bytes() == (out / "model.onnx").read_bytes()
-    assert (
-        json.loads((dest / "model_meta.json").read_text(encoding="utf-8"))["model_version"]
-        == meta["model_version"]
-    )
+    downloaded = json.loads((dest / "model_meta.json").read_text(encoding="utf-8"))
+    assert downloaded["model_version"] == meta["model_version"]
+    # The registry tag the model server verifies against (audit M6 M6).
+    assert downloaded["registry"]["onnx_sha256"] == meta["onnx_sha256"]
+    rt = ModelRuntime(model_dir=None, cache_dir=str(out.parent / "cache"), use_mlflow=True)
+    assert rt.load("shadow").source == "mlflow"
 
 
 def test_cli_sets_alias(tracking: str, trained: tuple[Path, dict[str, object]]) -> None:
