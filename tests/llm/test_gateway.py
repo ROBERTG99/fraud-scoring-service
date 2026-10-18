@@ -387,3 +387,51 @@ def test_routes_resolve_models_from_env() -> None:
 def test_socket_guard_blocks_network() -> None:
     with pytest.raises(Exception, match=r"(?i)socket"):
         socket.create_connection(("127.0.0.1", 9), timeout=0.1)
+
+
+async def test_a_spent_daily_budget_stops_paid_calls_until_the_next_utc_day() -> None:
+    """Audit M6 M7: a runtime cost cap. Calls that would exceed it fail over to the templated summary."""
+    from datetime import UTC, datetime, timedelta
+
+    from fraud_summarizer.llm.budget import DailyBudget
+
+    now = datetime(2026, 10, 18, 23, 59, tzinfo=UTC)
+    budget = DailyBudget(0.0002, now=lambda: now)  # more than one call (0.00015), less than two
+    p = Scripted([ok_text(), ok_text(), ok_text()])
+    gw = LLMGateway(load(env={"FRAUD_SUMMARY_PROVIDER": "anthropic"}), {"anthropic": p}, budget=budget)
+    await run(gw)
+    await run(gw)  # starts under the cap, ends over it: what a call costs is known only afterwards
+    assert budget.spent_usd == pytest.approx(0.0003)
+    with pytest.raises(GatewayExhaustedError) as exc:
+        await run(gw)
+    assert len(p.calls) == 2, "no provider call once the budget is spent"
+    assert [a.error_kind for a in exc.value.attempts] == ["budget"]
+    now += timedelta(minutes=2)  # a new UTC day
+    await run(gw)
+    assert len(p.calls) == 3 and budget.spent_usd == pytest.approx(0.00015)
+
+
+async def test_invalid_output_is_charged_to_the_budget() -> None:
+    from fraud_summarizer.llm.budget import DailyBudget
+
+    budget = DailyBudget(1.0)
+    p = Scripted(["not json"])
+    gw = LLMGateway(load(env={"FRAUD_SUMMARY_PROVIDER": "anthropic"}), {"anthropic": p}, budget=budget)
+    with pytest.raises(GatewayExhaustedError):
+        await run(gw)
+    assert budget.spent_usd == pytest.approx(0.00015), (
+        "the provider billed the tokens even if we discard them"
+    )
+
+
+def test_the_daily_budget_comes_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    from fraud_summarizer.llm.budget import DEFAULT_DAILY_BUDGET_USD, budget_from_env
+
+    monkeypatch.delenv("FRAUD_LLM_DAILY_BUDGET_USD", raising=False)
+    assert budget_from_env().limit_usd == DEFAULT_DAILY_BUDGET_USD
+    monkeypatch.setenv("FRAUD_LLM_DAILY_BUDGET_USD", "2.5")
+    assert budget_from_env().limit_usd == 2.5
+    for bad in ("-1", "nan", "inf", "lots"):
+        monkeypatch.setenv("FRAUD_LLM_DAILY_BUDGET_USD", bad)
+        with pytest.raises(ValueError, match="FRAUD_LLM_DAILY_BUDGET_USD"):
+            budget_from_env()

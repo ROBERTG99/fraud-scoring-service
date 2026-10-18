@@ -10,7 +10,15 @@ import pytest
 from aiokafka import ConsumerRecord, TopicPartition
 
 from fraud_summarizer import events
-from fraud_summarizer.consumer import CONSUMER_NAME, DecisionHandler, KafkaDecisionConsumer, dlq_record
+from fraud_summarizer.consumer import (
+    CONSUMER_NAME,
+    MAX_PAID_ATTEMPTS,
+    MAX_RETRIES,
+    AttemptsExhaustedError,
+    DecisionHandler,
+    KafkaDecisionConsumer,
+    dlq_record,
+)
 from fraud_summarizer.llm import LLMGateway, ProviderError, ProviderRequest, ProviderResponse
 from fraud_summarizer.llm.fake import FakeLLM
 from fraud_summarizer.llm.routes import load
@@ -63,6 +71,11 @@ class DownProvider:
 @dataclass
 class Processed:
     keys: set[tuple[str, str]] = field(default_factory=set)
+    attempts: dict[tuple[str, str], int] = field(default_factory=dict)
+
+    async def begin_attempt(self, consumer: str, key: str) -> int:
+        self.attempts[(consumer, key)] = self.attempts.get((consumer, key), 0) + 1
+        return self.attempts[(consumer, key)]
 
     async def is_processed(self, consumer: str, key: str) -> bool:
         return (consumer, key) in self.keys
@@ -211,3 +224,72 @@ def test_dlq_record_matches_schema() -> None:
     body = dlq_record(record(5, b"\x00\x01"), "x" * 5000)
     name, doc = events.validate(body)
     assert name == "fraud.dlq.v1" and len(doc["error"]) == 2000
+
+
+class PersistFails(MemoryRepo):
+    async def save_summary(self, result: Any, *, replace: bool = False) -> None:
+        raise RuntimeError("persist failed")
+
+
+async def test_paid_attempts_per_decision_are_capped() -> None:
+    """Audit M6 M7: a failure after the paid call must not buy another summary forever. The attempt is
+    recorded before the call, so the cap also holds across restarts (the store is Postgres)."""
+    provider = CountingProvider(FakeLLM())
+    h, processed = handler(provider, PersistFails({DECISION_ID: journey_case()}))
+    for _ in range(MAX_PAID_ATTEMPTS):
+        with pytest.raises(RuntimeError, match="persist failed"):
+            await h.handle(decision_msg())
+    with pytest.raises(AttemptsExhaustedError):
+        await h.handle(decision_msg())
+    assert provider.calls == MAX_PAID_ATTEMPTS
+    assert (CONSUMER_NAME, DECISION_ID) not in processed.keys
+
+
+async def test_an_exhausted_decision_goes_to_the_dlq() -> None:
+    h, processed = handler(CountingProvider(FakeLLM()), MemoryRepo({DECISION_ID: journey_case()}))
+    processed.attempts[(CONSUMER_NAME, DECISION_ID)] = MAX_PAID_ATTEMPTS
+    kc = KafkaDecisionConsumer(h, "unused:9092", retry_backoff_s=0)
+    tp = TopicPartition("decisions", 3)
+    consumer, producer = FakeConsumer(), FakeProducer()
+    await kc.process_partition(consumer, producer, tp, [record(40, decision_msg())])
+    assert consumer.commits == [{tp: 41}] and not consumer.seeks
+    assert "paid attempts" in json.loads(producer.sent[0][1])["error"]
+
+
+async def test_a_message_that_keeps_failing_goes_to_the_dlq() -> None:
+    """A bug in our own code must not stall the partition: after MAX_RETRIES the message is parked."""
+
+    class Buggy(MemoryRepo):
+        async def load_case(self, decision_id: str) -> Any:
+            raise KeyError("facts")
+
+    h, _ = handler(CountingProvider(FakeLLM()), Buggy({}))
+    kc = KafkaDecisionConsumer(h, "unused:9092", retry_backoff_s=0)
+    tp = TopicPartition("decisions", 3)
+    consumer, producer = FakeConsumer(), FakeProducer()
+    for _ in range(MAX_RETRIES - 1):
+        await kc.process_partition(consumer, producer, tp, [record(50, decision_msg())])
+    assert consumer.seeks == [(tp, 50)] * (MAX_RETRIES - 1) and not producer.sent
+    await kc.process_partition(
+        consumer, producer, tp, [record(50, decision_msg()), record(51, decision_msg("APPROVE"))]
+    )
+    assert consumer.commits == [{tp: 52}]
+    topic, body = producer.sent[0]
+    assert topic == "events.dlq" and json.loads(body)["offset"] == 50
+    assert "KeyError" in json.loads(body)["error"]
+
+
+async def test_transient_failures_retry_without_a_cap() -> None:
+    """Postgres being down costs nothing (no attempt is recorded, no call is made) and is not poison."""
+
+    class Down(MemoryRepo):
+        async def load_case(self, decision_id: str) -> Any:
+            raise ConnectionError("postgres down")
+
+    h, _ = handler(CountingProvider(FakeLLM()), Down({}))
+    kc = KafkaDecisionConsumer(h, "unused:9092", retry_backoff_s=0)
+    tp = TopicPartition("decisions", 3)
+    consumer, producer = FakeConsumer(), FakeProducer()
+    for _ in range(MAX_RETRIES * 2):
+        await kc.process_partition(consumer, producer, tp, [record(60, decision_msg())])
+    assert not producer.sent and not consumer.commits

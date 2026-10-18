@@ -123,3 +123,10 @@ generator v3.
 - **Bare 10–11 digit numbers are redacted as phone numbers.** `redact.py` treats any standalone run of 10 or 11
   digits as a phone number. No fact carries one today (amounts stop at 8 digits, timestamps are ISO 8601); a
   future fact with such a value would be masked before reaching a provider.
+
+## LLM cost cap is per process
+
+`FRAUD_LLM_DAILY_BUDGET_USD` (D-048) is counted in memory by each case-summarizer process and restarts at
+zero when the process restarts, so N replicas, or a crash loop, may spend more than the limit in one UTC day.
+The per-decision cap (`summary_attempts`, 3 paid attempts) is in Postgres and holds across restarts. A shared
+counter (a Postgres row per day) would make the daily cap global.

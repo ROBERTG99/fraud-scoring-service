@@ -44,3 +44,18 @@ A degraded or slow scorer never blocks a decision: Score answers within 45 ms wi
    and counts attempts per row (`decision_outbox.attempts`).
 3. Decisions are not lost: they are committed in Postgres (or the spool) before the response, and the relay
    publishes them (at least once) when Kafka is back; consumers deduplicate on `decision_id`.
+
+## Summaries in the DLQ
+
+There is no alert yet; `fraud_summarizer_messages_total{outcome=~"exhausted|failed|invalid"}` counts what the
+case summarizer parks in `events.dlq` (`make dlq-peek` shows the records). A parked REVIEW decision keeps its
+case, which the console shows without an AI summary.
+
+1. `invalid`: the message failed its JSON Schema; the `error` field names the violation.
+2. `failed`: handling failed 5 times for a reason other than an unreachable dependency (a bug, bad data);
+   the `error` field has the last exception. Fix the cause before replaying.
+3. `exhausted`: the decision used its 3 paid summary attempts (`summary_attempts`, D-048), so something after
+   the provider call keeps failing. Fix it, then `DELETE FROM summary_attempts WHERE message_key = '<decision_id>'`
+   (migration role) before replaying, or regenerate the summary from the console.
+4. A spent daily LLM budget (`FRAUD_LLM_DAILY_BUDGET_USD`, default 25 USD) parks nothing: summaries are
+   templated (`status = fallback`) until the next UTC day, and `fraud_llm_calls_total{outcome="budget"}` rises.

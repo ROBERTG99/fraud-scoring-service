@@ -19,6 +19,7 @@ from typing import Any
 
 from opentelemetry import trace
 
+from fraud_summarizer.llm.budget import DailyBudget
 from fraud_summarizer.llm.routes import RouteConfig
 from fraud_summarizer.llm.types import Provider, ProviderError, ProviderRequest, ProviderResponse
 from fraud_summarizer.metrics import LLM_CALLS, LLM_COST
@@ -75,6 +76,7 @@ class LLMGateway:
         rng: random.Random | None = None,
         base_delay_s: float = 0.25,
         max_delay_s: float = 2.0,
+        budget: DailyBudget | None = None,
     ) -> None:
         self.config = config
         self.providers = providers
@@ -82,6 +84,7 @@ class LLMGateway:
         self.rng = rng or random.Random(7)  # noqa: S311 - jitter, not security
         self.base_delay_s = base_delay_s
         self.max_delay_s = max_delay_s
+        self.budget = budget
 
     def backoff(self, attempt: int) -> float:
         delay = min(self.max_delay_s, self.base_delay_s * (2 ** (attempt - 1)))
@@ -122,13 +125,19 @@ class LLMGateway:
                     prompt_version=prompt_version,
                 )
                 for n in range(1, route.attempts + 1):
+                    if self.budget is not None and self.budget.exhausted():
+                        LLM_CALLS.labels(route=route_name, model=model, outcome="budget").inc()
+                        attempts.append(
+                            Attempt(provider_name, model, "error", "daily LLM budget spent", "budget", 0.0)
+                        )
+                        span.set_attribute("app.attempts", len(attempts))
+                        span.set_attribute("app.status", "budget")
+                        raise GatewayExhaustedError(f"route {route_name}: daily LLM budget spent", attempts)
                     t0 = time.perf_counter()
+                    cost, tokens = 0.0, (0, 0)
                     try:
                         resp = await self._call(provider, provider_name, req, route.timeout_s)
-                        data = self._parse(resp, validate)
-                    except ProviderError as exc:
-                        err = exc
-                    else:
+                        # Charged before parsing: the provider bills output we discard as invalid.
                         cost = self.config.cost_usd(
                             resp.model,
                             resp.input_tokens,
@@ -136,6 +145,14 @@ class LLMGateway:
                             cache_write_tokens=resp.cache_write_tokens,
                             cache_read_tokens=resp.cache_read_tokens,
                         )
+                        tokens = (resp.input_tokens, resp.output_tokens)
+                        LLM_COST.labels(route=route_name, model=resp.model).inc(cost)
+                        if self.budget is not None:
+                            self.budget.charge(cost)
+                        data = self._parse(resp, validate)
+                    except ProviderError as exc:
+                        err = exc
+                    else:
                         attempts.append(
                             Attempt(
                                 provider_name,
@@ -149,7 +166,6 @@ class LLMGateway:
                                 cost,
                             )
                         )
-                        LLM_COST.labels(route=route_name, model=resp.model).inc(cost)
                         LLM_CALLS.labels(route=route_name, model=resp.model, outcome="ok").inc()
                         span.set_attribute("gen_ai.system", provider_name)
                         span.set_attribute("gen_ai.request.model", model)
@@ -180,6 +196,8 @@ class LLMGateway:
                             str(err),
                             err.kind,
                             (time.perf_counter() - t0) * 1000,
+                            *tokens,
+                            cost,
                         )
                     )
                     if not err.retryable or n == route.attempts:

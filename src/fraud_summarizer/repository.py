@@ -1,7 +1,7 @@
 """Postgres access for the summarizer: case facts in, summaries and step records out (spec §4.5).
 
-The summarizer only writes `case_summaries`, `step_records` and `processed_messages`; it never writes
-`decisions`.
+The summarizer only writes `case_summaries`, `step_records`, `processed_messages` and `summary_attempts`; it
+never writes `decisions`.
 """
 
 from __future__ import annotations
@@ -170,6 +170,20 @@ class PostgresRepository:
                 (consumer, key),
             )
             return await cur.fetchone() is not None
+
+    async def begin_attempt(self, consumer: str, key: str) -> int:
+        """Record one more paid summary attempt for a message; return the count so far (D-048)."""
+        async with self.pool.connection() as conn:
+            cur = await conn.execute(
+                "INSERT INTO summary_attempts (consumer, message_key) VALUES (%s, %s) "
+                "ON CONFLICT (consumer, message_key) DO UPDATE "
+                "SET attempts = summary_attempts.attempts + 1, last_attempt_at = now() RETURNING attempts",
+                (consumer, key),
+            )
+            row = await cur.fetchone()
+            if row is None:
+                raise RuntimeError("summary_attempts upsert returned no row")
+            return int(row[0])
 
     async def decision_for_case(self, case_id: str) -> str | None:
         async with self.pool.connection() as conn:

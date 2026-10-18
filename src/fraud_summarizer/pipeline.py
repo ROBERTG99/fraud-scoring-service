@@ -203,9 +203,17 @@ class SummaryPipeline:
         self.system = system_prompt or load_prompt()
 
     async def run(
-        self, decision_id: str, *, run_id: str | None = None, replace: bool = False
+        self,
+        decision_id: str,
+        *,
+        run_id: str | None = None,
+        replace: bool = False,
+        before_llm: Callable[[], Awaitable[None]] | None = None,
     ) -> PipelineResult | None:
-        """Summarize the case of decision_id; replace=True overwrites an existing summary (regenerate)."""
+        """Summarize the case of decision_id; replace=True overwrites an existing summary (regenerate).
+
+        before_llm runs just before the paid provider call; an exception from it aborts the run (the
+        consumer records the attempt there and refuses once a decision has used its paid attempts)."""
         run_id = run_id or str(uuid.uuid4())
         steps: list[StepRecord] = []
         case_id: str | None = None
@@ -313,6 +321,8 @@ class SummaryPipeline:
                 validate=_validate_output,
             )
 
+        if before_llm is not None:
+            await before_llm()
         try:
             llm_result = await step("summarize", "llm", summarize, prompt_version=PROMPT_VERSION)
         except GatewayExhaustedError as exc:

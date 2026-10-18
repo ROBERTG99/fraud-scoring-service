@@ -193,6 +193,9 @@ async def test_consumer_writes_summary_for_review_event(database: Database) -> N
         assert await repo.get_summary(str(uuid.uuid4())) is None
         assert await repo.mark_processed("regenerate", "it-key-0001") is True
         assert await repo.mark_processed("regenerate", "it-key-0001") is False
+        # One paid attempt recorded for the summarized decision; the counter climbs per attempt (D-048).
+        assert await repo.begin_attempt(CONSUMER_NAME, DECISION_ID) == 2
+        assert await repo.begin_attempt("it", "fresh") == 1
         async with pool.connection() as conn:
             cur = await conn.execute(
                 "SELECT count(*) FROM processed_messages WHERE consumer = %s AND message_key = %s",

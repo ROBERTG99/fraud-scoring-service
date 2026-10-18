@@ -4,6 +4,11 @@ Delivery is at least once. A decision is skipped when `processed_messages` alrea
 `decision_id`; it is recorded only after the summary is persisted, so a crash mid-call re-summarizes
 instead of losing the case (docs/DECISIONS.md D-022). The summary insert is `ON CONFLICT DO NOTHING`, so a
 rare duplicate after a rebalance cannot overwrite the first summary.
+
+Retries are bounded where they cost money or stall a partition (audit M6 M7, D-048): each paid summary
+attempt is recorded in Postgres before the provider call, and a decision that used MAX_PAID_ATTEMPTS goes to
+the DLQ; a message whose handling fails MAX_RETRIES times for a reason other than an unreachable dependency
+goes to the DLQ too. Transient failures (Postgres or the network down) retry with backoff, without a cap.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
+import psycopg
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, ConsumerRecord, TopicPartition
 from aiokafka.errors import CommitFailedError
 from opentelemetry import trace
@@ -31,13 +37,29 @@ CONSUMER_NAME = "case-summarizer"
 DECISIONS_TOPIC = "decisions"
 DLQ_TOPIC = "events.dlq"
 
+# Paid summary attempts per decision, across restarts; then the message goes to the DLQ.
+MAX_PAID_ATTEMPTS = 3
+# Handling failures per message that are not TRANSIENT; then the message goes to the DLQ.
+MAX_RETRIES = 5
+# Failures that mean a dependency is unreachable, not that the message is poison.
+TRANSIENT: tuple[type[BaseException], ...] = (OSError, TimeoutError, psycopg.OperationalError)
+MAX_BACKOFF_S = 30.0
+
 Outcome = Literal["skipped", "duplicate", "summarized", "missing_case"]
+
+
+class AttemptsExhaustedError(Exception):
+    """The decision already used its paid summary attempts."""
 
 
 class ProcessedStore(Protocol):
     async def is_processed(self, consumer: str, key: str) -> bool: ...
 
     async def mark_processed(self, consumer: str, key: str) -> bool: ...
+
+    async def begin_attempt(self, consumer: str, key: str) -> int:
+        """Record one more paid attempt for key and return the count so far."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -78,7 +100,15 @@ class DecisionHandler:
             return self._done(HandleResult("skipped", decision_id))
         if await self.processed.is_processed(CONSUMER_NAME, decision_id):
             return self._done(HandleResult("duplicate", decision_id))
-        result = await self.pipeline.run(decision_id)
+
+        async def before_llm() -> None:
+            n = await self.processed.begin_attempt(CONSUMER_NAME, decision_id)
+            if n > MAX_PAID_ATTEMPTS:
+                raise AttemptsExhaustedError(
+                    f"decision {decision_id} used its {MAX_PAID_ATTEMPTS} paid attempts"
+                )
+
+        result = await self.pipeline.run(decision_id, before_llm=before_llm)
         await self.processed.mark_processed(CONSUMER_NAME, decision_id)
         if result is None:
             # The case row is written with the decision, so this means it was deleted (retention).
@@ -136,6 +166,8 @@ class KafkaDecisionConsumer:
         self.dlq_topic = dlq_topic
         self.retry_backoff_s = retry_backoff_s
         self.ready = asyncio.Event()
+        # Failures so far per (partition, offset); in memory, so a restart starts the count again.
+        self._failures: dict[tuple[int, int], int] = {}
 
     async def run(self, stop: asyncio.Event) -> None:
         consumer = AIOKafkaConsumer(
@@ -169,24 +201,52 @@ class KafkaDecisionConsumer:
         tp: TopicPartition,
         msgs: list[ConsumerRecord[Any, Any]],
     ) -> None:
-        """Handle msgs in order and commit what succeeded. On a transient failure (Postgres down), commit
-        the prefix, seek back to the failed message and back off so it is retried."""
+        """Handle msgs in order and commit what succeeded. On a failure, commit the prefix, seek back to the
+        failed message and back off so it is retried; a message that is invalid, used its paid attempts, or
+        failed MAX_RETRIES times for a non-transient reason goes to the DLQ instead."""
         next_offset: int | None = None
         for msg in msgs:
+            key = (tp.partition, msg.offset)
             try:
                 await self.handler.handle(msg.value or b"", headers=msg.headers)
             except events.InvalidEventError as exc:
                 MESSAGES.labels(outcome="invalid").inc()
                 await producer.send_and_wait(self.dlq_topic, dlq_record(msg, str(exc)), key=msg.key)
-            except Exception:
+            except AttemptsExhaustedError as exc:
+                MESSAGES.labels(outcome="exhausted").inc()
+                log.error(
+                    "paid attempts exhausted; sent to DLQ",
+                    extra={"partition": tp.partition, "offset": msg.offset},
+                )
+                await producer.send_and_wait(self.dlq_topic, dlq_record(msg, str(exc)), key=msg.key)
+            except Exception as exc:
+                failures = self._failures.get(key, 0)
+                if not isinstance(exc, TRANSIENT):
+                    failures += 1
+                if failures >= MAX_RETRIES:
+                    MESSAGES.labels(outcome="failed").inc()
+                    log.exception(
+                        "summarizer failed %d times; sent to DLQ",
+                        failures,
+                        extra={"partition": tp.partition, "offset": msg.offset},
+                    )
+                    error = f"{failures} failures, last {type(exc).__name__}: {exc}"
+                    await producer.send_and_wait(self.dlq_topic, dlq_record(msg, error), key=msg.key)
+                    self._failures.pop(key, None)
+                    next_offset = msg.offset + 1
+                    continue
+                if len(self._failures) >= 10_000:
+                    self._failures.clear()  # stale keys after rebalances; counts restart
+                self._failures[key] = failures
                 MESSAGES.labels(outcome="retry").inc()
                 log.exception(
                     "summarizer failed; will retry", extra={"partition": tp.partition, "offset": msg.offset}
                 )
                 await self._commit(consumer, tp, next_offset)
                 consumer.seek(tp, msg.offset)
-                await asyncio.sleep(self.retry_backoff_s)
+                await asyncio.sleep(min(MAX_BACKOFF_S, self.retry_backoff_s * 2 ** max(failures - 1, 0)))
                 return
+            self._failures.pop(key, None)
             next_offset = msg.offset + 1
         await self._commit(consumer, tp, next_offset)
 

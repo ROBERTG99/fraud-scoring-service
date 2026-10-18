@@ -40,7 +40,7 @@ func TestUpDownUp(t *testing.T) {
 	}
 	defer func() { _ = conn.Close(ctx) }()
 	for _, table := range []string{"decisions", "decision_outbox", "review_cases", "case_summaries", "analyst_labels",
-		"shadow_comparisons", "rule_sets", "model_versions", "step_records", "processed_messages", "audit_log", "account_events"} {
+		"shadow_comparisons", "rule_sets", "model_versions", "step_records", "processed_messages", "audit_log", "account_events", "summary_attempts"} {
 		var n int
 		if err := conn.QueryRow(ctx, "SELECT count(*) FROM "+table).Scan(&n); err != nil {
 			t.Errorf("table %s: %v", table, err)
@@ -170,6 +170,10 @@ func TestServiceRolesAreLeastPrivilege(t *testing.T) {
 	  VALUES (`+caseID+`, 'ok', '{}', 'unclear', 1, 'none', 'v', 0)
 	  ON CONFLICT (case_id) DO UPDATE SET status = EXCLUDED.status`)
 	allowed("fraud_summarizer", `INSERT INTO processed_messages (consumer, message_key) VALUES ('s', 'k')`)
+	allowed("fraud_summarizer", `INSERT INTO summary_attempts (consumer, message_key) VALUES ('s', 'k')
+	  ON CONFLICT (consumer, message_key) DO UPDATE SET attempts = summary_attempts.attempts + 1`)
+	denied("fraud_summarizer", `DELETE FROM summary_attempts`)
+	denied("fraud_app", `INSERT INTO summary_attempts (consumer, message_key) VALUES ('a', 'k')`)
 	denied("fraud_retention", `INSERT INTO decisions (decision_id) VALUES (gen_random_uuid())`)
 	allowed("fraud_retention", `DELETE FROM decisions`) // cascades to the case, summary and outbox rows
 	if n := count(t, pool, "SELECT count(*) FROM review_cases"); n != 0 {

@@ -53,6 +53,8 @@ func TestRetentionDeletesOnlyExpiredRows(t *testing.T) {
 		now.AddDate(0, 0, -91), now.AddDate(0, 0, -89))
 	exec(`INSERT INTO processed_messages (consumer, message_key, processed_at) VALUES ('c', 'old', $1), ('c', 'new', $2)`,
 		now.AddDate(0, 0, -91), now.AddDate(0, 0, -89))
+	exec(`INSERT INTO summary_attempts (consumer, message_key, last_attempt_at) VALUES ('c', 'old', $1), ('c', 'new', $2)`,
+		now.AddDate(0, 0, -91), now.AddDate(0, 0, -89))
 	exec(`INSERT INTO account_events (event_id, account_id, kind, event_ts, payload) VALUES ('old', 'acc_00000042', 'login', $1, '{}'), ('new', 'acc_00000042', 'login', $2, '{}')`,
 		old, recent)
 	audit := count(t, pool, "SELECT count(*) FROM audit_log")
@@ -61,7 +63,7 @@ func TestRetentionDeletesOnlyExpiredRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := RetentionResult{Decisions: 2, OutboxSent: 1, StepRecords: 1, ProcessedMessages: 1, AccountEvents: 1}
+	want := RetentionResult{Decisions: 2, OutboxSent: 1, StepRecords: 1, ProcessedMessages: 1, SummaryAttempts: 1, AccountEvents: 1}
 	if got != want {
 		t.Fatalf("deleted %+v, want %+v", got, want)
 	}
@@ -73,6 +75,7 @@ func TestRetentionDeletesOnlyExpiredRows(t *testing.T) {
 		"SELECT count(*) FROM decision_outbox":                                 1, // decision 4's recently sent row
 		"SELECT count(*) FROM step_records":                                    1,
 		"SELECT count(*) FROM processed_messages":                              1,
+		"SELECT count(*) FROM summary_attempts":                                1,
 		"SELECT count(*) FROM account_events WHERE event_id IN ('old', 'new')": 1,
 		"SELECT count(*) FROM audit_log":                                       audit,
 	} {

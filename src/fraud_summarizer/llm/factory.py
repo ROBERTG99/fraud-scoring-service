@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from fraud_summarizer.llm.budget import budget_from_env
 from fraud_summarizer.llm.cassettes import CassetteStore
 from fraud_summarizer.llm.fake import FakeLLM
 from fraud_summarizer.llm.gateway import LLMGateway
@@ -43,7 +44,7 @@ def build_gateway(config: RouteConfig, cassette_dir: Path | None = None) -> LLMG
         from fraud_summarizer.llm.openai_adapter import OpenAIProvider
 
         providers["openai"] = _build("openai", OpenAIProvider)
-    return LLMGateway(config, providers)
+    return LLMGateway(config, providers, budget=budget_from_env())
 
 
 def _build(name: str, factory: type[Provider]) -> Provider:

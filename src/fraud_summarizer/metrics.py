@@ -12,11 +12,11 @@ LLM_COST = Counter(
 )
 LLM_CALLS = Counter(
     "fraud_llm_calls",
-    "Provider calls, by route, model and outcome (ok, error).",
+    "Provider calls, by route, model and outcome (ok, error, budget: refused by the daily cap).",
     ["route", "model", "outcome"],
 )
 MESSAGES = Counter(
     "fraud_summarizer_messages_total",
-    "decisions messages handled, by outcome (summarized, skipped, duplicate, missing_case, invalid, retry).",
+    "decisions messages handled, by outcome (summarized, skipped, duplicate, missing_case, invalid, retry, failed, exhausted).",
     ["outcome"],
 )
