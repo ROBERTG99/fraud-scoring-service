@@ -44,7 +44,7 @@ def old_redactor(rev: str) -> types.ModuleType:
     ).stdout
     module = types.ModuleType("redact_at_rev")
     sys.modules[module.__name__] = module  # dataclasses resolve annotations through sys.modules
-    exec(compile(source, f"{rev}:redact.py", "exec"), module.__dict__)  # noqa: S102 - this repository's own history
+    exec(compile(source, f"{rev}:redact.py", "exec"), module.__dict__)  # noqa: S102  # nosec B102 - this repository's own history
     return module
 
 

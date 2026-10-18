@@ -79,7 +79,7 @@ func auditVerify(anchor bool) int {
 	if err != nil {
 		return fail(2, err)
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) // #nosec G304 G703 -- FRAUD_AUDIT_ANCHORS, set by the operator
 	if err != nil {
 		return fail(2, err)
 	}
@@ -98,7 +98,7 @@ func readAnchors(path string, allowMissing bool) ([]store.AuditAnchor, error) {
 	if path == "" {
 		return nil, nil
 	}
-	f, err := os.Open(path) // #nosec G304 -- an operator-supplied path
+	f, err := os.Open(path) // #nosec G304 G703 -- FRAUD_AUDIT_ANCHORS, set by the operator
 	if errors.Is(err, os.ErrNotExist) && allowMissing {
 		return nil, nil
 	}

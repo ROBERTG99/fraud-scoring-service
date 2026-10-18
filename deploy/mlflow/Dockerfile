@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1.7
 # MLflow tracking server + registry. Backend: Postgres database "mlflow"; artifacts served by the server.
-FROM python:3.12.14-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f AS build
+FROM python:3.12.15-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 AS build
 ARG HTTPS_PROXY
 ARG HTTP_PROXY
 ARG NO_PROXY
 RUN pip install --no-cache-dir uv==0.11.3 && uv venv /opt/venv \
  && VIRTUAL_ENV=/opt/venv uv pip install --no-cache "mlflow==3.17.1" "psycopg2-binary==2.9.10"
 
-FROM python:3.12.14-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f AS runtime
+FROM python:3.12.15-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 AS runtime
 RUN useradd --system --uid 10001 --create-home mlflow && mkdir -p /mlflow/artifacts && chown -R 10001 /mlflow
 COPY --from=build /opt/venv /opt/venv
 ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1
