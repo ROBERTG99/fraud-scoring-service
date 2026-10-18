@@ -31,6 +31,7 @@ STATUS_DESCRIPTIONS = {
 # [0-9] rather than \\d so generated data matches Go's RE2 semantics (no Unicode digits).
 UUID = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 OCTET = "(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])"
+MERCHANT_NAME = "^[^\\x00-\\x1f\\x7f\u0080-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]*$"
 MCCS = [
     "4111",
     "4511",
@@ -91,7 +92,8 @@ SCHEMA_CONSTRAINTS: dict[str, dict[str, Any]] = {
             "amount_minor": {"type": "integer", "format": "int64", "minimum": 1, "maximum": 10_000_000},
             "currency": {"enum": CURRENCIES},
             "merchant_id": {"pattern": "^(m_[0-9a-z]{4,32})?$"},  # optional: "" means absent in proto3
-            "merchant_name": {"maxLength": 120, "pattern": "^[^\\x00-\\x1f\\x7f]*$"},
+            # C0/C1 controls, DEL, bidi marks and overrides, as internal/api/validate.go (D-060).
+            "merchant_name": {"maxLength": 120, "pattern": MERCHANT_NAME},
             "mcc": {"enum": MCCS},
             "channel": {
                 "replace": {

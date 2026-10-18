@@ -86,7 +86,7 @@ func TestCommitBeforeRespond(t *testing.T) {
 	defer cancel()
 	review := record(1, fraudv1.Action_ACTION_REVIEW)
 	review.RequestHash = bytes.Repeat([]byte{7}, 32)
-	got, err := w.Commit(ctx, review)
+	got, _, err := w.Commit(ctx, review)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestCommitBeforeRespond(t *testing.T) {
 	}
 	approve := record(2, fraudv1.Action_ACTION_APPROVE)
 	approve.Decision.Score = -1
-	if _, err := w.Commit(ctx, approve); err != nil {
+	if _, _, err := w.Commit(ctx, approve); err != nil {
 		t.Fatal(err)
 	}
 	if n := count(t, pool, "SELECT count(*) FROM review_cases WHERE decision_id = $1", approve.Decision.DecisionId); n != 0 {
@@ -117,9 +117,13 @@ func TestCommitBeforeRespond(t *testing.T) {
 	// A second decision for the same transaction loses: the stored one is returned, nothing is duplicated.
 	dup := record(1, fraudv1.Action_ACTION_DECLINE)
 	dup.Decision.DecisionId = "0192f000-0000-7000-9000-999999999999"
-	got, err = w.Commit(ctx, dup)
+	dup.RequestHash = bytes.Repeat([]byte{9}, 32)
+	got, gotHash, err := w.Commit(ctx, dup)
 	if err != nil || got.DecisionId != review.Decision.DecisionId || got.Action != fraudv1.Action_ACTION_REVIEW {
 		t.Fatalf("duplicate returned %+v, %v", got, err)
+	}
+	if !bytes.Equal(gotHash, review.RequestHash) { // the stored row's hash, so the scorer can compare (D-057)
+		t.Fatalf("duplicate returned hash %x, want the stored %x", gotHash, review.RequestHash)
 	}
 	if n := count(t, pool, "SELECT count(*) FROM decision_outbox"); n != 2 {
 		t.Fatalf("outbox rows %d, want 2", n)
@@ -149,7 +153,7 @@ func TestGroupCommitBatchesConcurrentWrites(t *testing.T) {
 		go func(i int) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			_, err := w.Commit(ctx, record(1000+i, fraudv1.Action_ACTION_APPROVE))
+			_, _, err := w.Commit(ctx, record(1000+i, fraudv1.Action_ACTION_APPROVE))
 			errs <- err
 		}(i)
 	}
@@ -184,7 +188,7 @@ func TestSpoolReplayAfterPostgresRecovers(t *testing.T) {
 	for i := 0; i < n; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 		start := time.Now()
-		d, err := w.Commit(ctx, record(2000+i, fraudv1.Action_ACTION_REVIEW))
+		d, _, err := w.Commit(ctx, record(2000+i, fraudv1.Action_ACTION_REVIEW))
 		cancel()
 		if err != nil {
 			t.Fatalf("commit during outage must spool, got %v", err)
@@ -226,7 +230,7 @@ func TestSpoolReplayAfterPostgresRecovers(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	spooled := w.Stats().Spooled
-	if _, err := w.Commit(ctx, record(2999, fraudv1.Action_ACTION_APPROVE)); err != nil || w.Stats().Spooled != spooled {
+	if _, _, err := w.Commit(ctx, record(2999, fraudv1.Action_ACTION_APPROVE)); err != nil || w.Stats().Spooled != spooled {
 		t.Fatalf("post-recovery commit: %v, spooled %d -> %d", err, spooled, w.Stats().Spooled)
 	}
 	if got := count(t, direct, "SELECT count(*) FROM decisions"); got != n+1 {
@@ -282,7 +286,7 @@ func TestHungPostgresSpoolsInsteadOfOverloading(t *testing.T) {
 			defer wg.Done()
 			for i := range perWorker {
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-				d, err := w.Commit(ctx, record(10_000+g*perWorker+i, fraudv1.Action_ACTION_APPROVE))
+				d, _, err := w.Commit(ctx, record(10_000+g*perWorker+i, fraudv1.Action_ACTION_APPROVE))
 				cancel()
 				switch {
 				case errors.Is(err, ErrOverloaded):
@@ -338,7 +342,7 @@ func TestBreakerClosesUnderContinuousTraffic(t *testing.T) {
 				default:
 				}
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-				_, err := w.Commit(ctx, record(int(20_000+next.Add(1)), fraudv1.Action_ACTION_APPROVE))
+				_, _, err := w.Commit(ctx, record(int(20_000+next.Add(1)), fraudv1.Action_ACTION_APPROVE))
 				cancel()
 				if err != nil {
 					failed.Add(1)
@@ -396,7 +400,7 @@ func TestCommitAfterCloseFailsFast(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	start := time.Now()
-	if _, err := w.Commit(ctx, record(3000, fraudv1.Action_ACTION_APPROVE)); !errors.Is(err, ErrWriterClosed) || time.Since(start) > 100*time.Millisecond {
+	if _, _, err := w.Commit(ctx, record(3000, fraudv1.Action_ACTION_APPROVE)); !errors.Is(err, ErrWriterClosed) || time.Since(start) > 100*time.Millisecond {
 		t.Fatalf("commit after close: %v after %v", err, time.Since(start))
 	}
 }

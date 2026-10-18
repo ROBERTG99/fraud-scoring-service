@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import logging
 import time
 from collections.abc import Awaitable, Callable, Iterator
@@ -398,3 +399,58 @@ def test_dev_database_credentials_only_in_dev(monkeypatch: pytest.MonkeyPatch) -
     check_database_dsn("postgresql://fraud_summarizer:from-a-secret@db/fraud?sslmode=verify-full")
     monkeypatch.setenv("FRAUD_ENV", "dev")
     check_database_dsn("postgresql://fraud_summarizer:fraud_summarizer@127.0.0.1:8520/fraud")
+
+
+def test_public_readyz_names_no_cause(
+    client: TestClient, store: Store, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Round 2 (N13): the cause of a failed readiness check is logged, not returned."""
+
+    async def down() -> None:
+        raise ConnectionRefusedError("10.0.0.7:5432")
+
+    monkeypatch.setattr(store, "ping", down)
+    resp = client.get("/readyz")
+    assert resp.status_code == 503 and resp.json() == {"detail": "not ready"}
+
+
+async def test_a_token_without_a_subject_is_rejected() -> None:
+    """Round 2 (N12): an empty `sub` would share one rate-limit and regenerate bucket; Go rejects it too."""
+    v = Verifier(ISSUER, StaticKeys(jwks()))
+    with pytest.raises(InvalidTokenError):
+        await v.verify(token("analyst", sub=""))
+
+
+async def test_a_cancelled_caller_does_not_fail_the_shared_jwks_fetch() -> None:
+    """Round 2 review: the fetch runs detached, as in Go; a waiter still gets the key."""
+    import httpx
+
+    from fraud_summarizer.auth import RemoteKeys
+
+    gate = asyncio.Event()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        await gate.wait()
+        return httpx.Response(200, json=jwks())
+
+    keys = RemoteKeys("https://issuer.test/jwks", transport=httpx.MockTransport(handler))
+    first = asyncio.create_task(keys.key("k1"))
+    await asyncio.sleep(0.05)
+    waiter = asyncio.create_task(keys.key("k1"))
+    await asyncio.sleep(0.05)
+    first.cancel()
+    gate.set()
+    assert await asyncio.wait_for(waiter, timeout=2) is not None
+
+
+async def test_an_oversized_jwks_is_refused() -> None:
+    import httpx
+
+    from fraud_summarizer.auth import RemoteKeys
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b" " * 70_000 + json.dumps(jwks()).encode())  # valid, but 70 KB
+
+    keys = RemoteKeys("https://issuer.test/jwks", transport=httpx.MockTransport(handler))
+    with pytest.raises(InvalidTokenError, match="jwks unavailable"):
+        await keys.key("k1")

@@ -30,7 +30,7 @@ func TestRelayCrashProducesDuplicatesWithSameDecisionID(t *testing.T) {
 	defer cancel()
 	const n = 5
 	for i := 0; i < n; i++ {
-		if _, err := w.Commit(ctx, record(3000+i, fraudv1.Action_ACTION_REVIEW)); err != nil {
+		if _, _, err := w.Commit(ctx, record(3000+i, fraudv1.Action_ACTION_REVIEW)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -111,7 +111,7 @@ func TestShadowStoreInsert(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	rec := record(4000, fraudv1.Action_ACTION_REVIEW)
-	if _, err := w.Commit(ctx, rec); err != nil {
+	if _, _, err := w.Commit(ctx, rec); err != nil {
 		t.Fatal(err)
 	}
 	w.Close()
@@ -145,7 +145,7 @@ func TestRelaySendsTheScoreTraceparent(t *testing.T) {
 	traced := record(3100, fraudv1.Action_ACTION_REVIEW)
 	traced.TraceParent = tp
 	for _, r := range []DecisionRecord{traced, record(3101, fraudv1.Action_ACTION_REVIEW)} {
-		if _, err := w.Commit(ctx, r); err != nil {
+		if _, _, err := w.Commit(ctx, r); err != nil {
 			t.Fatal(err)
 		}
 	}

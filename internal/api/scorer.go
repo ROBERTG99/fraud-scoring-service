@@ -56,7 +56,9 @@ type Idempotency interface {
 // DecisionStore persists a decision before the response. Commit returns the stored decision, which is
 // an earlier decision when the transaction_id already exists (ON CONFLICT: the first decision wins).
 type DecisionStore interface {
-	Commit(ctx context.Context, rec store.DecisionRecord) (*fraudv1.Decision, error)
+	// Commit stores rec unless the transaction_id is already decided; it returns the stored decision and the
+	// hash of the request that produced it (nil for rows written before request hashes existed).
+	Commit(ctx context.Context, rec store.DecisionRecord) (*fraudv1.Decision, []byte, error)
 	GetByTransaction(ctx context.Context, transactionID string) (*fraudv1.Decision, []byte, error)
 }
 
@@ -210,7 +212,7 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 
 	pctx, pcancel := context.WithTimeout(ctx, PostgresTimeout)
 	pctx, pspan := s.d.Tracer.Start(pctx, "postgres.commit")
-	stored, err := s.d.Decisions.Commit(pctx, rec)
+	stored, storedHash, err := s.d.Decisions.Commit(pctx, rec)
 	endSpan(pspan, err)
 	pcancel()
 	if err != nil {
@@ -226,15 +228,8 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 	}
 	if stored.DecisionId != decision.DecisionId {
 		// The transaction_id was already decided (a concurrent duplicate won the race, or the Redis entry
-		// expired): return that decision, unless the request differs from the one it answered.
-		gctx, gcancel := context.WithTimeout(ctx, PostgresTimeout)
-		_, storedHash, gerr := s.d.Decisions.GetByTransaction(gctx, tx.TransactionId)
-		gcancel()
-		if gerr != nil {
-			// Never return a decision that could not be matched to this request (D-057); the caller retries.
-			span.SetStatus(otelcodes.Error, "duplicate not verifiable")
-			return nil, status.Error(codes.Unavailable, "decision for this transaction_id could not be verified; retry")
-		}
+		// expired): return that decision, unless the request differs from the one it answered. The hash
+		// comes from the same ON CONFLICT read as the decision (D-057).
 		if err := checkReplay(storedHash, reqHash); err != nil {
 			return nil, err
 		}

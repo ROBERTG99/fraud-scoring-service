@@ -39,11 +39,11 @@ func (d *memDecisions) Get(_ context.Context, id string) (*fraudv1.Decision, []b
 	return d.m[id], nil, nil
 }
 func (d *memDecisions) Put(context.Context, *fraudv1.Decision, []byte) error { return nil }
-func (d *memDecisions) Commit(_ context.Context, r store.DecisionRecord) (*fraudv1.Decision, error) {
+func (d *memDecisions) Commit(_ context.Context, r store.DecisionRecord) (*fraudv1.Decision, []byte, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.m[r.Decision.TransactionId] = r.Decision
-	return r.Decision, nil
+	return r.Decision, r.RequestHash, nil
 }
 func (d *memDecisions) GetByTransaction(context.Context, string) (*fraudv1.Decision, []byte, error) {
 	return nil, nil, store.ErrNotFound

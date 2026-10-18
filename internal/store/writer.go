@@ -56,7 +56,7 @@ func (c *WriterConfig) defaults() {
 }
 
 type commitResult struct {
-	d   *fraudv1.Decision
+	d   storedDecision
 	err error
 }
 
@@ -134,12 +134,13 @@ func (w *GroupWriter) Stats() WriterStats {
 // SpoolDepth is the number of decisions waiting in the spool.
 func (w *GroupWriter) SpoolDepth() int { return w.spool.Depth() }
 
-// Commit enqueues rec and waits until its batch commits. It returns the stored decision: rec's own,
-// or the earlier decision for the same transaction_id. On Postgres failure or when ctx expires the
-// decision is spooled and returned (the caller responds; replay persists it later).
-func (w *GroupWriter) Commit(ctx context.Context, rec DecisionRecord) (*fraudv1.Decision, error) {
+// Commit enqueues rec and waits until its batch commits. It returns the stored decision and the hash of
+// the request that produced it: rec's own, or the earlier decision for the same transaction_id (nil hash for
+// a row written before migration 00008). On Postgres failure or when ctx expires the decision is spooled and
+// returned (the caller responds; replay persists it later).
+func (w *GroupWriter) Commit(ctx context.Context, rec DecisionRecord) (*fraudv1.Decision, []byte, error) {
 	if w.closed.Load() {
-		return nil, ErrWriterClosed
+		return nil, nil, ErrWriterClosed
 	}
 	if w.down.Load() {
 		return w.spoolOne(rec)
@@ -155,14 +156,14 @@ func (w *GroupWriter) Commit(ctx context.Context, rec DecisionRecord) (*fraudv1.
 		select {
 		case w.queue <- p:
 		case <-enqueue.C:
-			return nil, ErrOverloaded
+			return nil, nil, ErrOverloaded
 		case <-ctx.Done():
 			return w.spoolOne(rec)
 		}
 	}
 	select {
 	case r := <-p.done:
-		return r.d, r.err
+		return r.d.decision, r.d.requestHash, r.err
 	case <-ctx.Done():
 		// Too slow: spool now and tell the flusher to skip the entry. If its batch is already being
 		// written, the row may land twice in effect (Postgres and spool); replay's insert is a no-op.
@@ -171,13 +172,13 @@ func (w *GroupWriter) Commit(ctx context.Context, rec DecisionRecord) (*fraudv1.
 	}
 }
 
-func (w *GroupWriter) spoolOne(rec DecisionRecord) (*fraudv1.Decision, error) {
+func (w *GroupWriter) spoolOne(rec DecisionRecord) (*fraudv1.Decision, []byte, error) {
 	if err := w.spool.Append([]DecisionRecord{rec}); err != nil {
-		return nil, fmt.Errorf("spool: %w", err)
+		return nil, nil, fmt.Errorf("spool: %w", err)
 	}
 	w.stats.spooled.Add(1)
 	telemetry.SpoolDepth.Set(float64(w.spool.Depth()))
-	return rec.Decision, nil
+	return rec.Decision, rec.RequestHash, nil
 }
 
 func (w *GroupWriter) flushLoop() {
@@ -229,7 +230,7 @@ func (w *GroupWriter) flush(all []*pending) {
 	for i, p := range batch {
 		recs[i] = p.rec
 	}
-	var stored []*fraudv1.Decision
+	var stored []storedDecision
 	err := errBreakerOpen
 	if !w.down.Load() {
 		ctx, cancel := context.WithTimeout(context.Background(), w.cfg.BatchTimeout)
@@ -251,7 +252,7 @@ func (w *GroupWriter) flush(all []*pending) {
 		w.stats.spooled.Add(int64(len(recs)))
 		telemetry.SpoolDepth.Set(float64(w.spool.Depth()))
 		for _, p := range batch {
-			p.done <- commitResult{d: p.rec.Decision}
+			p.done <- commitResult{d: storedDecision{p.rec.Decision, p.rec.RequestHash}}
 		}
 		return
 	}
@@ -277,8 +278,9 @@ WITH ins AS (
 )
 SELECT count(*) FROM ins`
 
-// insertBatch writes all records in one transaction and returns the stored decision per record.
-func (w *GroupWriter) insertBatch(ctx context.Context, recs []DecisionRecord) ([]*fraudv1.Decision, error) {
+// insertBatch writes all records in one transaction and returns the stored decision and its request hash per
+// record.
+func (w *GroupWriter) insertBatch(ctx context.Context, recs []DecisionRecord) ([]storedDecision, error) {
 	tx, err := w.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return nil, err
@@ -321,11 +323,11 @@ func (w *GroupWriter) insertBatch(ctx context.Context, recs []DecisionRecord) ([
 	if err := br.Close(); err != nil {
 		return nil, err
 	}
-	out := make([]*fraudv1.Decision, len(recs))
+	out := make([]storedDecision, len(recs))
 	var conflicts []string
 	for i := range recs {
 		if inserted[i] {
-			out[i] = recs[i].Decision
+			out[i] = storedDecision{recs[i].Decision, recs[i].RequestHash}
 		} else {
 			conflicts = append(conflicts, recs[i].Decision.TransactionId)
 		}
@@ -336,10 +338,10 @@ func (w *GroupWriter) insertBatch(ctx context.Context, recs []DecisionRecord) ([
 			return nil, err
 		}
 		for i := range recs {
-			if out[i] == nil {
-				out[i] = existing[recs[i].Decision.TransactionId].decision
-				if out[i] == nil {
-					out[i] = recs[i].Decision // conflicted on decision_id only (replay of the same decision)
+			if out[i].decision == nil {
+				out[i] = existing[recs[i].Decision.TransactionId]
+				if out[i].decision == nil { // conflicted on decision_id only (replay of the same decision)
+					out[i] = storedDecision{recs[i].Decision, recs[i].RequestHash}
 				}
 			}
 		}

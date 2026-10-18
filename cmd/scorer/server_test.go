@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -17,6 +18,8 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/hpack"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -58,14 +61,14 @@ func (s *memStore) Get(_ context.Context, id string) (*fraudv1.Decision, []byte,
 	return s.m[id], nil, nil
 }
 func (s *memStore) Put(context.Context, *fraudv1.Decision, []byte) error { return nil }
-func (s *memStore) Commit(_ context.Context, rec store.DecisionRecord) (*fraudv1.Decision, error) {
+func (s *memStore) Commit(_ context.Context, rec store.DecisionRecord) (*fraudv1.Decision, []byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if d, ok := s.m[rec.Decision.TransactionId]; ok {
-		return d, nil
+		return d, nil, nil
 	}
 	s.m[rec.Decision.TransactionId] = proto.Clone(rec.Decision).(*fraudv1.Decision)
-	return rec.Decision, nil
+	return rec.Decision, rec.RequestHash, nil
 }
 func (s *memStore) GetByTransaction(ctx context.Context, id string) (*fraudv1.Decision, []byte, error) {
 	d, _, _ := s.Get(ctx, id)
@@ -456,5 +459,82 @@ func TestGRPCHealthNeedsNoToken(t *testing.T) {
 	}
 	if _, err := healthpb.NewHealthClient(conn).List(ctx, &healthpb.HealthListRequest{}); status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("anonymous List: %v, want Unauthenticated", err)
+	}
+}
+
+// rawGRPCStatus sends one gRPC request with an extra metadata header of pad bytes over a hand-written HTTP/2
+// connection (no client-side size check) and returns the grpc-status the server answers, or "" when it
+// answers none (the stream or connection is refused before the handler).
+func rawGRPCStatus(t *testing.T, addr string, pad int) string {
+	t.Helper()
+	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+	if _, err := conn.Write([]byte(http2.ClientPreface)); err != nil {
+		t.Fatal(err)
+	}
+	fr := http2.NewFramer(conn, conn)
+	if err := fr.WriteSettings(); err != nil {
+		t.Fatal(err)
+	}
+	var block bytes.Buffer
+	enc := hpack.NewEncoder(&block)
+	for _, f := range [][2]string{{":method", "POST"}, {":scheme", "http"}, {":path", "/fraud.v1.Scorer/Score"},
+		{":authority", addr}, {"content-type", "application/grpc"}, {"te", "trailers"}, {"x-pad", strings.Repeat("x", pad)}} {
+		_ = enc.WriteField(hpack.HeaderField{Name: f[0], Value: f[1]})
+	}
+	b := block.Bytes()
+	const chunk = 16_000 // under the default 16 KB frame size: the rest goes in CONTINUATION frames
+	first := b[:min(chunk, len(b))]
+	if err := fr.WriteHeaders(http2.HeadersFrameParam{StreamID: 1, BlockFragment: first, EndHeaders: len(b) <= chunk}); err != nil {
+		return ""
+	}
+	for off := chunk; off < len(b); off += chunk {
+		if err := fr.WriteContinuation(1, off+chunk >= len(b), b[off:min(off+chunk, len(b))]); err != nil {
+			return ""
+		}
+	}
+	// One empty gRPC message (uncompressed, length 0): the server reads it before the interceptors run.
+	if err := fr.WriteData(1, true, []byte{0, 0, 0, 0, 0}); err != nil {
+		return ""
+	}
+	dec := hpack.NewDecoder(4096, nil)
+	for {
+		f, err := fr.ReadFrame()
+		if err != nil {
+			return "" // connection closed
+		}
+		switch f := f.(type) {
+		case *http2.HeadersFrame:
+			fields, _ := dec.DecodeFull(f.HeaderBlockFragment())
+			for _, h := range fields {
+				if h.Name == "grpc-status" {
+					return h.Value
+				}
+			}
+		case *http2.RSTStreamFrame, *http2.GoAwayFrame:
+			return ""
+		case *http2.SettingsFrame:
+			if !f.IsAck() {
+				_ = fr.WriteSettingsAck()
+			}
+		}
+	}
+}
+
+// The server enforces the metadata limit itself (security audit round 2): a client that ignores the
+// advertised limit never reaches the auth check.
+func TestServerRejectsOversizedMetadataBeforeAuth(t *testing.T) {
+	st := startStack(t)
+	if got := rawGRPCStatus(t, st.grpcAddr, 1<<10); got != "16" {
+		t.Fatalf("1 KB of metadata without a token: grpc-status %q, want 16 (Unauthenticated)", got)
+	}
+	for _, pad := range []int{api.MaxHeaderBytes + 1, 900 << 10} {
+		if got := rawGRPCStatus(t, st.grpcAddr, pad); got == "16" {
+			t.Fatalf("%d bytes of metadata reached the auth check", pad)
+		}
 	}
 }

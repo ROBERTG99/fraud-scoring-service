@@ -34,7 +34,7 @@ func seedCases(t *testing.T, pool *pgxpool.Pool, n int) []string {
 		if i%2 == 0 {
 			r.Decision.ReasonCodes = []string{"CARD_TESTING_BURST"}
 		}
-		if _, err := w.Commit(ctx, r); err != nil {
+		if _, _, err := w.Commit(ctx, r); err != nil {
 			t.Fatal(err)
 		}
 		txIDs = append(txIDs, r.Decision.TransactionId)
@@ -200,7 +200,7 @@ func TestListGetTimelineShadowAndRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := approveW.Commit(ctx, record(6000, fraudv1.Action_ACTION_APPROVE)); err != nil { // no case for APPROVE
+	if _, _, err := approveW.Commit(ctx, record(6000, fraudv1.Action_ACTION_APPROVE)); err != nil { // no case for APPROVE
 		t.Fatal(err)
 	}
 	approveW.Close()

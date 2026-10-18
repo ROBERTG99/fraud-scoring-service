@@ -164,7 +164,7 @@ func main() {
 		log.Error("config", "err", err)
 		os.Exit(1)
 	}
-	srv := &http.Server{Addr: envOr("FRAUD_WEB_ADDR", ":8500"), Handler: h, ReadHeaderTimeout: 2 * time.Second, IdleTimeout: 60 * time.Second}
+	srv := &http.Server{Addr: envOr("FRAUD_WEB_ADDR", "127.0.0.1:8500"), Handler: h, ReadHeaderTimeout: 2 * time.Second, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

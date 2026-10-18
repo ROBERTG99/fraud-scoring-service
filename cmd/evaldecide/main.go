@@ -89,8 +89,8 @@ type memory struct{}
 
 func (memory) Get(context.Context, string) (*fraudv1.Decision, []byte, error) { return nil, nil, nil }
 func (memory) Put(context.Context, *fraudv1.Decision, []byte) error           { return nil }
-func (memory) Commit(_ context.Context, r store.DecisionRecord) (*fraudv1.Decision, error) {
-	return r.Decision, nil
+func (memory) Commit(_ context.Context, r store.DecisionRecord) (*fraudv1.Decision, []byte, error) {
+	return r.Decision, r.RequestHash, nil
 }
 func (memory) GetByTransaction(context.Context, string) (*fraudv1.Decision, []byte, error) {
 	return nil, nil, store.ErrNotFound

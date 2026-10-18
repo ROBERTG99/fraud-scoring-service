@@ -25,7 +25,7 @@ func TestRetentionDeletesOnlyExpiredRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 1; i <= 4; i++ { // 1, 2 old; 3, 4 recent. All REVIEW, so each has a case.
-		if _, err := w.Commit(ctx, record(5000+i, fraudv1.Action_ACTION_REVIEW)); err != nil {
+		if _, _, err := w.Commit(ctx, record(5000+i, fraudv1.Action_ACTION_REVIEW)); err != nil {
 			t.Fatal(err)
 		}
 	}

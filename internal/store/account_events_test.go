@@ -58,7 +58,7 @@ func TestRelayRunDrainsInBatchesUntilCancelled(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	for i := range 5 {
-		if _, err := w.Commit(ctx, record(7000+i, fraudv1.Action_ACTION_REVIEW)); err != nil {
+		if _, _, err := w.Commit(ctx, record(7000+i, fraudv1.Action_ACTION_REVIEW)); err != nil {
 			t.Fatal(err)
 		}
 	}

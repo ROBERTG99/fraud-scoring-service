@@ -128,7 +128,7 @@ func TestServiceRolesAreLeastPrivilege(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.Commit(ctx, record(6001, fraudv1.Action_ACTION_REVIEW)); err != nil {
+	if _, _, err := w.Commit(ctx, record(6001, fraudv1.Action_ACTION_REVIEW)); err != nil {
 		t.Fatal(err)
 	}
 	w.Close()

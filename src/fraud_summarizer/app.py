@@ -220,13 +220,16 @@ def create_app(factory: Factory | None = None) -> FastAPI:
 
     @app.get("/readyz")
     async def readyz(svc: Annotated[Services, Depends(services)]) -> dict[str, str]:
+        # The cause is logged, never returned: the public port must not describe the internals (D-060).
         try:
             await asyncio.wait_for(svc.store.ping(), timeout=1.0)
         except Exception as exc:
-            raise HTTPException(503, f"postgres: {type(exc).__name__}") from exc
+            log.warning("not ready: postgres %s", type(exc).__name__)
+            raise HTTPException(503, "not ready") from exc
         for task in svc.background:
             if task.done():
-                raise HTTPException(503, f"{task.get_name()} stopped")
+                log.warning("not ready: %s stopped", task.get_name())
+                raise HTTPException(503, "not ready")
         return {"status": "ready"}
 
     @app.get("/v1/summaries/{case_id}")

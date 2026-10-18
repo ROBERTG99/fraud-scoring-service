@@ -67,7 +67,7 @@
       "type": "string",
       "maxLength": 120,
       "description": "synthetic display name; untrusted text, never used for scoring",
-      "pattern": "^[^\\x00-\\x1f\\x7f]*$"
+      "pattern": "^[^\\x00-\\x1f\\x7f-؜‎‏‪-‮⁦-⁩]*$"
     },
     "mcc": {
       "enum": [

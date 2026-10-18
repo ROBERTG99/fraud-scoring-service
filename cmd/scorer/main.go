@@ -62,6 +62,9 @@ func eventAge(v string) (time.Duration, error) {
 	case "":
 		return 0, nil
 	case "0":
+		if !auth.DevMode() { // a deployment never replays history; a caller could backdate features (D-060)
+			return 0, errors.New("FRAUD_MAX_EVENT_AGE=0 is allowed only with FRAUD_ENV=dev")
+		}
 		return -1, nil
 	}
 	d, err := time.ParseDuration(v)

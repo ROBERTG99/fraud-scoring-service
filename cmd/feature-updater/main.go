@@ -101,13 +101,14 @@ func run(ctx context.Context, log *slog.Logger) error {
 		rctx, cancel := context.WithTimeout(r.Context(), 200*time.Millisecond)
 		defer cancel()
 		if err := rdb.Ping(rctx).Err(); err != nil {
-			http.Error(w, "redis: "+err.Error(), http.StatusServiceUnavailable)
+			log.Warn("not ready", "err", err) // the cause stays in the log, not on the port (D-060)
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}
 		_, _ = w.Write([]byte("ready"))
 	})
 	mux.Handle("GET /metrics", promhttp.HandlerFor(telemetry.Registry, promhttp.HandlerOpts{}))
-	srv := &http.Server{Addr: envOr("FRAUD_UPDATER_HTTP_ADDR", ":8512"), Handler: mux, ReadHeaderTimeout: 2 * time.Second}
+	srv := &http.Server{Addr: envOr("FRAUD_UPDATER_HTTP_ADDR", "127.0.0.1:8512"), Handler: mux, ReadHeaderTimeout: 2 * time.Second}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Error("http", "err", err)

@@ -121,21 +121,24 @@ type memDecisions struct {
 	getErr  error // GetByTransaction fails
 }
 
-func (m *memDecisions) Commit(_ context.Context, rec store.DecisionRecord) (*fraudv1.Decision, error) {
+func (m *memDecisions) Commit(_ context.Context, rec store.DecisionRecord) (*fraudv1.Decision, []byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.commits++
 	if m.err != nil {
-		return nil, m.err
+		return nil, nil, m.err
 	}
 	if m.byTx == nil {
 		m.byTx = map[string]store.DecisionRecord{}
 	}
-	if existing, ok := m.byTx[rec.Decision.TransactionId]; ok {
-		return existing.Decision, nil // ON CONFLICT: the first decision wins
+	if existing, ok := m.byTx[rec.Decision.TransactionId]; ok { // ON CONFLICT: the first decision wins
+		if m.legacy {
+			return existing.Decision, nil, nil
+		}
+		return existing.Decision, existing.RequestHash, nil
 	}
 	m.byTx[rec.Decision.TransactionId] = rec
-	return rec.Decision, nil
+	return rec.Decision, rec.RequestHash, nil
 }
 
 func (m *memDecisions) GetByTransaction(_ context.Context, txID string) (*fraudv1.Decision, []byte, error) {
@@ -343,6 +346,8 @@ func TestValidationRules(t *testing.T) {
 		{"transaction.merchant_name", func(tx *fraudv1.Transaction) { tx.MerchantName = strings.Repeat("é", 121) }},
 		{"transaction.merchant_name", func(tx *fraudv1.Transaction) { tx.MerchantName = "Shop\x00" }},
 		{"transaction.merchant_name", func(tx *fraudv1.Transaction) { tx.MerchantName = "Shop\x0f" }},
+		{"transaction.merchant_name", func(tx *fraudv1.Transaction) { tx.MerchantName = "Shop\u0085" }},        // C1 control
+		{"transaction.merchant_name", func(tx *fraudv1.Transaction) { tx.MerchantName = "Shop\u202egnp.exe" }}, // bidi override
 	}
 	for _, m := range mut {
 		tx := journeyTx("0192f000-0000-7000-8000-000000000006")
@@ -438,15 +443,21 @@ func TestReplayWithDifferentContentsIsRejected(t *testing.T) {
 	}
 }
 
-// When a concurrent duplicate won and its request hash cannot be read, Score refuses rather than return a
-// decision it could not match to this request (M6 round-2 review: the path failed open).
-func TestDuplicateWhoseHashCannotBeReadIsRefused(t *testing.T) {
+// When a concurrent duplicate won, Commit's ON CONFLICT returns the stored request hash with the stored
+// decision, so the check needs no second read that could fail or time out (M6 round 2: the path failed open,
+// then a 30 ms re-read timed out under load).
+func TestDuplicateIsCheckedWithTheHashCommitReturns(t *testing.T) {
 	h := newHarness(t)
 	tx := journeyTx("0192f000-0000-7000-8000-0000000000c2")
 	winner := &fraudv1.Decision{DecisionId: "0192f000-0000-7000-8000-0000000000ab", TransactionId: tx.TransactionId}
 	h.decisions.byTx = map[string]store.DecisionRecord{tx.TransactionId: {Decision: winner, RequestHash: RequestHash(tx)}}
-	h.decisions.getErr = errors.New("postgres timeout")
-	if d, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: tx}); status.Code(err) != codes.Unavailable {
-		t.Fatalf("unverifiable duplicate: %v %v, want Unavailable", d, err)
+	h.decisions.getErr = errors.New("postgres timeout") // not consulted on this path
+	if d, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: tx}); err != nil || d.DecisionId != winner.DecisionId {
+		t.Fatalf("duplicate with the same request: %v %v", d, err)
+	}
+	changed := proto.Clone(tx).(*fraudv1.Transaction)
+	changed.AmountMinor = 1
+	if _, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: changed}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("duplicate with another request: %v, want AlreadyExists", err)
 	}
 }

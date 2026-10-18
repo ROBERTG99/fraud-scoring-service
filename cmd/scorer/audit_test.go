@@ -44,3 +44,18 @@ func TestAuditVerifyNeedsAnchorsOutsideDev(t *testing.T) {
 		t.Fatalf("a negative legacy bound: exit %d, want 2", code)
 	}
 }
+
+// Lifting the event_ts age bound is for replaying historical data on a local stack only (round 2, H2).
+func TestEventAgeBoundLiftsOnlyInDevMode(t *testing.T) {
+	t.Setenv("FRAUD_ENV", "")
+	if _, err := eventAge("0"); err == nil {
+		t.Fatal("FRAUD_MAX_EVENT_AGE=0 accepted outside dev")
+	}
+	if d, err := eventAge("2h"); err != nil || d.Hours() != 2 {
+		t.Fatalf("%v %v", d, err)
+	}
+	t.Setenv("FRAUD_ENV", "dev")
+	if d, err := eventAge("0"); err != nil || d != -1 {
+		t.Fatalf("%v %v", d, err)
+	}
+}

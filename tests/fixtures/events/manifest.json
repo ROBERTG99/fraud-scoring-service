@@ -208,5 +208,10 @@
     "file": "invalid/transaction_merchant_name_control_char.json",
     "kind": "transaction",
     "valid": false
+  },
+  {
+    "file": "invalid/transaction_merchant_name_bidi_override.json",
+    "kind": "transaction",
+    "valid": false
   }
 ]

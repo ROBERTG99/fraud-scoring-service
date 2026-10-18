@@ -82,8 +82,17 @@ func ValidateTransaction(tx *fraudv1.Transaction) []*errdetails.BadRequest_Field
 	return v
 }
 
-// isControl matches C0 controls and DEL; Postgres text and jsonb reject NUL, and none belong in a display name.
-func isControl(r rune) bool { return r < 0x20 || r == 0x7f }
+// isControl matches C0 and C1 controls, DEL and the bidirectional marks and overrides (which can make a name
+// render as something else, "Shop\u202egnp.exe"); Postgres rejects NUL, and none belong in a display name.
+func isControl(r rune) bool {
+	switch {
+	case r < 0x20, r == 0x7f, r >= 0x80 && r <= 0x9f:
+		return true
+	case r == 0x061c, r == 0x200e, r == 0x200f, r >= 0x202a && r <= 0x202e, r >= 0x2066 && r <= 0x2069:
+		return true
+	}
+	return false
+}
 
 func invalidArgument(v []*errdetails.BadRequest_FieldViolation) error {
 	st := status.New(codes.InvalidArgument, "invalid request")

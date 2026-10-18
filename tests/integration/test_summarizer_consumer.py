@@ -198,6 +198,16 @@ async def test_consumer_writes_summary_for_review_event(database: Database) -> N
         assert await regen("analyst-1", CASE_ID, "it-key-0003", limit=2, window_s=3600) == "limited"
         assert await regen("risk-1", CASE_ID, "it-key-0003", limit=2, window_s=3600) == "accepted"
         assert await regen("analyst-1", CASE_ID, "it-key-0004", limit=2, window_s=0.000001) == "accepted"
+        # Concurrent requests (round 2 review): the per-subject lock makes count-then-insert atomic, so ten
+        # parallel requests from one user under a limit of 3 accept exactly 3; ten with one key accept one.
+        burst = await asyncio.gather(
+            *(regen("burst-1", CASE_ID, f"burst-key-{i:04d}", limit=3, window_s=3600) for i in range(10))
+        )
+        assert sorted(burst).count("accepted") == 3 and burst.count("limited") == 7
+        same = await asyncio.gather(
+            *(regen(f"user-{i}", CASE_ID, "one-key-0001", limit=20, window_s=3600) for i in range(10))
+        )
+        assert same.count("accepted") == 1 and same.count("duplicate") == 9
         # One paid attempt recorded for the summarized decision; the counter climbs per attempt (D-048).
         assert await repo.begin_attempt(CONSUMER_NAME, DECISION_ID) == 2
         assert await repo.begin_attempt("it", "fresh") == 1

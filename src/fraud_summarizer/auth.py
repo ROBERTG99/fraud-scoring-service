@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import math
 import os
 import time
@@ -74,6 +75,7 @@ class StaticKeys:
 JWKS_FRESH_S = 600.0  # a known kid is served without a refetch
 JWKS_MIN_INTERVAL_S = 10.0  # at most one fetch attempt per interval, failed or not
 JWKS_MAX_STALE_S = 3600.0  # keys this old are not used even when the issuer is down
+JWKS_MAX_BYTES = 64 << 10  # as internal/auth
 
 
 class RemoteKeys:
@@ -100,7 +102,7 @@ class RemoteKeys:
         self._fetched: float | None = None
         self._tried: float | None = None
         self._last_error: Exception | None = None
-        self._inflight: asyncio.Future[None] | None = None
+        self._inflight: asyncio.Task[None] | None = None
 
     async def key(self, kid: str) -> Any:
         while True:
@@ -122,23 +124,32 @@ class RemoteKeys:
                     raise InvalidTokenError(f"jwks unavailable: {self._last_error}")
                 raise InvalidTokenError(f"unknown kid {kid!r}")
             self._tried = now
-            done: asyncio.Future[None] = asyncio.get_running_loop().create_future()
-            self._inflight = done
-            try:
-                self._keys, self._fetched = await self._fetch(), self.clock()
-                self._last_error = None
-            except (httpx.HTTPError, ValueError, KeyError) as exc:
-                self._last_error = exc
-            finally:
-                self._inflight = None
-                done.set_result(None)
+            # Detached from the caller, as in Go: cancelling one request must not fail every waiter's fetch.
+            self._inflight = asyncio.get_running_loop().create_task(self._refresh())
+            await asyncio.shield(self._inflight)
             # Loop once more: the new keys, or (tried is now recent) the stale key or an error.
 
+    async def _refresh(self) -> None:
+        try:
+            self._keys, self._fetched = await self._fetch(), self.clock()
+            self._last_error = None
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            self._last_error = exc
+        finally:
+            self._inflight = None
+
     async def _fetch(self) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=self.timeout_s, transport=self.transport) as client:
-            resp = await client.get(self.url)
+        async with (
+            httpx.AsyncClient(timeout=self.timeout_s, transport=self.transport) as client,
+            client.stream("GET", self.url) as resp,
+        ):
             resp.raise_for_status()
-            return StaticKeys(resp.json()).keys
+            body = b""
+            async for chunk in resp.aiter_bytes():
+                body += chunk
+                if len(body) > JWKS_MAX_BYTES:
+                    raise ValueError(f"jwks larger than {JWKS_MAX_BYTES} bytes")
+            return StaticKeys(json.loads(body)).keys
 
 
 class Verifier:
@@ -163,6 +174,8 @@ class Verifier:
             )
         except jwt.PyJWTError as exc:
             raise InvalidTokenError(str(exc)) from exc
+        if not str(claims["sub"]).strip():
+            raise InvalidTokenError("empty sub")
         role = str(claims.get("role", ""))
         if role not in CONSOLE_ROLES:
             raise InvalidTokenError(f"unknown role {role!r}")

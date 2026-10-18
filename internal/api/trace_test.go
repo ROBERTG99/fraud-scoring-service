@@ -105,10 +105,18 @@ func TestFailedCommitMarksTheScoreSpan(t *testing.T) {
 		if _, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: journeyTx("0192f000-0000-7000-8000-0000000000e3")}); err == nil {
 			t.Fatal("expected an error")
 		}
+		found := false
 		for _, s := range rec.Ended() {
-			if s.Name() == "fraud.score" && s.Status().Code.String() != "Error" {
+			if s.Name() != "fraud.score" {
+				continue
+			}
+			found = true
+			if s.Status().Code.String() != "Error" {
 				t.Fatalf("%v: fraud.score status %v, want Error", commitErr, s.Status())
 			}
+		}
+		if !found {
+			t.Fatalf("%v: no fraud.score span recorded", commitErr)
 		}
 	}
 }
@@ -124,13 +132,18 @@ func TestDuplicateScoreSpanDescribesTheReturnedDecision(t *testing.T) {
 	if err != nil || d.DecisionId != winner.DecisionId {
 		t.Fatalf("%v %v", d, err)
 	}
+	found := false
 	for _, s := range rec.Ended() {
 		if s.Name() != "fraud.score" {
 			continue
 		}
+		found = true
 		a := attrs(s)
 		if a["app.decision.id"].AsString() != winner.DecisionId || a["app.decision.action"].AsString() != "APPROVE" || !a["app.idempotent_replay"].AsBool() {
 			t.Fatalf("span attributes %v describe the discarded decision", a)
 		}
+	}
+	if !found {
+		t.Fatal("no fraud.score span recorded")
 	}
 }
