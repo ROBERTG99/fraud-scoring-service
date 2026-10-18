@@ -19,10 +19,15 @@ var CurrencyAllowlist = map[string]bool{
 	"NOK": true, "DKK": true, "PLN": true, "MXN": true, "BRL": true, "SGD": true, "NZD": true,
 }
 
+// MCCAllowlist matches schemas/events/transaction.json: the merchant categories of the synthetic catalog
+// (cmd/gen), the only ones the model and rules were built on (spec §15, D-051).
+var MCCAllowlist = map[string]bool{
+	"4111": true, "4511": true, "4816": true, "4829": true, "5311": true, "5399": true, "5411": true, "5541": true, "5651": true, "5732": true, "5812": true, "5814": true, "5815": true, "5816": true, "5912": true, "5944": true, "5999": true, "7011": true, "7995": true,
+}
+
 var (
 	reUUID    = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 	reAccount = regexp.MustCompile(`^acc_[0-9a-z]{6,32}$`)
-	reMCC     = regexp.MustCompile(`^\d{4}$`)
 	reDevice  = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	reIP24    = regexp.MustCompile(`^(25[0-5]|2[0-4]\d|1?\d?\d)\.(25[0-5]|2[0-4]\d|1?\d?\d)\.(25[0-5]|2[0-4]\d|1?\d?\d)\.0/24$`)
 	reCountry = regexp.MustCompile(`^[A-Z]{2}$`)
@@ -53,8 +58,8 @@ func ValidateTransaction(tx *fraudv1.Transaction) []*errdetails.BadRequest_Field
 	if tx.MerchantId != "" && !reMerch.MatchString(tx.MerchantId) {
 		add("merchant_id", "must match m_[0-9a-z]{4,32}")
 	}
-	if !reMCC.MatchString(tx.Mcc) {
-		add("mcc", "must be 4 digits")
+	if !MCCAllowlist[tx.Mcc] {
+		add("mcc", "not in the MCC allowlist")
 	}
 	if tx.Channel == fraudv1.Channel_CHANNEL_UNSPECIFIED || fraudv1.Channel_name[int32(tx.Channel)] == "" {
 		add("channel", "must be CARD_PRESENT, ECOMMERCE or P2P")

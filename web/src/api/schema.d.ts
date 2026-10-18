@@ -457,8 +457,30 @@ export interface components {
       event_ts?: string;
       /** /24 only */
       ip_prefix: string;
-      /** 4 digits */
-      mcc: string;
+      /**
+       * 4 digits
+       * @enum {string}
+       */
+      mcc:
+        | "4111"
+        | "4511"
+        | "4816"
+        | "4829"
+        | "5311"
+        | "5399"
+        | "5411"
+        | "5541"
+        | "5651"
+        | "5732"
+        | "5812"
+        | "5814"
+        | "5815"
+        | "5816"
+        | "5912"
+        | "5944"
+        | "5999"
+        | "7011"
+        | "7995";
       merchant_id?: string;
       /** synthetic display name; untrusted text, never a model or rule input */
       merchant_name?: string;

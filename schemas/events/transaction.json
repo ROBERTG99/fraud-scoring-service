@@ -66,11 +66,32 @@
     "merchant_name": {
       "type": "string",
       "maxLength": 120,
-      "description": "synthetic display name; untrusted text, never used for scoring"
+      "description": "synthetic display name; untrusted text, never used for scoring",
+      "pattern": "^[^\\x00-\\x1f\\x7f]*$"
     },
     "mcc": {
-      "type": "string",
-      "pattern": "^\\d{4}$"
+      "enum": [
+        "4111",
+        "4511",
+        "4816",
+        "4829",
+        "5311",
+        "5399",
+        "5411",
+        "5541",
+        "5651",
+        "5732",
+        "5812",
+        "5814",
+        "5815",
+        "5816",
+        "5912",
+        "5944",
+        "5999",
+        "7011",
+        "7995"
+      ],
+      "description": "ISO 18245 merchant category code; allowlist = the synthetic catalog (cmd/gen, D-051)"
     },
     "channel": {
       "enum": [

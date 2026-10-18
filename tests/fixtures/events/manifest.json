@@ -198,5 +198,15 @@
     "file": "invalid/dlq_wrong_schema_name.json",
     "kind": "dlq",
     "valid": false
+  },
+  {
+    "file": "invalid/transaction_mcc_not_allowed.json",
+    "kind": "transaction",
+    "valid": false
+  },
+  {
+    "file": "invalid/transaction_merchant_name_control_char.json",
+    "kind": "transaction",
+    "valid": false
   }
 ]

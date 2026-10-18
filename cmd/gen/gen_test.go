@@ -7,6 +7,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/ROBERTG99/fraud-scoring-service/internal/api"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/events"
 	"github.com/ROBERTG99/fraud-scoring-service/internal/stream"
 )
@@ -138,5 +139,17 @@ func TestTemporalSplitByDay(t *testing.T) {
 	}
 	if counts["warmup"] == 0 {
 		t.Fatal("expected warm-up transactions excluded from splits")
+	}
+}
+
+// Every MCC the generator emits passes Score's allowlist (D-051).
+func TestCatalogMCCsAreAllowlisted(t *testing.T) {
+	for _, c := range categories {
+		if !api.MCCAllowlist[c.MCC] {
+			t.Errorf("catalog MCC %s (%s) is not in api.MCCAllowlist", c.MCC, c.Name)
+		}
+	}
+	if len(api.MCCAllowlist) != len(categories) {
+		t.Errorf("allowlist has %d MCCs, the catalog %d", len(api.MCCAllowlist), len(categories))
 	}
 }

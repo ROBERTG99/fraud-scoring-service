@@ -42,8 +42,8 @@ func TestSharedFixtures(t *testing.T) {
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if len(manifest) != 40 {
-		t.Fatalf("manifest has %d fixtures, want 40", len(manifest))
+	if len(manifest) != 42 {
+		t.Fatalf("manifest has %d fixtures, want 42", len(manifest))
 	}
 	v := MustValidator()
 	for _, m := range manifest {

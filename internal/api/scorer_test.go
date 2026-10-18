@@ -331,6 +331,7 @@ func TestValidationRules(t *testing.T) {
 		{"transaction.amount_minor", func(tx *fraudv1.Transaction) { tx.AmountMinor = 10_000_001 }},
 		{"transaction.currency", func(tx *fraudv1.Transaction) { tx.Currency = "XAU" }},
 		{"transaction.mcc", func(tx *fraudv1.Transaction) { tx.Mcc = "57a2" }},
+		{"transaction.mcc", func(tx *fraudv1.Transaction) { tx.Mcc = "1234" }}, // 4 digits, not allowlisted
 		{"transaction.channel", func(tx *fraudv1.Transaction) { tx.Channel = fraudv1.Channel_CHANNEL_UNSPECIFIED }},
 		{"transaction.device_id", func(tx *fraudv1.Transaction) { tx.DeviceId = "iphone-of-alice" }},
 		{"transaction.ip_prefix", func(tx *fraudv1.Transaction) { tx.IpPrefix = "203.0.113.7" }},

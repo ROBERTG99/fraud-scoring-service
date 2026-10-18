@@ -14,7 +14,7 @@ def test_shared_fixtures_agree() -> None:
     """Same manifest as internal/stream/validate_test.go::TestSharedFixtures."""
     manifest = json.loads((FIXTURES / "manifest.json").read_text(encoding="utf-8"))
     assert sum(m["valid"] for m in manifest) == 20
-    assert sum(not m["valid"] for m in manifest) == 20
+    assert sum(not m["valid"] for m in manifest) == 22
     for entry in manifest:
         raw = (FIXTURES / entry["file"]).read_bytes()
         if entry["valid"]:

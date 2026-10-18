@@ -103,7 +103,8 @@ func TestSeedIdempotent(t *testing.T) {
 	defer func() { _ = rdb.Close() }()
 	prefix := testutil.UniqueName("seed")
 	srv := api.NewScorerServer(api.ScorerDeps{Features: features.NewStore(rdb, prefix, spec), Model: fixedModel{}, Rules: eng,
-		Idempotency: store.NewRedisIdempotency(rdb, prefix), Decisions: writer, Log: quiet})
+		Idempotency: store.NewRedisIdempotency(rdb, prefix), Decisions: writer, Log: quiet,
+		MaxEventAge: -1}) // historical synthetic data, as the seed stack runs it (D-041)
 
 	dataDir := filepath.Join(t.TempDir(), "demo")
 	var gens, trains atomic.Int32

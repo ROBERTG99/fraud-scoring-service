@@ -31,6 +31,7 @@ STATUS_DESCRIPTIONS = {
 # [0-9] rather than \\d so generated data matches Go's RE2 semantics (no Unicode digits).
 UUID = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 OCTET = "(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])"
+MCCS = ["4111", "4511", "4816", "4829", "5311", "5399", "5411", "5541", "5651", "5732", "5812", "5814", "5815", "5816", "5912", "5944", "5999", "7011", "7995"]  # schemas/events/transaction.json, D-051
 CURRENCIES = [
     "AUD",
     "BRL",
@@ -71,7 +72,7 @@ SCHEMA_CONSTRAINTS: dict[str, dict[str, Any]] = {
             "currency": {"enum": CURRENCIES},
             "merchant_id": {"pattern": "^(m_[0-9a-z]{4,32})?$"},  # optional: "" means absent in proto3
             "merchant_name": {"maxLength": 120, "pattern": "^[^\\x00-\\x1f\\x7f]*$"},
-            "mcc": {"pattern": "^[0-9]{4}$"},
+            "mcc": {"enum": MCCS},
             "channel": {
                 "replace": {
                     "type": "string",
