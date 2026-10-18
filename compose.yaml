@@ -22,6 +22,7 @@ services:
     environment:
       FRAUD_ENV: dev # local stack: plain-HTTP JWKS allowed (D-045)
       FRAUD_SUMMARY_PROVIDER: fake
+      FRAUD_SUMMARIZER_ADMIN_ADDR: "0.0.0.0:8517" # metrics for Prometheus on the stack network, not published
     ports: ["127.0.0.1:8513:8513"]
     restart: unless-stopped
 

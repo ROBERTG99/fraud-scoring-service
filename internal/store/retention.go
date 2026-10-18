@@ -28,7 +28,7 @@ func DefaultRetention() Retention {
 
 // RetentionResult counts deleted rows per table (cascaded rows are not counted).
 type RetentionResult struct {
-	Decisions, OutboxSent, StepRecords, ProcessedMessages, SummaryAttempts, AccountEvents int64
+	Decisions, OutboxSent, StepRecords, ProcessedMessages, SummaryAttempts, SummaryRegenerations, AccountEvents int64
 }
 
 // retentionDeletes are batched DELETEs: $1 cutoff, $2 batch size. Each deletes at most one batch, oldest first.
@@ -53,6 +53,9 @@ var retentionDeletes = []struct {
 	{"summary_attempts", `DELETE FROM summary_attempts WHERE (consumer, message_key) IN
 	   (SELECT consumer, message_key FROM summary_attempts WHERE last_attempt_at < $1 ORDER BY last_attempt_at LIMIT $2)`,
 		func(r Retention) time.Duration { return r.ProcessedMessages }, func(x *RetentionResult) *int64 { return &x.SummaryAttempts }},
+	{"summary_regenerations", `DELETE FROM summary_regenerations WHERE (case_id, idempotency_key) IN
+	   (SELECT case_id, idempotency_key FROM summary_regenerations WHERE requested_at < $1 ORDER BY requested_at LIMIT $2)`,
+		func(r Retention) time.Duration { return r.ProcessedMessages }, func(x *RetentionResult) *int64 { return &x.SummaryRegenerations }},
 	{"account_events", `DELETE FROM account_events WHERE event_id IN
 	   (SELECT event_id FROM account_events WHERE event_ts < $1 ORDER BY event_ts LIMIT $2)`,
 		func(r Retention) time.Duration { return r.AccountEvents }, func(x *RetentionResult) *int64 { return &x.AccountEvents }},

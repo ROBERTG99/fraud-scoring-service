@@ -41,7 +41,7 @@ func main() {
 	start := time.Now()
 	res, err := store.RunRetention(ctx, pool, start.UTC(), store.DefaultRetention(), batch)
 	log.Info("retention", "decisions", res.Decisions, "outbox_sent", res.OutboxSent, "step_records", res.StepRecords,
-		"processed_messages", res.ProcessedMessages, "summary_attempts", res.SummaryAttempts, "account_events", res.AccountEvents,
+		"processed_messages", res.ProcessedMessages, "summary_attempts", res.SummaryAttempts, "summary_regenerations", res.SummaryRegenerations, "account_events", res.AccountEvents,
 		"duration_ms", time.Since(start).Milliseconds())
 	if err != nil && !errors.Is(err, context.Canceled) {
 		log.Error("retention failed", "err", err)

@@ -33,7 +33,7 @@ if [ "${FULL:-}" = 1 ]; then
   export FRAUD_ISSUER=http://127.0.0.1:18515 FRAUD_JWKS_URL=http://127.0.0.1:18515/.well-known/jwks.json
   FRAUD_ISSUER_ADDR=127.0.0.1:18515 setsid $S/bin/dev-issuer > $S/issuer.log 2>&1 &
   echo $! > $S/issuer.pid
-  FRAUD_SUMMARIZER_PG_DSN=${FRAUD_PG_DSN/fraud_app:fraud_app@/fraud_summarizer:fraud_summarizer@} FRAUD_SUMMARY_PROVIDER=${SUMMARY_PROVIDER:-fake} \
+  FRAUD_SUMMARIZER_PG_DSN=${FRAUD_PG_DSN/fraud_app:fraud_app@/fraud_summarizer:fraud_summarizer@} FRAUD_SUMMARY_PROVIDER=${SUMMARY_PROVIDER:-fake} FRAUD_SUMMARIZER_ADMIN_ADDR=127.0.0.1:18517 \
     setsid env ${SUMMARIZER_OTLP:+OTEL_EXPORTER_OTLP_ENDPOINT=$SUMMARIZER_OTLP} .venv/bin/python -m uvicorn fraud_summarizer.app:app \
     --host 127.0.0.1 --port 18513 > $S/summarizer.log 2>&1 &
   echo $! > $S/summarizer.pid

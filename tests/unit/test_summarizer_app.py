@@ -16,7 +16,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from fastapi.testclient import TestClient
 
-from fraud_summarizer.app import Services, create_app
+from fraud_summarizer.app import Services, TokenBucket, create_app
 from fraud_summarizer.auth import AUDIENCE, InvalidTokenError, StaticKeys, Verifier, check_jwks_url
 from fraud_summarizer.llm import LLMGateway
 from fraud_summarizer.llm.fake import FakeLLM
@@ -66,6 +66,20 @@ class Store(MemoryRepo):
             return False
         self.processed.add((consumer, key))
         return True
+
+    regenerations: dict[tuple[str, str], tuple[str, float]] = field(default_factory=dict)
+
+    async def record_regeneration(
+        self, subject: str, case_id: str, key: str, *, limit: int, window_s: float
+    ) -> str:
+        if (case_id, key) in self.regenerations:
+            return "duplicate"
+        now = time.monotonic()
+        recent = [t for s, t in self.regenerations.values() if s == subject and t > now - window_s]
+        if len(recent) >= limit:
+            return "limited"
+        self.regenerations[(case_id, key)] = (subject, now)
+        return "accepted"
 
 
 @pytest.fixture
@@ -130,10 +144,45 @@ def test_regenerate_is_idempotent_and_role_checked(client: TestClient, store: St
     assert got.status_code == 200 and got.json()["status"] == "ok"
 
 
-def test_health_ready_metrics(client: TestClient) -> None:
+def test_health_ready_and_no_public_metrics_or_docs(client: TestClient) -> None:
+    """Audit M6 L2: metrics are on the admin listener; the API document is generated offline."""
     assert client.get("/healthz").json() == {"status": "ok"}
     assert client.get("/readyz").json() == {"status": "ready"}
-    assert "fraud_summary_status_total" in client.get("/metrics").text
+    for path in ("/metrics", "/docs", "/redoc", "/openapi.json"):
+        assert client.get(path).status_code == 404, path
+
+
+def test_metrics_are_served_on_the_admin_listener() -> None:
+    import urllib.request
+
+    from fraud_summarizer.app import start_admin_metrics
+
+    server = start_admin_metrics("127.0.0.1:0")
+    try:
+        port = server.server_port
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/metrics", timeout=5) as resp:
+            assert "fraud_summary_status_total" in resp.read().decode()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_console_requests_are_limited_per_user(client: TestClient) -> None:
+    """Audit M6 L6: the scorer's 20 req/s per user applies to the summarizer's API too."""
+    svc = client.app.state.services  # type: ignore[attr-defined]
+    svc.request_limit = TokenBucket(2)
+    url = f"/v1/summaries/{CASE_ID}"
+    assert [client.get(url, headers=auth("analyst")).status_code for _ in range(3)] == [404, 404, 429]
+    other = {"Authorization": f"Bearer {token('analyst', sub='analyst-2')}"}
+    assert client.get(url, headers=other).status_code == 404  # another user has their own bucket
+
+
+def test_token_bucket_refills() -> None:
+    now = [0.0]
+    b = TokenBucket(2, clock=lambda: now[0])
+    assert b.allow("a") and b.allow("a") and not b.allow("a")
+    now[0] = 0.5  # one token back at 2/s
+    assert b.allow("a") and not b.allow("a")
 
 
 async def test_verifier_rejects_other_algorithms() -> None:
@@ -208,22 +257,12 @@ def test_regenerate_keys_are_per_case_and_rate_limited(client: TestClient, store
     assert second.status_code == 202 and second.json()["duplicate"] is False
 
     svc = client.app.state.services  # type: ignore[attr-defined]
-    svc.regenerate_limit.limit = 2
+    svc.regenerate_limit = 2
     third = client.post(
         f"/v1/summaries/{CASE_ID}:regenerate",
         headers={**auth("analyst"), "Idempotency-Key": "fresh-key-0003"},
     )
     assert third.status_code == 429
-
-
-def test_sliding_window_limit() -> None:
-    from fraud_summarizer.app import SlidingWindowLimit
-
-    now = [0.0]
-    lim = SlidingWindowLimit(2, 10, clock=lambda: now[0])
-    assert lim.allow("a") and lim.allow("a") and not lim.allow("a") and lim.allow("b")
-    now[0] = 10.5
-    assert lim.allow("a")
 
 
 def test_a_crashed_background_consumer_is_logged_and_fails_readiness(
@@ -255,11 +294,11 @@ def test_a_crashed_background_consumer_is_logged_and_fails_readiness(
 
 def test_a_rate_limited_regenerate_does_not_consume_its_key(client: TestClient) -> None:
     svc = client.app.state.services  # type: ignore[attr-defined]
-    svc.regenerate_limit.limit = 0
+    svc.regenerate_limit = 0
     headers = {**auth("analyst"), "Idempotency-Key": "retry-after-429"}
     assert client.post(f"/v1/summaries/{CASE_ID}:regenerate", headers=headers).status_code == 429
     # The refused request never ran: a retry with the same key once the limit allows is a new request.
-    svc.regenerate_limit.limit = 20
+    svc.regenerate_limit = 20
     retry = client.post(f"/v1/summaries/{CASE_ID}:regenerate", headers=headers)
     assert retry.status_code == 202
     assert retry.json()["duplicate"] is False and retry.json()["run_id"]

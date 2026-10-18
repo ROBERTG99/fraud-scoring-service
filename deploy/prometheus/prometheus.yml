@@ -11,6 +11,6 @@ scrape_configs:
   - job_name: feature-updater
     static_configs: [{ targets: ["feature-updater:8512"] }]
   - job_name: case-summarizer
-    static_configs: [{ targets: ["case-summarizer:8513"] }]
+    static_configs: [{ targets: ["case-summarizer:8517"] }]
   - job_name: model-server
     static_configs: [{ targets: ["model-server:8514"] }]

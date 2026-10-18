@@ -14,15 +14,14 @@ import os
 import re
 import time
 import uuid
-from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Literal, Protocol
+from wsgiref.simple_server import WSGIServer
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import Response
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from prometheus_client import start_http_server
 from pydantic import BaseModel, ConfigDict
 
 from fraud_summarizer.auth import InvalidTokenError, Principal, RemoteKeys, Verifier, check_jwks_url
@@ -34,7 +33,6 @@ from fraud_summarizer.telemetry import configure_logging, init_tracing
 
 log = logging.getLogger(__name__)
 
-REGENERATE_CONSUMER = "regenerate"
 REGENERATE_ROLES = frozenset({"analyst", "risk_engineer"})
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _IDEM_KEY = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
@@ -47,9 +45,12 @@ class SummaryStore(Protocol):
 
     async def decision_for_case(self, case_id: str) -> str | None: ...
 
-    async def is_processed(self, consumer: str, key: str) -> bool: ...
-
-    async def mark_processed(self, consumer: str, key: str) -> bool: ...
+    async def record_regeneration(
+        self, subject: str, case_id: str, key: str, *, limit: int, window_s: float
+    ) -> str:
+        """Record a regenerate request unless it is a replay ("duplicate") or subject already made `limit`
+        requests in the trailing window ("limited"); otherwise "accepted". Shared by every process."""
+        ...
 
 
 class TokenVerifier(Protocol):
@@ -67,23 +68,28 @@ class RegenerateAccepted(BaseModel):
     duplicate: bool = False
 
 
-class SlidingWindowLimit:
-    """At most `limit` events per subject in the trailing `window_s` seconds (in memory, per process)."""
+class TokenBucket:
+    """`rate` requests per second per subject, burst `rate` (in memory, per process, as the scorer's limiter)."""
 
-    def __init__(self, limit: int, window_s: float, clock: Callable[[], float] = time.monotonic) -> None:
-        self.limit = limit
-        self.window_s = window_s
+    MAX_SUBJECTS = 10_000  # bounds memory; buckets refill anyway when the map is reset
+
+    def __init__(self, rate: float, clock: Callable[[], float] = time.monotonic) -> None:
+        self.rate = rate
         self.clock = clock
-        self._hits: dict[str, deque[float]] = {}
+        self._buckets: dict[str, tuple[float, float]] = {}  # subject -> (tokens, last)
 
     def allow(self, subject: str) -> bool:
+        if self.rate <= 0:
+            return True
         now = self.clock()
-        q = self._hits.setdefault(subject, deque())
-        while q and q[0] <= now - self.window_s:
-            q.popleft()
-        if len(q) >= self.limit:
+        if subject not in self._buckets and len(self._buckets) >= self.MAX_SUBJECTS:
+            self._buckets.clear()
+        tokens, last = self._buckets.get(subject, (self.rate, now))
+        tokens = min(self.rate, tokens + (now - last) * self.rate)
+        if tokens < 1:
+            self._buckets[subject] = (tokens, now)
             return False
-        q.append(now)
+        self._buckets[subject] = (tokens - 1, now)
         return True
 
 
@@ -93,7 +99,19 @@ class Services:
     pipeline: SummaryPipeline
     verifier: TokenVerifier
     background: list[asyncio.Task[Any]] = field(default_factory=list)
-    regenerate_limit: SlidingWindowLimit = field(default_factory=lambda: SlidingWindowLimit(20, 3600))
+    # Paid regenerations per user per hour, counted in Postgres (NFR-9, audit M6 L6).
+    regenerate_limit: int = 20
+    regenerate_window_s: float = 3600.0
+    request_limit: TokenBucket = field(
+        default_factory=lambda: TokenBucket(20)
+    )  # spec §4.4: 20 req/s per user
+
+
+def start_admin_metrics(addr: str) -> WSGIServer:
+    """Serve /metrics on addr ("host:port"), apart from the API port (audit M6 L2)."""
+    host, _, port = addr.rpartition(":")
+    server, _thread = start_http_server(int(port), host or "127.0.0.1")
+    return server
 
 
 Factory = Callable[[], Awaitable[tuple[Services, Callable[[], Awaitable[None]]]]]
@@ -109,6 +127,7 @@ async def _production_services() -> tuple[Services, Callable[[], Awaitable[None]
     dsn = os.environ.get(
         "FRAUD_SUMMARIZER_PG_DSN", "postgresql://fraud_summarizer:fraud_summarizer@127.0.0.1:8520/fraud"
     )
+    admin = start_admin_metrics(os.environ.get("FRAUD_SUMMARIZER_ADMIN_ADDR", "127.0.0.1:8517"))
     pool = PostgresRepository.create_pool(dsn)
     await pool.open(wait=False)
     repo = PostgresRepository(pool)
@@ -126,6 +145,8 @@ async def _production_services() -> tuple[Services, Callable[[], Awaitable[None]
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await asyncio.wait_for(task, timeout=10)
         await pool.close()
+        admin.shutdown()
+        admin.server_close()
 
     return services, close
 
@@ -142,9 +163,12 @@ async def principal(request: Request, svc: Annotated[Services, Depends(services)
     if not auth.startswith("Bearer "):
         raise HTTPException(401, "missing bearer token")
     try:
-        return await svc.verifier.verify(auth.removeprefix("Bearer ").strip())
+        who = await svc.verifier.verify(auth.removeprefix("Bearer ").strip())
     except InvalidTokenError as exc:
         raise HTTPException(401, "invalid token") from exc
+    if not svc.request_limit.allow(who.subject):
+        raise HTTPException(429, "rate limit exceeded")
+    return who
 
 
 def _report_stopped(task: asyncio.Task[Any]) -> None:
@@ -172,7 +196,15 @@ def create_app(factory: Factory | None = None) -> FastAPI:
             await close()
             shutdown_tracing()
 
-    app = FastAPI(title="fraud case-summarizer", version="0.1.0", lifespan=lifespan)
+    # No /docs, /redoc or /openapi.json: the document is generated offline (scripts/summarizer_openapi.py).
+    app = FastAPI(
+        title="fraud case-summarizer",
+        version="0.1.0",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:
@@ -188,10 +220,6 @@ def create_app(factory: Factory | None = None) -> FastAPI:
             if task.done():
                 raise HTTPException(503, f"{task.get_name()} stopped")
         return {"status": "ready"}
-
-    @app.get("/metrics")
-    async def metrics() -> Response:
-        return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
     @app.get("/v1/summaries/{case_id}")
     async def get_summary(
@@ -223,16 +251,20 @@ def create_app(factory: Factory | None = None) -> FastAPI:
         decision_id = await svc.store.decision_for_case(case_id)
         if decision_id is None:
             raise HTTPException(404, "case not found")
-        # Keys are scoped to the case: the same key on another case is a different request.
-        key = f"{case_id}:{idempotency_key}"
-        if await svc.store.is_processed(REGENERATE_CONSUMER, key):
+        # Keys are scoped to the case: the same key on another case is a different request. Each
+        # regeneration is a paid model call, bounded per user (NFR-9); a refused request records nothing,
+        # so it can be retried with the same key.
+        outcome = await svc.store.record_regeneration(
+            who.subject,
+            case_id,
+            idempotency_key,
+            limit=svc.regenerate_limit,
+            window_s=svc.regenerate_window_s,
+        )
+        if outcome == "duplicate":
             return RegenerateAccepted(case_id=case_id, status="accepted", duplicate=True)
-        # Each regeneration is a paid model call: bound it per user (NFR-9). Checked before the key is
-        # recorded, so a refused request can be retried with the same key.
-        if not svc.regenerate_limit.allow(who.subject):
+        if outcome == "limited":
             raise HTTPException(429, "regeneration rate limit: try again later")
-        if not await svc.store.mark_processed(REGENERATE_CONSUMER, key):
-            return RegenerateAccepted(case_id=case_id, status="accepted", duplicate=True)  # concurrent twin
         run_id = str(uuid.uuid4())
 
         async def run() -> None:

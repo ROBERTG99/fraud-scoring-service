@@ -121,22 +121,6 @@
         "summary": "Healthz"
       }
     },
-    "/metrics": {
-      "get": {
-        "operationId": "metrics_metrics_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Metrics"
-      }
-    },
     "/readyz": {
       "get": {
         "operationId": "readyz_readyz_get",

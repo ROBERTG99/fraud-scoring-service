@@ -191,8 +191,13 @@ async def test_consumer_writes_summary_for_review_event(database: Database) -> N
         served = await repo.get_summary(CASE_ID)
         assert served is not None and served["status"] == "ok" and "facts" not in served["summary"]
         assert await repo.get_summary(str(uuid.uuid4())) is None
-        assert await repo.mark_processed("regenerate", "it-key-0001") is True
-        assert await repo.mark_processed("regenerate", "it-key-0001") is False
+        regen = repo.record_regeneration
+        assert await regen("analyst-1", CASE_ID, "it-key-0001", limit=2, window_s=3600) == "accepted"
+        assert await regen("risk-1", CASE_ID, "it-key-0001", limit=2, window_s=3600) == "duplicate"
+        assert await regen("analyst-1", CASE_ID, "it-key-0002", limit=2, window_s=3600) == "accepted"
+        assert await regen("analyst-1", CASE_ID, "it-key-0003", limit=2, window_s=3600) == "limited"
+        assert await regen("risk-1", CASE_ID, "it-key-0003", limit=2, window_s=3600) == "accepted"
+        assert await regen("analyst-1", CASE_ID, "it-key-0004", limit=2, window_s=0.000001) == "accepted"
         # One paid attempt recorded for the summarized decision; the counter climbs per attempt (D-048).
         assert await repo.begin_attempt(CONSUMER_NAME, DECISION_ID) == 2
         assert await repo.begin_attempt("it", "fresh") == 1

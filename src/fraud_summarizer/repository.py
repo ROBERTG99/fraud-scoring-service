@@ -1,7 +1,7 @@
 """Postgres access for the summarizer: case facts in, summaries and step records out (spec §4.5).
 
-The summarizer only writes `case_summaries`, `step_records`, `processed_messages` and `summary_attempts`; it
-never writes `decisions`.
+The summarizer only writes `case_summaries`, `step_records`, `processed_messages`, `summary_attempts` and
+`summary_regenerations`; it never writes `decisions`.
 """
 
 from __future__ import annotations
@@ -184,6 +184,34 @@ class PostgresRepository:
             if row is None:
                 raise RuntimeError("summary_attempts upsert returned no row")
             return int(row[0])
+
+    async def record_regeneration(
+        self, subject: str, case_id: str, key: str, *, limit: int, window_s: float
+    ) -> str:
+        """accepted, duplicate or limited (D-054). A per-subject advisory lock makes count-then-insert atomic
+        across summarizer processes."""
+        async with self.pool.connection() as conn, conn.transaction():
+            await conn.execute("SELECT pg_advisory_xact_lock(hashtext('regenerate:' || %s))", (subject,))
+            cur = await conn.execute(
+                "SELECT 1 FROM summary_regenerations WHERE case_id = %s AND idempotency_key = %s",
+                (case_id, key),
+            )
+            if await cur.fetchone() is not None:
+                return "duplicate"
+            cur = await conn.execute(
+                "SELECT count(*) FROM summary_regenerations "
+                "WHERE subject = %s AND requested_at > now() - make_interval(secs => %s)",
+                (subject, window_s),
+            )
+            row = await cur.fetchone()
+            if row is not None and int(row[0]) >= limit:
+                return "limited"
+            cur = await conn.execute(
+                "INSERT INTO summary_regenerations (case_id, idempotency_key, subject) VALUES (%s, %s, %s) "
+                "ON CONFLICT DO NOTHING RETURNING 1",
+                (case_id, key, subject),
+            )
+            return "accepted" if await cur.fetchone() is not None else "duplicate"  # a concurrent twin
 
     async def decision_for_case(self, case_id: str) -> str | None:
         async with self.pool.connection() as conn:

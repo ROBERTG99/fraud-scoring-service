@@ -173,6 +173,8 @@ func TestServiceRolesAreLeastPrivilege(t *testing.T) {
 	allowed("fraud_summarizer", `INSERT INTO summary_attempts (consumer, message_key) VALUES ('s', 'k')
 	  ON CONFLICT (consumer, message_key) DO UPDATE SET attempts = summary_attempts.attempts + 1`)
 	denied("fraud_summarizer", `DELETE FROM summary_attempts`)
+	allowed("fraud_summarizer", `INSERT INTO summary_regenerations (case_id, idempotency_key, subject) VALUES (`+caseID+`, 'k', 's')`)
+	denied("fraud_summarizer", `DELETE FROM summary_regenerations`)
 	denied("fraud_app", `INSERT INTO summary_attempts (consumer, message_key) VALUES ('a', 'k')`)
 	denied("fraud_retention", `INSERT INTO decisions (decision_id) VALUES (gen_random_uuid())`)
 	allowed("fraud_retention", `DELETE FROM decisions`) // cascades to the case, summary and outbox rows
