@@ -136,7 +136,9 @@ def test_service_containers_are_hardened() -> None:
     services = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
     built = {n: s for n, s in services.items() if "build" in s}
     # Every image this repository builds runs hardened, jobs included (T-43).
-    assert {"scorer", "case-summarizer", "model-server", "webserve", "seed", "migrate", "mlflow"} <= set(built)
+    assert {"scorer", "case-summarizer", "model-server", "webserve", "seed", "migrate", "mlflow"} <= set(
+        built
+    )
     for name, svc in built.items():
         assert svc.get("read_only") is True, name
         assert svc.get("cap_drop") == ["ALL"], name

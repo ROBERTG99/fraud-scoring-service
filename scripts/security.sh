@@ -28,11 +28,13 @@ skip() { ROWS+=("$1|n/a|$2"); }
 
 run gitleaks gitleaks detect --no-banner --redact --source .
 run gosec gosec -quiet ./cmd/... ./internal/...
-run govulncheck govulncheck ./cmd/... ./internal/...
+# The production binaries and everything they link; internal/testutil (testcontainers, docker client) is
+# test-only and no binary imports it (docs/security.md, accepted findings).
+run govulncheck govulncheck ./cmd/...
 run bandit bandit -q -r src training serving scripts evals -ll
 REQ=$(mktemp)
 if uv export --frozen --all-groups --no-emit-project --format requirements-txt >"$REQ.all" 2>"$OUT/uv-export.txt" &&
-  grep -v -- '-e \|third_party' "$REQ.all" >"$REQ" && [ "$(grep -c '==' "$REQ")" -gt 0 ]; then
+  grep -v -- '-e \|git+https://github.com/ROBERTG99/evalgate' "$REQ.all" >"$REQ" && [ "$(grep -c '==' "$REQ")" -gt 0 ]; then
   run pip-audit pip-audit -r "$REQ" --no-deps --disable-pip --progress-spinner off
 else # an empty requirements file would "pass" pip-audit: fail closed instead
   ROWS+=("pip-audit|NOT RUN|uv export failed or listed no packages (see $OUT/uv-export.txt)")

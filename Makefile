@@ -130,6 +130,7 @@ test: test-deps-up ## Unit, integration and contract tests on the host
 	$(MAKE) test-go test-py test-web
 
 test-go:
+	@mkdir -p artifacts/coverage
 	$(TEST_ENV) $(GO) test -race -count=1 -tags integration -coverprofile=artifacts/coverage/go.out -coverpkg=./internal/...,./cmd/... $(GO_PKGS)
 	$(GO) run ./scripts/gocover -profile artifacts/coverage/go.out -core internal/features,internal/rules,internal/decide,internal/store -min-core 85 -min-total 70
 

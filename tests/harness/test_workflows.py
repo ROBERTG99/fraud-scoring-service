@@ -31,7 +31,7 @@ def run_text(doc: dict[str, Any]) -> str:
 
 
 def test_required_workflows_exist() -> None:
-    assert REQUIRED <= {p.name for p in WF.glob("*.yml")}
+    assert {p.name for p in WF.glob("*.yml")} >= REQUIRED
     for name in REQUIRED:
         doc = workflow(name)
         assert doc.get("on") and doc.get("jobs"), name
@@ -68,7 +68,14 @@ def test_docker_terraform_e2e_and_release() -> None:
     release = workflow("release.yml")
     assert release["on"]["push"]["tags"] == ["v*"]
     rel = run_text(release)
-    assert "ghcr.io" in (WF / "release.yml").read_text(encoding="utf-8") and "sbom" in rel.lower()
+    images = [
+        step["with"]["images"]
+        for job in release["jobs"].values()
+        for step in job.get("steps", [])
+        if str(step.get("uses", "")).startswith("docker/metadata-action")
+    ]
+    assert images and all(i.split("/", 1)[0] == "ghcr.io" for i in images), images
+    assert "sbom" in rel.lower()
     # Nothing here deploys anywhere or applies Terraform (spec §0 rule 8).
     for name in REQUIRED:
         text = (WF / name).read_text(encoding="utf-8")
