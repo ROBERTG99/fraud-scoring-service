@@ -225,10 +225,10 @@ Measured on Docker Desktop (macOS arm64, 10 vCPU and 8 GB for the VM) with the r
 cloud-drive folder (`PROGRESS.md`, T-43, T-46):
 
 - The degraded demo checkpoint (`model_unavailable_rules_only`, every call under the 45 ms Score budget with the
-  model server paused) passed 2 of 3 consecutive `make demo` runs (slowest 25.4 and 26.3 ms); the third saw one
-  call at 53.2 ms, in the same second as a Postgres commit that missed its 30 ms deadline and was spooled, so the
-  whole VM stalled. Sequential calls with the model paused measured 22.5 to 31 ms over 92 calls. The CI e2e job
-  runs the demo on a Linux runner.
+  model server paused) first passed 2 of 3 runs here and failed once on Linux CI (45.9 ms): the commit took the
+  time the model left and spooled after the deadline. With D-078's spool reserve, 8 of 8 consecutive runs passed
+  (slowest 27.1 to 31.4 ms). An fsync slower than the 12 ms reserve still overruns the budget; on Docker Desktop
+  traces showed commits up to 33.9 ms.
 - `make seed` scored 16,943 transactions with 680 degraded (531 `MODEL_UNAVAILABLE`, 149
   `FEATURES_UNAVAILABLE`): the 20 ms model and 8 ms Redis budgets are tight for a 250 tx/s replay inside the
   VM. The host stack (`scripts/seed_host.sh`) degrades far fewer (`PROGRESS.md`, T-31).
@@ -261,4 +261,3 @@ across platforms. From the same data, seed and `n_jobs`, macOS arm64 trained `gb
 and with it `make verify`, fails at `eval-model` on arm64 machines (`docs/verification.md`). The gate is not
 loosened: train the model that ships on x86-64 (CI, or the SageMaker launcher's `ml.m5` instances), and treat
 the decline-band calibration as model-specific until isotonic calibration on the decline band is made robust.
-
