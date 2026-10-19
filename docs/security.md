@@ -59,7 +59,7 @@ local stack the personas share one subject per role, so per-user limits are per 
 |---|---|---|
 | LLM01 Prompt injection | Merchant names and account-event payloads are third-party text inside the prompt. | Facts are fenced as JSON data with `<`, `>` and backticks escaped (`test_fact_values_cannot_break_the_fence`), and the fence holds in the prompt the provider receives: the gateway redacts fenced JSON value by value and writes it again, and decoding turns any escaped character that is not a letter, digit, `@` or plain separator into a space, never into a quote, bracket or `<` (`test_the_prompt_the_provider_receives_keeps_the_fence`, `test_redaction_decodes_only_to_harmless_characters`, D-066, D-067); the prompt says to ignore instructions in data; output is schema-validated; each evidence item must cite a present fact and carry it (a numeric fact's number, a non-numeric fact's value or one of its items, a quote of at least 4 characters for free text such as `merchant_name`); a value is matched as a whole token, with its case for codes such as `US` or `REVIEW`; statements and recommended checks with case-clearing language ("approve", "not fraud", "verified merchant") are dropped, and only clearing words inside one cited occurrence of the value (a merchant called "Genuine Parts Co") are allowed; words joined by any run of punctuation or by nothing count as phrases (`test_clearing_words_count_only_inside_one_cited_value`, `test_a_merchant_name_cannot_carry_clearing_words_twice`, `test_clearing_words_joined_by_hyphens_or_underscores_are_dropped`, D-064 to D-066); `recommended_checks` are bounded to 200 characters each (`test_statements_must_carry_their_fact_and_must_not_clear_the_case`, `test_recommended_checks_are_bounded`, D-059). The screen is a word list: clearing language it does not know passes. `test_injection_in_merchant_name_is_ignored` runs offline against FakeLLM, so it tests the pipeline's checks, not a model's resistance; no live run has been made (no provider keys here). |
 | LLM02 Sensitive information disclosure | Facts could carry PII planted in free text. | `redact.py` removes emails, phone numbers, card numbers (13–19 digits, Luhn; groups in a card shape or equal groups separated by any run of up to 8 characters that are not letters or digits, the same at every gap or not, every Luhn-valid window redacted with overlaps merged, text redacted as written and with percent escapes (UTF-8 runs as one character, invalid bytes as U+FFFD) and HTML entities (also the legacy names and numeric references without ";") decoded until nothing changes, escapes written more than once and escapes that folding rebuilds included (D-069), whatever either reading finds redacted, and the whole repeated until nothing changes (`test_escaped_separators_still_separate`, 36 encodings; `test_escapes_written_more_than_once_still_separate`; `test_a_card_found_in_either_reading_is_redacted`; `test_redaction_repeats_until_nothing_changes`; `test_redacting_twice_changes_nothing`; D-067, D-068), and runs of 20+ digits (D-063 to D-065, `test_no_card_survives_any_short_separator_run`, 6,000 seeded cases, no 6 card digits in a row; `test_a_card_overlapping_a_luhn_valid_window_is_redacted_whole`; `test_round_five_layouts_leave_no_six_card_digits`); glued to letters or hex when contiguous or in a card shape; phones glued to letters in the 3-3-4 shape, also with the area code in parentheses) and SSNs after Unicode normalisation, including adjacent items,; it runs at the gateway for every route and on the facts before truncation (`test_no_pii_reaches_provider`, 15 inputs over every route, the case-facts path and the judge; a seeded fuzz of 3,000 adjacent pairs, `test_no_digit_of_adjacent_pii_survives`). Out of scope: names, postal addresses, IBANs, obfuscated addresses ("john(at)example"), masked card numbers and bare 9-digit SSNs without an "SSN" keyword. It errs toward removing digits: a device hash containing a Luhn-valid 13–19 digit run loses it (`docs/KNOWN_LIMITATIONS.md`). Devices are salted hashes and IPs /24 prefixes before they reach the scorer. Offline evals: `pii_to_provider` 0 (`evals/REPORT.md`). |
-| LLM03 Supply chain | Provider SDKs, model artifacts, base images. | Locked dependencies (`uv.lock`, `pnpm-lock.yaml`, `go.sum`); the Dockerfiles' base images pinned by digest (D-055; the third-party images in `compose.yaml` are pinned by version tag and those in `compose.test.yaml` by floating tags such as `redis:7-alpine`); `make security`; the scoring model is our own ONNX artifact, verified by SHA-256 at load (D-047). |
+| LLM03 Supply chain | Provider SDKs, model artifacts, base images. | Locked dependencies (`uv.lock`, `pnpm-lock.yaml`, `go.sum`); the Dockerfiles' base images pinned by digest (D-055); the third-party images in the compose files are pinned by tag, some floating (`pgvector/pgvector:pg16`, `redis:7-alpine`), not by digest (open finding 6); `make security`; the scoring model is our own ONNX artifact, verified by SHA-256 at load (D-047). |
 | LLM04 Data and model poisoning | Training data and labels. | Synthetic generator with a fixed seed; analyst labels are insert-only and audited; retraining is an explicit `make train` with a new registry version and shadow comparison before promotion. |
 | LLM05 Improper output handling | Summary text rendered in the console. | Output must match the JSON schema; the console renders text, never HTML; uncited evidence is dropped; a failed or unfaithful summary falls back to a templated fact list. |
 | LLM06 Excessive agency | The summarizer process. | A fixed pipeline with no tools; its database role writes only summaries and bookkeeping (D-043). Network egress beyond the provider is not restricted by any policy here: a deployment must enforce it. |
@@ -70,22 +70,21 @@ local stack the personas share one subject per role, so per-user limits are per 
 
 ## Scan results
 
-`make security` on 2026-10-18 (raw reports in `artifacts/security/`):
+`make security` on 2026-10-19 at the T-49 fixes (raw reports in `artifacts/security/`); the `docker` workflow runs
+the same script on every pull request:
 
 | Scanner | Result | Notes |
 |---|---|---|
 | gitleaks | pass | full history |
-| gosec | pass | 22 `#nosec` annotations in `cmd/` and `internal/`, each with its reason on the line; grouped below |
-| govulncheck | **not run** | `vuln.go.dev` is blocked by the build environment's network policy; the gate fails closed |
+| gosec | pass | 24 `#nosec` annotations in `cmd/` and `internal/`, each with its reason on the line; grouped below |
+| govulncheck | pass | `./cmd/...`: every production binary and what it links, no reachable vulnerability. `internal/testutil` (testcontainers, the Docker client) is test-only and outside the scan; accepted findings below |
 | bandit | pass | `-ll` over `src`, `training`, `serving`, `scripts`, `evals`; one `# nosec B108`: libpq's default socket directories (`/tmp` among them) in `src/fraud_summarizer/auth.py`, compared with the DSN host and never opened |
-| pip-audit | pass | 205 locked packages, no known vulnerabilities |
+| pip-audit | pass | 208 locked packages, no known vulnerabilities; evalgate, a VCS dependency without a hash, is audited in its own repository |
 | pnpm audit (high) | pass | one accepted advisory below |
-| hadolint, checkov (Dockerfiles) | pass | |
-| trivy, `fraud/case-summarizer:dev` | pass | vulnerabilities (HIGH, CRITICAL, fixed) and secrets |
-| trivy, `fraud/scorer:dev` | pass | Go 1.26.9 with the upgraded modules (D-042) |
-| trivy, model server and MLflow images | not scanned | `security.sh` scans the `fraud/` images of `compose.yaml`; these two images are not in it yet (T-43) |
-| tflint, actionlint | n/a | no Terraform (T-44) or workflows (T-45) yet |
-| licence check | pass | 292 permissive, 7 recorded exceptions (D-039) |
+| hadolint, checkov (Dockerfiles) | pass | all seven Dockerfiles |
+| trivy, every `fraud/` image | pass | scorer, feature-updater, dev-issuer, webserve, retention, case-summarizer, model-server, MLflow, seed: vulnerabilities (HIGH, CRITICAL, fixed) and secrets |
+| tflint, actionlint | pass | `infra/terraform` (built-in ruleset), `.github/workflows` |
+| licence check | pass | 294 permissive, 7 recorded exceptions (D-039) |
 
 ## Accepted findings
 
@@ -99,15 +98,19 @@ local stack the personas share one subject per role, so per-user limits are per 
 | gosec G118 (goroutine context) | `internal/stream/consumer.go` | Partition workers are owned by their quit and done channels; the rebalance callback's context is the client's. |
 | GHSA-vfj7-8cjw-p6xm (`braces`, high) | `markdownlint-cli2` (dev only) | No patched release exists; the input is this repository's own glob patterns. Recorded in `web/package.json` `pnpm.auditConfig.ignoreGhsas`. |
 | MPL-2.0, LGPL-3.0 (psycopg) | Python dependencies | D-039: used unmodified; LGPL only for the psycopg driver family. |
+| GO-2026-4883, GO-2026-4887 (`github.com/docker/docker`, no fixed version) | `internal/testutil` through testcontainers-go (tests only) | No production binary imports `internal/testutil` (`go list -deps ./cmd/...` lists neither module); `github.com/moby/go-archive` was raised to v0.3.0 for GO-2026-6253. |
 | CKV_DOCKER_7 | `Dockerfile.go` | The base image is a build argument whose default is pinned by digest. |
 
 ## Open findings
 
-1. **govulncheck not run** here (network policy). It must run where `vuln.go.dev` is reachable (CI) before a
-   release; until then trivy's module scan of the scorer image stands in for it.
-2. **Redis has no ACL users yet.** Clients send `FRAUD_REDIS_USERNAME` / `FRAUD_REDIS_PASSWORD` when set, but
-   no ACL is defined here and `compose.yaml` has no Redis until T-43 (D-044 describes the plan). Until then
-   anyone who reaches Redis can change feature keys; idempotency entries are protected by their MAC (D-062).
+1. **govulncheck covers the binaries only.** It runs on `./cmd/...` (pass, 2026-10-19); the test helpers'
+   testcontainers and Docker client modules carry advisories without a fix (accepted findings).
+2. **The local stack's data stores have no authentication.** Redis has no ACL users (clients send
+   `FRAUD_REDIS_USERNAME` / `FRAUD_REDIS_PASSWORD` when set; D-044 describes the plan), Postgres is reached
+   with development passwords (the `fraud` superuser included), and Kafka (8540) and the Redpanda admin API
+   (8541) take any client. They are published on 127.0.0.1 only (D-049), but any local process can change
+   feature keys or inject events whose free text reaches the summarizer's prompt (fenced as data, LLM01).
+   Idempotency entries are protected by their MAC (D-062). A deployment needs ACLs, TLS and real credentials.
 3. **Development credentials in the migrations.** The service roles are created with LOGIN and development
    passwords; services refuse those passwords outside dev mode (D-059), but a deployment must still set real
    passwords (or `NOLOGIN` and its own roles) when it migrates.
@@ -115,8 +118,10 @@ local stack the personas share one subject per role, so per-user limits are per 
    deployment needs a network policy that allows only the provider endpoints.
 5. **Anchors need append-only storage.** The anchors file shows a removed middle line, but not removed newest
    lines; it must live where the database's operators cannot truncate it (`docs/runbook.md`).
-6. **Images not scanned.** The model server and MLflow images are outside the trivy scan, and the third-party
-   images in the compose files are pinned by tag, not digest.
+6. **Third-party images pinned by tag.** Every `fraud/` image of the stack is scanned by trivy (`make
+   security`, the `docker` workflow), but the third-party images in the compose files (Postgres, Redis,
+   Redpanda, the observability profile) are pinned by tag, not digest, and run without the `hardened`
+   settings of the services this repository builds.
 7. **Trust that remains with a process.** The scorer holds the audit key and the summarizer's daily budget is
    per process; both are described in `docs/KNOWN_LIMITATIONS.md`.
 8. **The clearing screen is a word list.** Faithfulness drops statements and checks with case-clearing
@@ -141,3 +146,24 @@ local stack the personas share one subject per role, so per-user limits are per 
     replicas must share it (`docs/runbook.md`, Key rotation).
 13. **A replay after a lost idempotency value adds one feature event** before Postgres refuses it
     (`docs/KNOWN_LIMITATIONS.md`, D-064).
+14. **MLflow has no authentication** (T-43). Any local process (127.0.0.1:8560) or stack container can register
+    a model version with a matching `onnx_sha256` tag and move `@production`; the model server verifies the
+    artifact against the registry's own tag, so the digest check (D-047) only binds a deployment that pins
+    `FRAUD_MODEL_SHA256_<ALIAS>`, which the local stack does not. `--allowed-hosts` stops DNS rebinding only.
+15. **Only MLflow checks the `Host` header.** A page the developer visits could rebind its DNS name to
+    127.0.0.1:8500, mint a dev-issuer token through webserve's `/auth/` proxy and call `/api/` from the same
+    origin. The dev issuer is proxied only with `FRAUD_ENV=dev` (audit M6 M4); a `Host` allow-list for dev mode
+    would close this.
+16. **Provider keys in the `live` profile are environment variables**, visible to `docker inspect` on the
+    host; Compose `secrets:` would keep them out of the container metadata.
+17. **CI supply chain.** Third-party actions are pinned by tag in the workflows that hold only `contents:
+    read` (D-074); `release.yml`, which can push images and sign provenance, pins them by commit SHA (D-077).
+    `terraform.yml` downloads Terraform and tflint without a checksum check, and the e2e workflow uploads the
+    compose logs as an artifact (synthetic data and development credentials only).
+18. **The SageMaker role is not complete for a real job.** It has no `ecr:GetAuthorizationToken` (AWS grants it
+    only on `Resource: "*"`, which the module's no-wildcard rule refuses) and its `logs:CreateLogGroup` is
+    scoped to a log-stream ARN. The module is never applied; a deployment adds one narrowly reviewed statement
+    for the token (`docs/KNOWN_LIMITATIONS.md`).
+19. **The `mlflow` database role** (`deploy/postgres/init.sql`) has a development password and is not in the
+    D-059 refusal list, which covers the services' own roles.
+20. **`scripts/chaos.sh` passes the development service token in argv**, where `ps` shows it to local users.

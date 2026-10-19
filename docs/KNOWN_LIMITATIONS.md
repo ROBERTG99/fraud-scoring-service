@@ -236,3 +236,18 @@ cloud-drive folder (`PROGRESS.md`, T-43, T-46):
   `-race`, one integration test missed its 8 ms Redis budget for lack of CPU (D-073).
 - The model server's compose healthcheck is liveness (`/livez`): before `make seed` registers a model the stack
   is healthy and scores rules-only (D-073).
+
+## The SageMaker module is validated, not exercised
+
+`make tf-check` validates the module and asserts encryption, public access and IAM scope with a mocked
+provider; nothing is applied. The execution role lacks `ecr:GetAuthorizationToken` (AWS grants it only on
+`Resource: "*"`, which the module's no-wildcard test refuses), so a real training job would fail to pull its
+image until a deployment adds that one statement, and `logs:CreateLogGroup` is scoped to a log-stream ARN where
+it never matches (`docs/security.md`, open finding 18).
+
+## One scorer per spool directory
+
+The disk spool assumes one scorer process per `FRAUD_SPOOL_DIR`: `Drain` renames the active file, so a second
+process sharing the directory could keep writing into a file the first one replays and deletes. Compose runs
+one scorer on a named volume; replicas need a directory each (T-49 latency review).
+
