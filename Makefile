@@ -51,7 +51,7 @@ up: ## Start the full stack with healthchecks
 down: ## Stop the full stack
 	$(COMPOSE) down
 
-seed: ## Migrate, generate demo data, train, register and replay 24 h
+seed: ## Migrate, generate demo data, train, register and replay 72 h
 	$(COMPOSE) run --rm seed
 
 demo: ## Run the scripted demo scenario against the running stack (offline)

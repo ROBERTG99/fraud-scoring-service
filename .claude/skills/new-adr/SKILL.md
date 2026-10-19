@@ -4,7 +4,7 @@ description: Create a new Architecture Decision Record. Use for any architectura
 ---
 # New ADR
 
-1. Next number: `ls docs/adr | sort | tail -1`.
+1. Next number: `ls docs/adr/[0-9]*.md | sort | tail -1`, plus one.
 2. Create `docs/adr/NNNN-<kebab-title>.md` with sections: Status, Date, Context, Decision,
    Alternatives considered, Consequences.
 3. Add a row to `docs/DECISIONS.md` linking the ADR.
