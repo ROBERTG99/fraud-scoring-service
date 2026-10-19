@@ -250,4 +250,3 @@ it never matches (`docs/security.md`, open finding 18).
 The disk spool assumes one scorer process per `FRAUD_SPOOL_DIR`: `Drain` renames the active file, so a second
 process sharing the directory could keep writing into a file the first one replays and deletes. Compose runs
 one scorer on a named volume; replicas need a directory each (T-49 latency review).
-

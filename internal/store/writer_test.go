@@ -142,7 +142,8 @@ func TestCommitBeforeRespond(t *testing.T) {
 
 func TestGroupCommitBatchesConcurrentWrites(t *testing.T) {
 	pool := newPool(t, migratedDB(t))
-	w, err := NewGroupWriter(pool, WriterConfig{SpoolDir: t.TempDir()}, quiet)
+	// Every commit must reach the table: a slow CI runner under -race spooled some 200 ms batches (T-49).
+	w, err := NewGroupWriter(pool, relayWriterConfig(t), quiet)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,7 +15,6 @@ Build progress for `fraud-scoring-service`, driven by `docs/specs/000-build-spec
   the first 15 of each split) and note disagreements; a live judge score counts only after `make eval-live`
   reports agreement >= 0.8.
 
-
 ## Session handoff (read this first)
 
 Last updated 2026-10-19. Status: **M0–M5 done and reviewed. M6: T-41 and T-42 done; every finding of the
