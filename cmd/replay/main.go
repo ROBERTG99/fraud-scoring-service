@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"time"
 
@@ -38,6 +39,11 @@ type options struct {
 	token       string
 	waitGroup   string
 	waitTimeout time.Duration
+	// The scripted demo (scenario.go): -scenario demo -phase journey|degraded|recovered.
+	scenario string
+	phase    string
+	state    string
+	issuer   string
 }
 
 func envOr(k, d string) string {
@@ -59,8 +65,18 @@ func parse(args []string) (options, error) {
 	fs.StringVar(&o.token, "token", os.Getenv("FRAUD_SERVICE_TOKEN"), "service bearer token (default $FRAUD_SERVICE_TOKEN)")
 	fs.StringVar(&o.waitGroup, "wait-group", "feature-updater", "consumer group to wait for before scoring (empty: no wait)")
 	fs.DurationVar(&o.waitTimeout, "wait-timeout", 5*time.Minute, "how long to wait for the feature-updater")
+	fs.StringVar(&o.scenario, "scenario", "", "run a scripted scenario instead of a dataset (demo)")
+	fs.StringVar(&o.phase, "phase", phaseJourney, "scenario phase: journey, degraded or recovered")
+	fs.StringVar(&o.state, "state", "artifacts/demo/checkpoints.json", "scenario state and checkpoints file")
+	fs.StringVar(&o.issuer, "issuer", envOr("FRAUD_ISSUER_URL", "http://127.0.0.1:8515"), "dev-issuer URL for console personas")
 	if err := fs.Parse(args); err != nil {
 		return o, err
+	}
+	if o.scenario != "" && o.scenario != "demo" {
+		return o, fmt.Errorf("unknown scenario %q (want demo)", o.scenario)
+	}
+	if o.scenario != "" && !slices.Contains(demoPhases, o.phase) {
+		return o, fmt.Errorf("unknown phase %q (want one of %v)", o.phase, demoPhases)
 	}
 	if o.token == "" {
 		return o, errors.New("a service token is required (-token or FRAUD_SERVICE_TOKEN)")
@@ -77,6 +93,17 @@ func main() {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if o.scenario == "demo" {
+		ok, err := runDemo(ctx, o, log)
+		if err != nil {
+			log.Error("demo failed", "phase", o.phase, "err", err)
+			os.Exit(1)
+		}
+		if !ok {
+			os.Exit(1)
+		}
+		return
+	}
 	st, err := run(ctx, o, log)
 	if err != nil {
 		log.Error("replay failed", "err", err)

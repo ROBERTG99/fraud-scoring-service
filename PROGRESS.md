@@ -21,9 +21,9 @@ Build progress for `fraud-scoring-service`, driven by `docs/specs/000-build-spec
 
 ## Session handoff (read this first)
 
-Last updated 2026-10-18. Status: **M0–M5 done and reviewed. M6: T-41 and T-42 done; every finding of the
+Last updated 2026-10-19. Status: **M0–M5 done and reviewed. M6: T-41 and T-42 done; every finding of the
 M6 security audit (H1–H3, M1–M9, L1–L11) and of nine review rounds is fixed (D-041 to D-069); round 9's code
-review said ship and its audit found Lows only, fixed without a further round (maintainer's call). M7 is next.** `make lint` stops at `lint-tf` until T-44 adds
+review said ship and its audit found Lows only, fixed without a further round (maintainer's call). From M8, T-46 (demo) and T-47 (documentation) are done. M7 is next.** `make lint` stops at `lint-tf` until T-44 adds
 `infra/terraform` and `scripts/terraform.sh`; run `lint-go lint-py lint-web lint-proto lint-md` meanwhile.
 Data is generator v2 with feature spec v2 (D-026). Branch `feat/friendly-johnson-15rki1`, pushed.
 
@@ -185,8 +185,8 @@ chore: configure commit attribution
 | T-43 | Images, compose profiles, test compose | M7 | todo | |
 | T-44 | Terraform module | M7 | todo | |
 | T-45 | CI workflows | M7 | todo | |
-| T-46 | Demo scenario | M8 | todo | |
-| T-47 | Documentation set | M8 | done except the demo section (T-46) | Written at the end of M6 at the maintainer's request (D-070): README rewrite, `docs/{architecture,design-faq,evaluation,ai-development,verification}.md`, ADRs 0002–0009 with an index, `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`. `uv run pytest tests/unit/test_docs.py` (test_every_document_exists, test_the_design_faq_answers_every_question_with_file_references, test_readme_numbers_link_to_reports) → 3 passed; `make lint-md` → 66 files, 0 issues. `docs-editor` review at 2eba265: 5 blockers (seed window, KNOWN_LIMITATIONS line references and numbers, ops targets that need the compose stack), fixed in 9164e26. The README demo section and `make demo` wait on T-46. |
+| T-46 | Demo scenario | M8 | done (host stack; compose path waits on T-43) | `cmd/replay/scenario.go` (`replay -scenario demo -phase journey\|degraded\|recovered`), `scripts/demo.sh` (`make demo`), `tests/e2e/demo.spec.ts` (D-071). Test first: `demo.spec.ts` (every scenario checkpoint OK, then console_case, evidence_highlights_fact, label_leaves_queue on the demo case) and `go test -race ./cmd/replay` (TestDemoJourneyPassesEveryCheckpointOnAHealthyStack, TestDemoATOStepsFollowTheUserJourney, TestDemoTakeoverHappensInTheAfternoonWithinScoresWindow, TestDemoTakeoverAccountHasHistory, TestDemoScriptedEventsAndTransactionsAreValid, a failure case per checkpoint, TestDemoStateKeepsCheckpointOrderAcrossPhases, TestDemoFlagsSelectTheScenario) → ok. On `FULL=1 scripts/seed_host.sh` (16,904 decisions, 82 open cases) the first run scored the takeover 0.92 (DECLINE) at 04:20 UTC, and the stop command left BentoML's workers serving. Fixes: purchase at 13:00–15:00 UTC after four USD 900 purchases; SIGSTOP of the server and its workers; live metrics read until the degraded calls show. Then five consecutive `make demo` runs → "demo: all 13 checkpoints OK" (the timed ones 9–13 s): takeover REVIEW at score 0.65 in 6.7–11.0 ms, summary account_takeover with 3 of 3 evidence verified, 20 of 20 rules-only with the model stopped (slowest 25.4–30.6 ms), model back on the first call. `make e2e` lists no demo spec without `DEMO_CHECKPOINTS`. |
+| T-47 | Documentation set | M8 | done | Written at the end of M6 at the maintainer's request (D-070), the README demo section with T-46: README rewrite, `docs/{architecture,design-faq,evaluation,ai-development,verification}.md`, ADRs 0002–0009 with an index, `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`. `uv run pytest tests/unit/test_docs.py` (test_every_document_exists, test_the_design_faq_answers_every_question_with_file_references, test_readme_numbers_link_to_reports) → 3 passed; `make lint-md` → 66 files, 0 issues. `docs-editor` review at 2eba265: 5 blockers (seed window, KNOWN_LIMITATIONS line references and numbers, ops targets that need the compose stack), fixed in 9164e26. The README demo section and `make demo` wait on T-46. |
 | T-48 | Durability and chaos | M9 | todo | |
 | T-49 | Reviews and fixes | M9 | todo | |
 | T-50 | Final verification | M9 | todo | |

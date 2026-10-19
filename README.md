@@ -7,8 +7,9 @@ the LLM can never change, delay or block a decision. All data is synthetic.
 
 > **Status.** Milestones M0 to M6 of the [build specification](docs/specs/000-build-spec.md) are done: scoring,
 > features, model, rules, persistence, the case summarizer, the analyst console, evaluation, tracing and the
-> security review. M7 to M9 are not started: the one-command compose stack, Terraform, CI, the scripted demo and
-> chaos testing ([`PROGRESS.md`](PROGRESS.md)). The quick start below therefore runs the services on the host.
+> security review. From M8, the scripted demo and this documentation are done. Not started: the one-command
+> compose stack, Terraform, CI (M7) and chaos testing (M9) ([`PROGRESS.md`](PROGRESS.md)). The quick start
+> below therefore runs the services on the host.
 
 ## What it does
 
@@ -96,6 +97,44 @@ The console is then on <http://127.0.0.1:18500>; sign in by picking a synthetic 
 (an analyst can label cases). The script's
 header says how to stop the services. The one-command path (`make up`, `make seed`, then
 <http://localhost:8500>) arrives with the compose stack in M7 (T-43).
+
+## Demo
+
+With the stack from the quick start running, `make demo` plays the spec's user journeys offline in about ten
+seconds. Each run uses fresh accounts.
+
+1. **Analyst.** A USD 940 online purchase comes from a new device two minutes after an email change. It is
+   REVIEWed with `NEW_DEVICE_AFTER_CREDENTIAL_CHANGE`, summarized as an account takeover with three verified
+   evidence items, and queued. The analyst then labels it fraud in the console.
+2. **Risk engineer.** The shadow model's comparisons are recorded beside the decisions.
+3. **Degradation.** The model server is stopped: decisions continue rules-only, and the live metrics show
+   `MODEL_UNAVAILABLE`. The server is then started again.
+
+The run also covers an idempotent replay, a card-testing burst and an invalid event in the DLQ. Every step is
+a checkpoint, and the demo fails unless all of them pass. The checkpoint lines of a run on 2026-10-19
+(decision and case IDs shortened):
+
+```text
+demo: OK   1/10 ato_review (FR-1, FR-3, FR-7): USD 940 online, new device, email changed 2 min earlier: REVIEW in 8.0 ms, score 0.65, NEW_DEVICE_AFTER_CREDENTIAL_CHANGE,MODEL_SCORE_ELEVATED (model fraud-gbdt/3) (want REVIEW with NEW_DEVICE_AFTER_CREDENTIAL_CHANGE in < 50 ms)
+demo: OK   2/10 idempotent_replay (FR-1): same transaction_id scored twice: decision 01a1526d…a97b, then 01a1526d…a97b
+demo: OK   3/10 card_testing_burst (FR-7): eight USD 1.50 tests in 10 min, then USD 2.00: DECLINE in 4.2 ms, score 1.00, CARD_TESTING_BURST,MODEL_SCORE_HIGH (model fraud-gbdt/3) (want CARD_TESTING_BURST)
+demo: OK   4/10 invalid_event_dlq (FR-2): login event without its required fields (events.login partition 3 offset 15785) is in events.dlq
+demo: OK   5/10 case_persisted (FR-10, FR-13): decision 01a1526d…a97b is open case 82d34c4c…0bfb in the review queue
+demo: OK   6/10 summary_verified (FR-11): ok after 0.0 s: pattern account_takeover, 3 of 3 evidence items verified, faithfulness 1.00, model fake-case-summary-v1; decision unchanged: true
+demo: OK   7/10 shadow_compared (FR-9): 16901 comparisons in 24 h, shadow fraud-gbdt/3 against primary fraud-gbdt/3, agreement 100.0%
+demo: OK   8/10 model_unavailable_rules_only (FR-8): model server stopped: 20 of 20 decided rules-only (MODEL_UNAVAILABLE, model none), slowest 28.2 ms (budget 45), USD 250 → REVIEW
+demo: OK   9/10 live_metrics_degraded (FR-8, FR-13): live metrics (last 10 s): 18 MODEL_UNAVAILABLE, degraded rate 64%
+demo: OK   10/10 model_recovered (FR-8): model server back: decision 1 used model fraud-gbdt/3 after 0.0 s (REVIEW in 5.2 ms, score 0.56, MODEL_SCORE_ELEVATED (model fraud-gbdt/3))
+demo: OK   11/13 console_case (FR-13, console): the analyst opens the demo case with its reason codes and AI summary
+demo: OK   12/13 evidence_highlights_fact (FR-13, console): selecting an evidence item highlights its fact
+demo: OK   13/13 label_leaves_queue (FR-13, console): the analyst labels the case fraud after the row preview
+demo: all 13 checkpoints OK (artifacts/demo/checkpoints.json)
+```
+
+The shadow comparison runs the production version against itself until a second version is registered. The
+scenario places the purchase in the early afternoon UTC, because the model weighs the hour of day.
+[`docs/DECISIONS.md`](docs/DECISIONS.md) D-071 and [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md)
+have the details.
 
 To check the code without running the stack:
 

@@ -16,9 +16,18 @@ Not started (`PROGRESS.md`, Tasks):
 
 - **M7:** images, compose profiles and the test compose file for `make test-docker` (T-43), the SageMaker
   Terraform module (T-44), CI workflows (T-45).
-- **M8:** the scripted demo scenario behind `make demo` (T-46) and the documentation set (T-47). The
-  maintainer asked for the documentation set ahead of M7, and it is being written now (D-070).
 - **M9:** durability and chaos tests (T-48), final reviews and fixes (T-49), final verification (T-50).
+
+### M8: demo and documentation (T-46, T-47)
+
+#### Added
+
+- `make demo` (`scripts/demo.sh`, `cmd/replay/scenario.go`): the spec §3.4 journeys as 13 checkpoints
+  against the host stack, offline. A USD 940 purchase from a new device two minutes after an email change is
+  REVIEWed and summarized. The run also covers an idempotent replay, a card-testing burst, an invalid event
+  in the DLQ and the shadow comparison. The model server is stopped for rules-only decisions and then
+  restarted. `tests/e2e/demo.spec.ts` asserts the checkpoints and labels the case in the console (D-071).
+- The documentation set of spec §18, written ahead of M7 at the maintainer's request (D-070).
 
 ### M6: telemetry and security (T-41, T-42)
 
