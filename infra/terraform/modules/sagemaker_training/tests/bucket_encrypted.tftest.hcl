@@ -44,8 +44,8 @@ run "bucket_is_encrypted_versioned_and_private" {
   }
   assert {
     condition = anytrue([for s in jsondecode(aws_s3_bucket_policy.artifacts.policy).Statement :
-    s.Effect == "Deny" && s.Condition.Bool["aws:SecureTransport"] == "false"])
-    error_message = "the bucket policy must deny plain-HTTP access"
+    s.Effect == "Deny" && s.Action == "s3:*" && s.Condition.Bool["aws:SecureTransport"] == "false"])
+    error_message = "the bucket policy must deny every S3 action over plain HTTP"
   }
   assert {
     condition = (aws_ecr_repository.training.image_tag_mutability == "IMMUTABLE"

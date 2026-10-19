@@ -111,7 +111,7 @@ resource "aws_s3_bucket_policy" "artifacts" {
         Sid       = "DenyInsecureTransport"
         Effect    = "Deny"
         Principal = { AWS = "*" }
-        Action    = ["s3:GetObject", "s3:PutObject", "s3:ListBucket", "s3:DeleteObject"]
+        Action    = "s3:*" # a Deny: the wildcard only widens what plain HTTP is refused
         Resource  = [aws_s3_bucket.artifacts.arn, "${aws_s3_bucket.artifacts.arn}/*"]
         Condition = { Bool = { "aws:SecureTransport" = "false" } }
       },
