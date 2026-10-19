@@ -63,7 +63,7 @@ dev = [
 default-groups = ["dev", "training", "serving"]
 
 [tool.uv.sources]
-evalgate = { path = "third_party/evalgate", editable = true }
+evalgate = { git = "https://github.com/ROBERTG99/evalgate", tag = "v0.1.0" }
 
 [build-system]
 requires = ["hatchling>=1.25"]
@@ -75,7 +75,7 @@ packages = ["src/fraud_summarizer", "training"]
 [tool.ruff]
 line-length = 110
 target-version = "py312"
-extend-exclude = ["web", "gen", "third_party/evalgate/build", ".cache", "artifacts"]
+extend-exclude = ["web", "gen", ".cache", "artifacts"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF", "PL", "PT", "ASYNC"]
@@ -116,5 +116,5 @@ branch = false
 omit = ["*/tests/*"]
 
 [tool.bandit]
-exclude_dirs = ["tests", "web", ".venv", "third_party/evalgate/tests"]
+exclude_dirs = ["tests", "web", ".venv"]
 skips = ["B101"]

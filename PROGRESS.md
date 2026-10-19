@@ -4,7 +4,6 @@ Build progress for `fraud-scoring-service`, driven by `docs/specs/000-build-spec
 
 ## Needs the maintainer
 
-- **evalgate tag missing.** `git ls-remote https://github.com/ROBERTG99/evalgate` on 2026-10-16 shows only `refs/heads/main` (no `v0.1.0` tag, no code yet). Per §11 the consumer dependency rule applies: a minimal report.v1-compatible implementation lives in `third_party/evalgate/`. When `v0.1.0` is published, switch `pyproject.toml` to `evalgate @ git+https://github.com/ROBERTG99/evalgate@v0.1.0`, point `.github/workflows/evals.yml` at `ROBERTG99/evalgate/action@v0.1.0`, and delete `third_party/evalgate/`.
 - **No LLM provider key in the build environment.** `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` are unset, so
   LLM adapter fixtures are hand-authored in the documented shapes (D-011) and `make eval-live` /
   `make record-fixtures` cannot run here. Set the key in the cloud environment's variables to record real

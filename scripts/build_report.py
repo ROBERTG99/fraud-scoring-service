@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from evalgate.contracts import Report  # noqa: E402
-from evalgate.gate import check  # noqa: E402
+from evalgate.stats.gate import check  # noqa: E402
 from fraud_summarizer.pipeline import PROMPT_VERSION, load_prompt, prompt_hash  # noqa: E402
 
 REPORTS = ROOT / "evals" / "reports"

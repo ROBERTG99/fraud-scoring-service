@@ -188,8 +188,8 @@ Each `make eval-*` target that writes a report then runs
 evalgate check evals/reports/<suite>.json --baseline evals/reports/baseline/<suite>.json --max-regression-pp 1.0
 ```
 
-The vendored evalgate (`third_party/evalgate/`, following upstream's contracts, D-030) fails a report when
-(`third_party/evalgate/src/evalgate/gate.py`):
+evalgate `v0.1.0` (pinned in `pyproject.toml` and `uv.lock`, D-072) fails a report when
+(`evalgate.stats.gate.check` upstream):
 
 - a gated metric misses its threshold (the gated set is `extensions.gates` in the report);
 - the cost or p95 budget in `extensions.budget` is exceeded (the `summaries` suite sets `max_p95_ms: 200`; the

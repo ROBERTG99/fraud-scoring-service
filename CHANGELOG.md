@@ -10,6 +10,11 @@ quoted below come from [`PROGRESS.md`](PROGRESS.md), decisions from [`docs/DECIS
 
 ## Unreleased
 
+### Changed
+
+- evalgate is now the released `v0.1.0` (`git+https://github.com/ROBERTG99/evalgate@v0.1.0`, locked at
+  0681335 in `uv.lock`); the vendored stand-in in `third_party/evalgate/` is removed (D-072).
+
 ### Pending: M7 to M9
 
 Not started (`PROGRESS.md`, Tasks):

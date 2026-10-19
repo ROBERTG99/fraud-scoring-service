@@ -145,11 +145,8 @@ def python_packages() -> list[tuple[str, str, str | None]]:
     for dist in importlib.metadata.distributions():
         md = dist.metadata
         name = md["Name"]
-        if (
-            name == "fraud-scoring-service"
-            or (dist.read_text("direct_url.json") or "").find("third_party") >= 0
-        ):
-            continue  # this repository and its vendored MIT evalgate subset
+        if name == "fraud-scoring-service":
+            continue  # this repository
         declared = [md.get("License-Expression") or ""]
         declared += [c for c in md.get_all("Classifier") or [] if c.startswith("License ::")]
         declared.append(md.get("License") or "")
