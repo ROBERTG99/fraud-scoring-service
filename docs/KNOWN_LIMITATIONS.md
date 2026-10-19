@@ -61,14 +61,15 @@ What is not done, approximate or out of scope. Each entry names where it shows u
 The Python model server (BentoML) is the scorer's throughput limit when everything runs on one 4-CPU
 machine. Measurements in docs/DECISIONS.md D-024: without request batching, 250 tx/s with shadow scoring
 degraded 40% of decisions to rules-only (`MODEL_UNAVAILABLE`). The batching client fixed that for the seed
-rate: 68 of 16,863 degraded on gen v1 data after the D-025 fix and 59 of 16,904 on gen v2 data
-(`scripts/seed_report.py`); a v1 run on a host already loaded by earlier runs measured 5% degraded. Higher rates (the 1,000 RPS load target) need more model-server workers or Triton.
+rate: 63 of 16,863 degraded (0.37%) on gen v1 data (D-024) and 59 of 16,904 on gen v2 data
+(`scripts/seed_report.py`, PROGRESS T-31). Higher rates (the 1,000 RPS load target) need more model-server
+workers or Triton.
 
 The NFR-1 laptop target (2,000 RPS, p95 < 50 ms, p99 < 90 ms) is not met in the 4-vCPU build container,
 where ghz, the scorer, BentoML, Postgres, Redis and Redpanda share the CPUs: `make bench BENCH_PROFILE=laptop`
 achieved 586 of 2,000 rps with p95 603.8 ms, p99 728.5 ms and 99.3% of decisions degraded (Redis reads miss
 the 8 ms budget, so features fall back). The CI profile on the same machine passes (`make bench`: 300 rps,
-p95 21.8 ms, 0.87% degraded). The laptop number must be measured on a machine with the load generator on
+p95 19.6 ms, 0.94% degraded; [`evals/REPORT.md`](../evals/REPORT.md)). The laptop number must be measured on a machine with the load generator on
 separate cores; nothing here shows it is reachable.
 
 The CI profile's degraded share depends on how busy the host is: 0.94% on a quiet host (`make bench` at

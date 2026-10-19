@@ -20,7 +20,7 @@ Not built yet (M7 to M9, `PROGRESS.md` status `todo`):
   services and the `observability` and `datadog` profiles. Postgres, Redis, Redpanda, the model server, the
   feature-updater, MLflow, the dev-issuer, webserve, the `seed` job and the `triton` profile are not in it,
   and `Dockerfile.go` has a `scorer` target only. `make up`, `make seed`, `make triton-up`,
-  `make audit-verify` and `make test-docker` address that stack and do not work until T-43 lands. Every
+  `make audit-verify`, `make retention`, `make dlq-peek` and `make test-docker` address that stack and do not work until T-43 lands. Every
   measurement on this page comes from the host stack instead: `compose.test.yaml` (Postgres, Redis,
   Redpanda) plus processes started by `scripts/seed_host.sh`, `scripts/bench.sh` or `scripts/obs_host.sh`.
 - **T-44, Terraform.** There is no `infra/terraform/`; `make tf-check` and `make lint-tf` fail.
@@ -334,7 +334,7 @@ values validated against `schemas/events/` in Go (`internal/stream/validate.go`)
 | `events.login`, `events.device` | `internal/replay` | feature-updater |
 | `events.transaction` | scorer (`cmd/scorer/publisher.go`), warm-up phase of `internal/replay` | feature-updater |
 | `decisions` | outbox relay (`internal/store/outbox.go`) | case-summarizer |
-| `events.dlq` | feature-updater, case-summarizer | `make dlq-peek` |
+| `events.dlq` | feature-updater, case-summarizer | `rpk topic consume events.dlq` (`make dlq-peek` waits on T-43) |
 
 ### Events to features
 
@@ -406,7 +406,7 @@ the scorer binary and applied by `scorer migrate` with the owner role.
 | `account_events` | feature-updater | best-effort timeline for the console and the summarizer (D-005) |
 | `model_versions` | nothing yet | the table and grants exist (`migrations/00002_decisions.sql:85`), but no code writes it; the registry of record is MLflow |
 
-Retention (`cmd/retention`, `internal/store/retention.go`, `make retention`) deletes by age in batches:
+Retention (`cmd/retention`, `internal/store/retention.go`; `make retention` waits on T-43) deletes by age in batches:
 decisions and everything that cascades from them after 400 days, published outbox rows after 7 days, step
 records and processed messages after 90 days, account events after 400 days. It never deletes from
 `audit_log` (D-040, `TestRetentionDeletesOnlyExpiredRows`).

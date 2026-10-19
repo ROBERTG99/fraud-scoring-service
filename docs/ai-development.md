@@ -45,7 +45,7 @@ problem and which test now covers it. Architectural choices also get an ADR. The
 out of a mistake (D-026, mistake 2 below); the eight ADRs spec §18 asks for are numbered 0002 to 0009
 (D-070).
 
-The history has 133 commits on branch `feat/friendly-johnson-15rki1`, all authored and committed by the
+At commit 2eba265 the history has 134 commits on branch `feat/friendly-johnson-15rki1`, all authored and committed by the
 maintainer (`git log --oneline | wc -l` and `git log --format='%an <%ae> | %cn <%ce>' | sort -u`, run on
 2026-10-19).
 

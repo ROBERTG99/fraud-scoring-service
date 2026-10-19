@@ -19,7 +19,7 @@ allocations with tracing off (D-056, `go test -run xxx -bench BenchmarkScore -be
 64-rule evaluation takes 14.9 µs (`go test -bench BenchmarkEval64Rules ./internal/rules`, `PROGRESS.md:161`),
 and the feature-updater applies 57,359 events/s (`BenchmarkUpdater`, `PROGRESS.md:154`). No Python scorer was
 built, so no Go-versus-Python comparison was measured. The Python component on the path, the BentoML model
-server, is the throughput limit on a shared 4-CPU host (`docs/KNOWN_LIMITATIONS.md:58-64`).
+server, is the throughput limit on a shared 4-CPU host (`docs/KNOWN_LIMITATIONS.md:59-66`).
 
 ## 2. How is point-in-time correctness guaranteed?
 
@@ -47,7 +47,7 @@ mismatches (`tests/integration/parity_test.go:55`, `PROGRESS.md:155`). The calib
 ONNX graph (`training/export_onnx.py:1-5`, D-008), and training fails if ONNX and the native model differ by
 more than 1e-5 (`training/train.py:215-220`; 7.14e-06 on demo data, `PROGRESS.md:156`). Gaps: ONNX parity is
 checked on demo data only, and device features can differ after a 90-day gap
-(`docs/KNOWN_LIMITATIONS.md:44-46`, `:87-94`).
+(`docs/KNOWN_LIMITATIONS.md:44-46`, `:89-96`).
 
 ## 4. What happens on model timeout?
 
@@ -83,7 +83,7 @@ The `transaction_id` is the idempotency key. Score looks it up in Redis first an
 fails (`internal/api/scorer.go:340-361`, D-017). The stored value carries the SHA-256 of the request
 (`internal/api/scorer.go:320-329`, D-044), so a replay with different contents is refused with
 `ALREADY_EXISTS` (`internal/api/scorer.go:331-338`). Redis values are written with `SET NX` for 24 h and carry
-an HMAC over the transaction ID, the hash and the decision (`internal/store/idempotency.go:42-46`, `:81-92`,
+an HMAC over the transaction ID, the hash and the decision (`internal/store/idempotency.go:42-52`, `:81-92`,
 D-062), so a value planted in Redis is never served. Concurrent duplicates race to `INSERT … ON CONFLICT DO
 NOTHING` in Postgres (`internal/store/writer.go:265-279`): the loser returns the stored decision and writes it
 back to Redis (`internal/api/scorer.go:229-248`, D-057, D-064). Tests: `TestScoreReplayReturnsSameDecisionID`,
@@ -91,7 +91,7 @@ back to Redis (`internal/api/scorer.go:229-248`, D-057, D-064). Tests: `TestScor
 (`internal/api/scorer_test.go:240`, `:281`, `:411`). Downstream, the outbox relay delivers at least once, and
 consumers deduplicate on `decision_id` (`internal/store/outbox_test.go:23`, `PROGRESS.md:168`). Remaining gap:
 a replay after a lost Redis value adds one feature event before Postgres refuses it
-(`docs/KNOWN_LIMITATIONS.md:158-165`).
+(`docs/KNOWN_LIMITATIONS.md:160-167`).
 
 ## 7. How is shadow mode isolated?
 
@@ -104,7 +104,7 @@ recover from panics, and write only `shadow_comparisons` (`internal/model/shadow
 shadow (`internal/api/shadow_test.go:37`, `PROGRESS.md:169`). The isolation is not total. Primary and shadow
 calls go through the same batcher (one queue per alias) to the same model server
 (`cmd/scorer/main.go:181-186`, `:216-218`), so shadow load competes for model-server CPU. Before batching,
-that pushed 40% of decisions to rules-only at 250 tx/s (D-024, `docs/KNOWN_LIMITATIONS.md:60-64`).
+that pushed 40% of decisions to rules-only at 250 tx/s (D-024, `docs/KNOWN_LIMITATIONS.md:61-66`).
 
 ## 8. How is calibration checked?
 
@@ -174,8 +174,8 @@ verified (`faithfulness.py:185-188`). The pipeline keeps only verified items and
 when none remain (`src/fraud_summarizer/pipeline.py:362-370`); `test_number_mismatch_drops_item` covers the
 number rule (`tests/unit/test_pipeline.py:147`). Offline faithfulness is 1.0 (`make eval-summary`,
 `evals/REPORT.md:30`), but that holds by construction, because FakeLLM quotes fact values verbatim
-(`docs/KNOWN_LIMITATIONS.md:105-109`). The check also drops natural phrasing that omits the value, and its
-clearing screen is a word list that paraphrases pass (`docs/KNOWN_LIMITATIONS.md:201-206`,
+(`docs/KNOWN_LIMITATIONS.md:107-111`). The check also drops natural phrasing that omits the value, and its
+clearing screen is a word list that paraphrases pass (`docs/KNOWN_LIMITATIONS.md:203-208`,
 `docs/security.md:122-127`).
 
 ## 12. What PII leaves the system?
@@ -189,7 +189,7 @@ and every prompt again at the gateway (`src/fraud_summarizer/pipeline.py:305-306
 `src/fraud_summarizer/llm/gateway.py:111`). Redaction removes emails, phone numbers, Luhn-valid card numbers
 and SSNs (`src/fraud_summarizer/redact.py:1-19`). Offline, `pii_to_provider` is 0 (`make eval-summary`,
 `evals/REPORT.md:32`), but only for the seven planted formats. Names, street addresses, IBANs and non-US
-phone layouts are not measured (`docs/KNOWN_LIMITATIONS.md:110-114`). Spans and INFO logs carry no account,
+phone layouts are not measured (`docs/KNOWN_LIMITATIONS.md:112-116`). Spans and INFO logs carry no account,
 device or merchant IDs (`docs/security.md:40`). No egress policy is in place yet (`docs/security.md:114-115`).
 No live provider call has been made from this environment (`evals/REPORT.md:9`).
 
@@ -198,14 +198,14 @@ No live provider call has been made from this environment (`evals/REPORT.md:9`).
 Nothing near 20,000 RPS has been measured. The gated CI run sustains 300 RPS at p95 19.6 ms (`make bench`,
 `evals/REPORT.md:68`). The 2,000 RPS laptop profile reached only 586 RPS, with 99.3% of decisions degraded,
 in the 4-vCPU container where the load generator and every service share CPUs
-(`docs/KNOWN_LIMITATIONS.md:66-71`). What follows is reasoning from the architecture, not a measurement:
+(`docs/KNOWN_LIMITATIONS.md:68-73`). What follows is reasoning from the architecture, not a measurement:
 
 - **Scorer.** It holds no shared state except its spool and in-memory counters, so it scales horizontally
   behind a load balancer. `Score` is deliberately not rate limited (D-021).
 - **Redis.** Every feature key is hash-tagged by account (`internal/features/store.go:112-114`), and one
   Lua call touches one account (`internal/features/score_tx.lua:3`). Redis Cluster can therefore shard by
   account without cross-slot scripts.
-- **Model server.** This is the first limit (`docs/KNOWN_LIMITATIONS.md:58-64`). The batcher already
+- **Model server.** This is the first limit (`docs/KNOWN_LIMITATIONS.md:59-66`). The batcher already
   coalesces up to 64 rows per call (`internal/model/batcher.go:11-16`, `:21-25`). A single row takes p95 4.63 ms
   (`make bench-model`, `PROGRESS.md:158`). More workers and replicas, or Triton with dynamic batching (not run
   here, question 14), would be needed, and shadow scoring doubles the load (question 7).
@@ -230,7 +230,7 @@ It also verifies the model's SHA-256 before loading (D-047, D-059). The Triton p
 (`docs/security.md:138-139`). Measured: BentoML answers a single row at p95 4.63 ms against an 8 ms budget
 (`make bench-model`, `PROGRESS.md:158`). Triton was never run, because the network policy blocked its image;
 `TestTritonGoldenVector` skips and only the recorded KServe v2 request shape is tested
-(`docs/KNOWN_LIMITATIONS.md:52-56`, `PROGRESS.md:160`). The decision record is ADR 0004, the spec's ADR 0003
+(`docs/KNOWN_LIMITATIONS.md:52-57`, `PROGRESS.md:160`). The decision record is ADR 0004, the spec's ADR 0003
 renumbered by D-070.
 
 ## 15. How far do synthetic results transfer?
@@ -239,11 +239,11 @@ The quality numbers do not transfer. `cmd/gen` designed its fraud patterns to be
 features, so metrics on this data say nothing about production fraud (`cmd/gen/PATTERNS.md:3-6`,
 `docs/KNOWN_LIMITATIONS.md:25-26`). Some signals are generator artefacts. Fraud is easier to catch at night
 because incidents start uniformly over the day (`docs/KNOWN_LIMITATIONS.md:33-37`), and look-alike amounts
-carry no noise (`docs/KNOWN_LIMITATIONS.md:96-101`). Even between two draws of the same generator the
+carry no noise (`docs/KNOWN_LIMITATIONS.md:98-103`). Even between two draws of the same generator the
 headline moves: test PR-AUC is 0.9201 on the demo data (`PROGRESS.md:156`) and 0.8740 on the 2M-event eval
 data (`make eval-model`, `evals/REPORT.md:21`). The decisions suite is a conformance check of the rule
 engine, not evidence that the rules are good (`docs/KNOWN_LIMITATIONS.md:47-48`). Offline summary metrics
-measure FakeLLM, not a real model (`docs/KNOWN_LIMITATIONS.md:105-109`). What does transfer is the mechanics,
+measure FakeLLM, not a real model (`docs/KNOWN_LIMITATIONS.md:107-111`). What does transfer is the mechanics,
 because they are tested independently of the data: point-in-time features, parity, idempotency, degradation
 paths, commit-before-respond and the LLM boundary (questions 2 to 7 and 10). Latency transfers least of the
-mechanics, because every figure comes from one shared 4-vCPU container (`docs/KNOWN_LIMITATIONS.md:66-75`).
+mechanics, because every figure comes from one shared 4-vCPU container (`docs/KNOWN_LIMITATIONS.md:68-77`).

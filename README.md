@@ -76,7 +76,8 @@ Captured by the end-to-end suite (`E2E_SCREENSHOTS=1`, PROGRESS T-35) against th
 ![Review queue](docs/images/queue.png)
 ![Case detail with the AI summary](docs/images/case-detail.png)
 
-More in [`docs/images/`](docs/images/): timeline, shadow comparison, live metrics, rules, the label dialog and
+More in [`docs/images/`](docs/images/): timeline (captured before the amount-display fix, so it shows
+amounts 100 times too large; PROGRESS), shadow comparison, live metrics, rules, the label dialog and
 the Grafana dashboard.
 
 ## Quick start
@@ -88,7 +89,7 @@ Requirements: Docker, plus the toolchains `make bootstrap` installs (Go, Python 
 make bootstrap                                                # toolchains, dependencies, .env from .env.example
 docker compose -f compose.test.yaml -p fraudtest up -d --wait  # Postgres, Redis, Redpanda on 85xx ports
 make train                                                    # trains the model into artifacts/model
-FULL=1 scripts/seed_host.sh                                   # services on the host, then a 24 h replay
+FULL=1 scripts/seed_host.sh                                   # services on the host, then a 72 h replay (the test split)
 ```
 
 The console is then on <http://127.0.0.1:18500>; sign in by picking a synthetic persona from the dev issuer
@@ -100,7 +101,7 @@ To check the code without running the stack:
 
 ```bash
 make check-fast   # lint and unit tests, under a minute
-make test         # unit, integration and contract tests (needs the compose.test.yaml services)
+make test         # unit, integration and contract tests (starts the compose.test.yaml services)
 make eval         # every eval suite and evals/REPORT.md
 make security     # gitleaks, gosec, govulncheck, bandit, pip-audit, pnpm audit, hadolint, checkov, trivy
 ```
