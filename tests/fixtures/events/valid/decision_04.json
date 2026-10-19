@@ -1,0 +1,15 @@
+{
+  "schema": "fraud.decision.v1",
+  "decision_id": "0192f000-0000-7000-8000-000000000401",
+  "transaction_id": "0192f000-0000-7000-8000-000000000301",
+  "account_id": "acc_000123",
+  "action": "REVIEW",
+  "score": 0.9,
+  "reason_codes": [
+    "MODEL_SCORE_HIGH"
+  ],
+  "model_version": "fraud-gbdt/3",
+  "rules_version": "2026.10.1",
+  "degraded": false,
+  "decided_at": "2026-10-01T10:03:00.041Z"
+}

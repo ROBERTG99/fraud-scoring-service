@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package fraud.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/ROBERTG99/fraud-scoring-service/gen/go/fraud/v1;fraudv1";
+
+// Action is the decision returned to the payment switch.
+enum Action {
+  ACTION_UNSPECIFIED = 0;
+  ACTION_APPROVE = 1;
+  ACTION_REVIEW = 2;
+  ACTION_DECLINE = 3;
+}
+
+// Channel of the card transaction.
+enum Channel {
+  CHANNEL_UNSPECIFIED = 0;
+  CHANNEL_CARD_PRESENT = 1;
+  CHANNEL_ECOMMERCE = 2;
+  CHANNEL_P2P = 3;
+}
+
+// Transaction to score. All identifiers are synthetic tokens.
+message Transaction {
+  string transaction_id = 1; // UUIDv7, idempotency key
+  string account_id = 2; // synthetic token
+  int64 amount_minor = 3; // 1 to 10_000_000
+  string currency = 4; // ISO 4217 allowlist
+  string merchant_id = 5;
+  string mcc = 6; // 4 digits
+  Channel channel = 7;
+  string device_id = 8; // salted SHA-256
+  string ip_prefix = 9; // /24 only
+  string country = 10; // ISO 3166-1 alpha-2
+  // When the transaction happened. Optional (server time when absent); must lie within
+  // [now - 24 h, now + 5 min], or Score answers INVALID_ARGUMENT: it is the as-of time of the feature windows.
+  google.protobuf.Timestamp event_ts = 11;
+  string merchant_name = 12; // synthetic display name; untrusted text, never a model or rule input
+}
+
+// ScoreRequest wraps the transaction; explain=true returns the feature vector.
+message ScoreRequest {
+  Transaction transaction = 1;
+  bool explain = 2;
+}
+
+// Decision for one transaction. Replays of the same transaction_id return the same decision_id.
+message Decision {
+  string decision_id = 1;
+  string transaction_id = 2;
+  Action action = 3;
+  float score = 4; // calibrated probability; -1 when model unavailable
+  repeated string reason_codes = 5;
+  string model_version = 6; // "none" when degraded
+  string rules_version = 7;
+  float latency_ms = 8;
+  bool degraded = 9;
+  map<string, double> features = 10; // only when explain = true
+  google.protobuf.Timestamp decided_at = 11;
+}
+
+// Scorer decides transactions. Requires `Authorization: Bearer $FRAUD_SERVICE_TOKEN`.
+service Scorer {
+  // Score returns the decision for a transaction within 45 ms.
+  rpc Score(ScoreRequest) returns (Decision) {
+    option (google.api.http) = {
+      post: "/v1/score"
+      body: "*"
+    };
+  }
+}

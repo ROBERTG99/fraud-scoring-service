@@ -1,0 +1,217 @@
+[
+  {
+    "file": "valid/login_01.json",
+    "kind": "login",
+    "valid": true
+  },
+  {
+    "file": "valid/login_02.json",
+    "kind": "login",
+    "valid": true
+  },
+  {
+    "file": "valid/login_03.json",
+    "kind": "login",
+    "valid": true
+  },
+  {
+    "file": "valid/login_04.json",
+    "kind": "login",
+    "valid": true
+  },
+  {
+    "file": "valid/device_01.json",
+    "kind": "device",
+    "valid": true
+  },
+  {
+    "file": "valid/device_02.json",
+    "kind": "device",
+    "valid": true
+  },
+  {
+    "file": "valid/device_03.json",
+    "kind": "device",
+    "valid": true
+  },
+  {
+    "file": "valid/device_04.json",
+    "kind": "device",
+    "valid": true
+  },
+  {
+    "file": "valid/transaction_01.json",
+    "kind": "transaction",
+    "valid": true
+  },
+  {
+    "file": "valid/transaction_02.json",
+    "kind": "transaction",
+    "valid": true
+  },
+  {
+    "file": "valid/transaction_03.json",
+    "kind": "transaction",
+    "valid": true
+  },
+  {
+    "file": "valid/transaction_04.json",
+    "kind": "transaction",
+    "valid": true
+  },
+  {
+    "file": "valid/decision_01.json",
+    "kind": "decision",
+    "valid": true
+  },
+  {
+    "file": "valid/decision_02.json",
+    "kind": "decision",
+    "valid": true
+  },
+  {
+    "file": "valid/decision_03.json",
+    "kind": "decision",
+    "valid": true
+  },
+  {
+    "file": "valid/decision_04.json",
+    "kind": "decision",
+    "valid": true
+  },
+  {
+    "file": "valid/dlq_01.json",
+    "kind": "dlq",
+    "valid": true
+  },
+  {
+    "file": "valid/dlq_02.json",
+    "kind": "dlq",
+    "valid": true
+  },
+  {
+    "file": "valid/dlq_03.json",
+    "kind": "dlq",
+    "valid": true
+  },
+  {
+    "file": "valid/dlq_04.json",
+    "kind": "dlq",
+    "valid": true
+  },
+  {
+    "file": "invalid/login_missing_method.json",
+    "kind": "login",
+    "valid": false
+  },
+  {
+    "file": "invalid/login_bad_method.json",
+    "kind": "login",
+    "valid": false
+  },
+  {
+    "file": "invalid/login_full_ip.json",
+    "kind": "login",
+    "valid": false
+  },
+  {
+    "file": "invalid/login_success_string.json",
+    "kind": "login",
+    "valid": false
+  },
+  {
+    "file": "invalid/device_bad_change.json",
+    "kind": "device",
+    "valid": false
+  },
+  {
+    "file": "invalid/device_raw_device_id.json",
+    "kind": "device",
+    "valid": false
+  },
+  {
+    "file": "invalid/device_extra_property.json",
+    "kind": "device",
+    "valid": false
+  },
+  {
+    "file": "invalid/device_bad_timestamp.json",
+    "kind": "device",
+    "valid": false
+  },
+  {
+    "file": "invalid/transaction_zero_amount.json",
+    "kind": "transaction",
+    "valid": false
+  },
+  {
+    "file": "invalid/transaction_too_large_amount.json",
+    "kind": "transaction",
+    "valid": false
+  },
+  {
+    "file": "invalid/transaction_currency_not_allowed.json",
+    "kind": "transaction",
+    "valid": false
+  },
+  {
+    "file": "invalid/transaction_mcc_three_digits.json",
+    "kind": "transaction",
+    "valid": false
+  },
+  {
+    "file": "invalid/transaction_amount_as_string.json",
+    "kind": "transaction",
+    "valid": false
+  },
+  {
+    "file": "invalid/transaction_bad_channel.json",
+    "kind": "transaction",
+    "valid": false
+  },
+  {
+    "file": "invalid/transaction_country_lowercase.json",
+    "kind": "transaction",
+    "valid": false
+  },
+  {
+    "file": "invalid/decision_bad_action.json",
+    "kind": "decision",
+    "valid": false
+  },
+  {
+    "file": "invalid/decision_score_out_of_range.json",
+    "kind": "decision",
+    "valid": false
+  },
+  {
+    "file": "invalid/decision_lowercase_reason.json",
+    "kind": "decision",
+    "valid": false
+  },
+  {
+    "file": "invalid/dlq_negative_offset.json",
+    "kind": "dlq",
+    "valid": false
+  },
+  {
+    "file": "invalid/dlq_wrong_schema_name.json",
+    "kind": "dlq",
+    "valid": false
+  },
+  {
+    "file": "invalid/transaction_mcc_not_allowed.json",
+    "kind": "transaction",
+    "valid": false
+  },
+  {
+    "file": "invalid/transaction_merchant_name_control_char.json",
+    "kind": "transaction",
+    "valid": false
+  },
+  {
+    "file": "invalid/transaction_merchant_name_bidi_override.json",
+    "kind": "transaction",
+    "valid": false
+  }
+]

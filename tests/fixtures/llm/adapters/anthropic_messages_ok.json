@@ -1,0 +1,13 @@
+{
+  "id": "msg_fixture_01",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-5-5",
+  "content": [
+    {"type": "thinking", "thinking": "", "signature": "fixture-signature"},
+    {"type": "text", "text": "{\"pattern\":\"account_takeover\",\"evidence\":[{\"fact_key\":\"feature.minutes_since_email_change\",\"statement\":\"The email address was changed 2 minutes before the transaction.\"},{\"fact_key\":\"feature.new_device\",\"statement\":\"The device was not seen on the account before (new_device = 1).\"},{\"fact_key\":\"feature.amount_minor\",\"statement\":\"The transaction amount is 94000 minor units.\"}],\"recommended_checks\":[\"Confirm the email change with the customer through a known contact channel.\"],\"confidence\":0.8}"}
+  ],
+  "stop_reason": "end_turn",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 1180, "output_tokens": 164, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 512}
+}

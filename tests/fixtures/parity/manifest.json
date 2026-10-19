@@ -1,0 +1,21 @@
+{
+  "accounts": 45,
+  "days": 8,
+  "events": 5000,
+  "events_sha256": "3cae159be2f2d8f3172a439aa003a8e5bbab657149889fc5524494acd20b6475",
+  "fraud_rate": 0.00799543118218161,
+  "fraud_transactions": 28,
+  "gen_version": 2,
+  "labels_sha256": "81ce937c9b58fb17a5dc4a5fc552cd7f94b6118a1862c77f3d633abb888ab957",
+  "seed": 7,
+  "size": "parity",
+  "split_counts": {
+    "test": 418,
+    "train": 2166,
+    "valid": 462,
+    "warmup": 456
+  },
+  "start": "2026-09-01T00:00:00Z",
+  "transactions": 3502,
+  "warmup_days": 1
+}

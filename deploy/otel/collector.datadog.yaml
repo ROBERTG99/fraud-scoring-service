@@ -1,0 +1,28 @@
+# Profile `datadog` (spec §14): the same OTLP intake, traces to Datadog. Needs DD_API_KEY (and DD_SITE)
+# in the environment; nothing here is used by the default or `observability` profiles.
+receivers:
+  otlp:
+    protocols:
+      grpc: { endpoint: 0.0.0.0:4317 }
+      http: { endpoint: 0.0.0.0:4318 }
+
+processors:
+  memory_limiter: { check_interval: 1s, limit_mib: 256 }
+  batch: { timeout: 1s }
+
+exporters:
+  datadog:
+    api:
+      key: ${env:DD_API_KEY}
+      site: ${env:DD_SITE}
+
+extensions:
+  health_check: { endpoint: 0.0.0.0:13133 }
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [datadog]

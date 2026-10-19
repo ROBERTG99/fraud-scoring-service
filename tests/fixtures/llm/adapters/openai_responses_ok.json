@@ -1,0 +1,22 @@
+{
+  "id": "resp_fixture_01",
+  "object": "response",
+  "created_at": 1790000000,
+  "status": "completed",
+  "model": "gpt-6-luna",
+  "output": [
+    {
+      "type": "message",
+      "id": "msg_fixture_01",
+      "status": "completed",
+      "role": "assistant",
+      "content": [
+        {"type": "output_text", "annotations": [], "text": "{\"pattern\":\"card_testing\",\"evidence\":[{\"fact_key\":\"feature.tx_count_10m\",\"statement\":\"9 earlier transactions in the ten-minute window before this one.\"}],\"recommended_checks\":[\"Block the card if the customer does not recognise the small transactions.\"],\"confidence\":0.7}"}
+      ]
+    }
+  ],
+  "parallel_tool_calls": true,
+  "tool_choice": "auto",
+  "tools": [],
+  "usage": {"input_tokens": 1100, "input_tokens_details": {"cached_tokens": 0}, "output_tokens": 120, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 1220}
+}

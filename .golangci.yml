@@ -1,0 +1,7 @@
+version: "2"
+run:
+  # Lint integration tests too (they share helpers with unit tests).
+  build-tags: [integration]
+  timeout: 5m
+linters:
+  default: standard

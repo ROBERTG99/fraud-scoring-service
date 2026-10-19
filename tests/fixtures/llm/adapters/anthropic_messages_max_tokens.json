@@ -1,0 +1,10 @@
+{
+  "id": "msg_fixture_03",
+  "type": "message",
+  "role": "assistant",
+  "model": "claude-haiku-5-5",
+  "content": [{"type": "text", "text": "{\"pattern\":\"card_testing\",\"evidence\":[{\"fact_key\":\"feature.tx_count_10m\",\"statement\":\"9 earlier"}],
+  "stop_reason": "max_tokens",
+  "stop_sequence": null,
+  "usage": {"input_tokens": 1180, "output_tokens": 2048, "cache_creation_input_tokens": 600, "cache_read_input_tokens": 512}
+}

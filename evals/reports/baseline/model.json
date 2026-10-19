@@ -1,0 +1,574 @@
+{
+  "schema": "evalgate.report.v1",
+  "suite": "model",
+  "run_id": "20261017T201006Z",
+  "created_at": "2026-10-17T20:10:06.018021+00:00",
+  "git_sha": "45d92321718718f51a6fd6216aef719dd65ffbc1",
+  "mode": "offline",
+  "models": [
+    "fraud-gbdt/3"
+  ],
+  "prompt_hashes": {},
+  "n_cases": 20,
+  "metrics": {
+    "recall_at_1pct_fpr_combined": {
+      "value": 0.9160714285714285,
+      "threshold": 0.8,
+      "direction": "higher",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "fpr_combined": {
+      "value": 0.00792024963674043,
+      "threshold": 0.015,
+      "direction": "lower",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "recall_review_band": {
+      "value": 0.8386904761904762,
+      "threshold": null,
+      "direction": "higher",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "fpr_review_band": {
+      "value": 0.003209785379100069,
+      "threshold": 0.01,
+      "direction": "lower",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "recall_decline_band": {
+      "value": 0.5892857142857143,
+      "threshold": null,
+      "direction": "higher",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "band_calibration_gap": {
+      "value": 0.008076596088683607,
+      "threshold": 0.05,
+      "direction": "lower",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "pr_auc": {
+      "value": 0.8740422718482969,
+      "threshold": 0.7,
+      "direction": "higher",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "ece": {
+      "value": 0.0007010222092660179,
+      "threshold": 0.02,
+      "direction": "lower",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "recall_at_1pct_fpr_combined_test_oracle": {
+      "value": 0.9232142857142858,
+      "threshold": null,
+      "direction": "higher",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "recall_at_1pct_fpr_model": {
+      "value": 0.924404761904762,
+      "threshold": null,
+      "direction": "higher",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    },
+    "recall_at_1pct_fpr_rules": {
+      "value": 0.6011904761904762,
+      "threshold": null,
+      "direction": "higher",
+      "passed": true,
+      "ci_low": null,
+      "ci_high": null
+    }
+  },
+  "cost_usd_total": 0.0,
+  "cost_usd_per_case": 0.0,
+  "latency_p50_ms": 0.0,
+  "latency_p95_ms": 0.0,
+  "cases": [
+    {
+      "id": "shard-00",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9444444444444444,
+        "fpr_combined": 0.00730626422326027,
+        "recall_review_band": 0.8777777777777778,
+        "fpr_review_band": 0.0021559468199784403,
+        "recall_decline_band": 0.6444444444444445,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.9274538240566518,
+        "ece": 0.000763689067806819,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.9444444444444444,
+        "recall_at_1pct_fpr_model": 0.9444444444444444,
+        "recall_at_1pct_fpr_rules": 0.5333333333333333
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-01",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9381443298969072,
+        "fpr_combined": 0.011601513240857503,
+        "recall_review_band": 0.9278350515463918,
+        "fpr_review_band": 0.004287515762925599,
+        "recall_decline_band": 0.845360824742268,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.897728953304799,
+        "ece": 0.00263171651491175,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.9381443298969072,
+        "recall_at_1pct_fpr_model": 0.9381443298969072,
+        "recall_at_1pct_fpr_rules": 0.7525773195876289
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-02",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.8771929824561403,
+        "fpr_combined": 0.007093875620714117,
+        "recall_review_band": 0.8245614035087719,
+        "fpr_review_band": 0.0023646252069047056,
+        "recall_decline_band": 0.5789473684210527,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.8260503829381698,
+        "ece": 0.0012238284523244886,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.8947368421052632,
+        "recall_at_1pct_fpr_model": 0.8947368421052632,
+        "recall_at_1pct_fpr_rules": 0.6140350877192983
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-03",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9896907216494846,
+        "fpr_combined": 0.007217610970768676,
+        "recall_review_band": 0.9484536082474226,
+        "fpr_review_band": 0.003007337904486948,
+        "recall_decline_band": 0.6288659793814433,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.9618695931125859,
+        "ece": 0.0017212238685569425,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.9896907216494846,
+        "recall_at_1pct_fpr_model": 0.9896907216494846,
+        "recall_at_1pct_fpr_rules": 0.5463917525773195
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-04",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.864406779661017,
+        "fpr_combined": 0.007685940640889204,
+        "recall_review_band": 0.8305084745762712,
+        "fpr_review_band": 0.0039020929407591345,
+        "recall_decline_band": 0.3728813559322034,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.7673547507516126,
+        "ece": 0.0014673111631137658,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.8983050847457628,
+        "recall_at_1pct_fpr_model": 0.8983050847457628,
+        "recall_at_1pct_fpr_rules": 0.7457627118644068
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-05",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9156626506024096,
+        "fpr_combined": 0.01028782799676338,
+        "recall_review_band": 0.7590361445783133,
+        "fpr_review_band": 0.004045775054906947,
+        "recall_decline_band": 0.5783132530120482,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.8109895455162498,
+        "ece": 0.0015409497729938772,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.9156626506024096,
+        "recall_at_1pct_fpr_model": 0.9156626506024096,
+        "recall_at_1pct_fpr_rules": 0.5903614457831325
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-06",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.8867924528301887,
+        "fpr_combined": 0.005653883972468043,
+        "recall_review_band": 0.7169811320754716,
+        "fpr_review_band": 0.002335299901671583,
+        "recall_decline_band": 0.39622641509433965,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.835233788822783,
+        "ece": 0.0016144050901091885,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.9056603773584906,
+        "recall_at_1pct_fpr_model": 0.9056603773584906,
+        "recall_at_1pct_fpr_rules": 0.5849056603773585
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-07",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.8558558558558559,
+        "fpr_combined": 0.006459627329192546,
+        "recall_review_band": 0.7387387387387387,
+        "fpr_review_band": 0.002857142857142857,
+        "recall_decline_band": 0.40540540540540543,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.8110637932171402,
+        "ece": 0.0036264271383812286,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.8648648648648649,
+        "recall_at_1pct_fpr_model": 0.8648648648648649,
+        "recall_at_1pct_fpr_rules": 0.45045045045045046
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-08",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.8627450980392157,
+        "fpr_combined": 0.007080942497863509,
+        "recall_review_band": 0.8627450980392157,
+        "fpr_review_band": 0.0025637895250885116,
+        "recall_decline_band": 0.45098039215686275,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.8135170801332041,
+        "ece": 0.0014294548736378484,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.8823529411764706,
+        "recall_at_1pct_fpr_model": 0.8823529411764706,
+        "recall_at_1pct_fpr_rules": 0.6470588235294118
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-09",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9518072289156626,
+        "fpr_combined": 0.00883912787271656,
+        "recall_review_band": 0.9156626506024096,
+        "fpr_review_band": 0.0041249263406010605,
+        "recall_decline_band": 0.6626506024096386,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.9025185749122131,
+        "ece": 0.0015019699749211804,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.9518072289156626,
+        "recall_at_1pct_fpr_model": 0.9518072289156626,
+        "recall_at_1pct_fpr_rules": 0.6746987951807228
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-10",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9272727272727272,
+        "fpr_combined": 0.007944150216658643,
+        "recall_review_band": 0.8727272727272727,
+        "fpr_review_band": 0.0031295137217140106,
+        "recall_decline_band": 0.509090909090909,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.896252341969887,
+        "ece": 0.0014784744418847638,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.9272727272727272,
+        "recall_at_1pct_fpr_model": 0.9454545454545454,
+        "recall_at_1pct_fpr_rules": 0.5272727272727272
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-11",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9270833333333334,
+        "fpr_combined": 0.009333169593515904,
+        "recall_review_band": 0.8645833333333334,
+        "fpr_review_band": 0.004298170207540219,
+        "recall_decline_band": 0.6145833333333334,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.8749945766506231,
+        "ece": 0.002696423558196838,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.9270833333333334,
+        "recall_at_1pct_fpr_model": 0.9270833333333334,
+        "recall_at_1pct_fpr_rules": 0.59375
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-12",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9302325581395349,
+        "fpr_combined": 0.008063559824498991,
+        "recall_review_band": 0.8023255813953488,
+        "fpr_review_band": 0.0032017075773745998,
+        "recall_decline_band": 0.5116279069767442,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.8635461136299215,
+        "ece": 0.0016125930216767431,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.9418604651162791,
+        "recall_at_1pct_fpr_model": 0.9418604651162791,
+        "recall_at_1pct_fpr_rules": 0.627906976744186
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-13",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9027777777777778,
+        "fpr_combined": 0.007323411292227734,
+        "recall_review_band": 0.8055555555555556,
+        "fpr_review_band": 0.0022442712024568863,
+        "recall_decline_band": 0.6527777777777778,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.8777570354282127,
+        "ece": 0.0009979181359166442,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.9305555555555556,
+        "recall_at_1pct_fpr_model": 0.9305555555555556,
+        "recall_at_1pct_fpr_rules": 0.6805555555555556
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-14",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.85,
+        "fpr_combined": 0.009076099604375146,
+        "recall_review_band": 0.69,
+        "fpr_review_band": 0.003141726786129858,
+        "recall_decline_band": 0.5,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.8145391172279602,
+        "ece": 0.002507897193413874,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.85,
+        "recall_at_1pct_fpr_model": 0.86,
+        "recall_at_1pct_fpr_rules": 0.55
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-15",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9325842696629213,
+        "fpr_combined": 0.0074580484773151025,
+        "recall_review_band": 0.8651685393258427,
+        "fpr_review_band": 0.0026103169670602857,
+        "recall_decline_band": 0.550561797752809,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.8985925027261867,
+        "ece": 0.001261023408138995,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.9438202247191011,
+        "recall_at_1pct_fpr_model": 0.9438202247191011,
+        "recall_at_1pct_fpr_rules": 0.6629213483146067
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-16",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9482758620689655,
+        "fpr_combined": 0.008319662526365127,
+        "recall_review_band": 0.896551724137931,
+        "fpr_review_band": 0.0037497070541363956,
+        "recall_decline_band": 0.7241379310344828,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.9224686889792886,
+        "ece": 0.0014153983515624708,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.9482758620689655,
+        "recall_at_1pct_fpr_model": 0.9482758620689655,
+        "recall_at_1pct_fpr_rules": 0.5517241379310345
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-17",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.8617021276595744,
+        "fpr_combined": 0.007463517879024173,
+        "recall_review_band": 0.776595744680851,
+        "fpr_review_band": 0.003676061044892503,
+        "recall_decline_band": 0.5531914893617021,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.843324376893239,
+        "ece": 0.00212977722760469,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.8617021276595744,
+        "recall_at_1pct_fpr_model": 0.8617021276595744,
+        "recall_at_1pct_fpr_rules": 0.5957446808510638
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-18",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9646017699115044,
+        "fpr_combined": 0.0072537685594469,
+        "recall_review_band": 0.9380530973451328,
+        "fpr_review_band": 0.003060183611016661,
+        "recall_decline_band": 0.7964601769911505,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.9682302896277537,
+        "ece": 0.0014404533983112043,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.9734513274336283,
+        "recall_at_1pct_fpr_model": 0.9734513274336283,
+        "recall_at_1pct_fpr_rules": 0.6283185840707964
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "id": "shard-19",
+      "split": "test",
+      "scores": {
+        "recall_at_1pct_fpr_combined": 0.9230769230769231,
+        "fpr_combined": 0.006992192052208367,
+        "recall_review_band": 0.7948717948717948,
+        "fpr_review_band": 0.003379559491900711,
+        "recall_decline_band": 0.5,
+        "band_calibration_gap": 0.008076596088683607,
+        "pr_auc": 0.8553781818121663,
+        "ece": 0.001422805691403222,
+        "recall_at_1pct_fpr_combined_test_oracle": 0.9230769230769231,
+        "recall_at_1pct_fpr_model": 0.9230769230769231,
+        "recall_at_1pct_fpr_rules": 0.5641025641025641
+      },
+      "passed": true,
+      "cost_usd": 0.0,
+      "latency_ms": 0.0,
+      "error": null
+    }
+  ],
+  "extensions": {
+    "split": "test",
+    "gates": {
+      "recall_at_1pct_fpr_combined": true,
+      "fpr_combined": true,
+      "recall_review_band": true,
+      "fpr_review_band": true,
+      "recall_decline_band": false,
+      "band_calibration_gap": true,
+      "pr_auc": true,
+      "ece": true,
+      "recall_at_1pct_fpr_combined_test_oracle": false,
+      "recall_at_1pct_fpr_model": false,
+      "recall_at_1pct_fpr_rules": false
+    },
+    "budget": {},
+    "target_errors": 0,
+    "metric_errors": {},
+    "run_health": "ok",
+    "error_rate": 0.0,
+    "n_transactions": 169604,
+    "n_fraud": 1680,
+    "rules_fpr": 0.0020961863700245348,
+    "operating_point_from_valid": {
+      "threshold": 0.04081632941961289,
+      "test_recall": 0.9160714285714285,
+      "test_fpr": 0.00792024963674043
+    },
+    "bands": {
+      "rules_version": "2026.10.2",
+      "review": 0.3,
+      "decline": 0.85
+    },
+    "case_unit": "20 account shards (CRC-32 of account_id)",
+    "data": {
+      "events_sha256": "632291c0507e7824235d20d95e598dce72710d16898429789f09edbf95cd62c9",
+      "gen_version": 2,
+      "seed": 7,
+      "size": "eval",
+      "events": 2000000
+    },
+    "model_dir": "/home/user/fraud-scoring-service/artifacts/model",
+    "onnx_sha256": "5102bf495868297f29106987a5dee68bb9929ae37ade766822e367cf4d11eea9",
+    "feature_spec": "v2"
+  }
+}

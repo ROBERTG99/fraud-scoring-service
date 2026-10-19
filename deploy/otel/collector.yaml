@@ -1,0 +1,27 @@
+# OTel Collector for the `observability` profile (spec §14): OTLP in on 8580 (gRPC) and 8581 (HTTP),
+# traces out to Jaeger. The scorer exports over gRPC, the summarizer over HTTP.
+receivers:
+  otlp:
+    protocols:
+      grpc: { endpoint: 0.0.0.0:4317 }
+      http: { endpoint: 0.0.0.0:4318 }
+
+processors:
+  memory_limiter: { check_interval: 1s, limit_mib: 256 }
+  batch: { timeout: 1s }
+
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls: { insecure: true }
+
+extensions:
+  health_check: { endpoint: 0.0.0.0:13133 }
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/jaeger]

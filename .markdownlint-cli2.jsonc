@@ -1,0 +1,12 @@
+{
+  // markdownlint for the documentation set (make lint-md). Long table rows and wrapped prose are fine.
+  "config": {
+    "default": true,
+    "MD013": false, // line length: tables and evidence cells are long by design
+    "MD024": { "siblings_only": true },
+    "MD033": false, // inline HTML is allowed (README badges, <details>)
+    "MD041": false, // files may start with a front comment
+    "MD060": false // table pipe spacing (new in markdownlint 0.39): tables keep the compact |---| style
+  },
+  "ignores": ["**/node_modules/**", "web/dist/**", "third_party/**", ".venv/**", "docs/specs/**", "BUILD.md"]
+}

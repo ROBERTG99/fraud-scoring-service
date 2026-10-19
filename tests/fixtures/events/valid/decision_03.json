@@ -1,0 +1,16 @@
+{
+  "schema": "fraud.decision.v1",
+  "decision_id": "0192f000-0000-7000-8000-000000000401",
+  "transaction_id": "0192f000-0000-7000-8000-000000000301",
+  "account_id": "acc_000123",
+  "action": "DECLINE",
+  "score": -1,
+  "reason_codes": [
+    "BLOCKED_MCC",
+    "MODEL_UNAVAILABLE"
+  ],
+  "model_version": "none",
+  "rules_version": "2026.10.1",
+  "degraded": true,
+  "decided_at": "2026-10-01T10:03:00.041Z"
+}

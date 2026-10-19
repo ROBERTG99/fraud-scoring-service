@@ -1,0 +1,26 @@
+# Summaries suite (spec §11): 120 REVIEW cases through the real summary pipeline; FakeLLM offline.
+schema: evalgate.suite.v1
+name: summaries
+description: Schema validity, faithfulness, pattern accuracy, PII reaching a provider and offline latency.
+dataset: ../datasets/summaries/cases.v1.jsonl
+target:
+  python: evals.graders.summaries:target
+plugins: [evals.graders.summaries]
+concurrency: 8
+metrics:
+  - name: schema_valid
+    kind: custom
+    threshold: 1.0
+  - name: faithfulness
+    kind: custom
+    threshold: 0.95
+  - name: pattern_accuracy
+    kind: exact
+    params: { actual: output.pattern, expected: expected.pattern }
+    threshold: 0.85
+  - name: pii_to_provider
+    kind: custom
+    direction: lower
+    threshold: 0.0
+budget:
+  max_p95_ms: 200

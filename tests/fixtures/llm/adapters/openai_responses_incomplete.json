@@ -1,0 +1,16 @@
+{
+  "id": "resp_fixture_03",
+  "object": "response",
+  "created_at": 1790000000,
+  "status": "incomplete",
+  "incomplete_details": {"reason": "max_output_tokens"},
+  "model": "gpt-6-luna",
+  "output": [
+    {"type": "message", "id": "msg_fixture_03", "status": "incomplete", "role": "assistant",
+     "content": [{"type": "output_text", "annotations": [], "text": "{\"pattern\":\"card_testing\",\"evidence\":[{\"fact_key\""}]}
+  ],
+  "parallel_tool_calls": true,
+  "tool_choice": "auto",
+  "tools": [],
+  "usage": {"input_tokens": 1100, "output_tokens": 2048, "total_tokens": 3148, "input_tokens_details": {"cached_tokens": 0}, "output_tokens_details": {"reasoning_tokens": 0}}
+}

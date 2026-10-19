@@ -29,3 +29,12 @@ test-results/
 .DS_Store
 .idea/
 .vscode/
+# build outputs (spec §1.2)
+.cache/
+artifacts/
+mlruns/
+spool/
+evals/reports/*.json
+evals/reports/calibration/
+!evals/reports/baseline/
+serving/triton/model_repository/*/1/model.onnx

@@ -1,0 +1,16 @@
+# Prometheus for the `observability` profile (spec §14), UI on 8591. Targets are compose service names.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+rule_files: [alerts.yml]
+
+scrape_configs:
+  - job_name: scorer
+    static_configs: [{ targets: ["scorer:8516"] }]
+  - job_name: feature-updater
+    static_configs: [{ targets: ["feature-updater:8512"] }]
+  - job_name: case-summarizer
+    static_configs: [{ targets: ["case-summarizer:8517"] }]
+  - job_name: model-server
+    static_configs: [{ targets: ["model-server:8514"] }]

@@ -1,0 +1,15 @@
+{
+  "files": {
+    "decisions/cases.v1.jsonl": "127e2b9d8e70b8af1cf632446aa76d998015a325c2f7586f3220617aa75b608b",
+    "decisions/dev.jsonl": "8adaa364143da7b196ef049a5307716758edc54968543f0dec5d35d5efd9d605",
+    "decisions/test.jsonl": "713b2032475e9a4ee413ceaa555653e96e877909c6676e57f4e806201f0686ea",
+    "judge_calibration/cases.v1.jsonl": "da8ccfaddd116659411c60df2a5343e40b5b3d611629ec3a684d3876ad72af60",
+    "judge_calibration/dev.jsonl": "e25d4d9ce819661a0b60bf1a416a4d01dd90176668baa265717de6701a1d04a5",
+    "judge_calibration/test.jsonl": "44f4345c8e617486c8ba6d14c167d46e8f6506e5a1dce610df7f79396a3faa85",
+    "summaries/cases.v1.jsonl": "c1a90b71d766ffe9afaae978383b23ba1efe5716f9a351385a41d878d897f330",
+    "summaries/dev.jsonl": "ee34945b564880078078cda9361785076dda52366c98a727e4aae08bcf89fc3d",
+    "summaries/test.jsonl": "371292da8d1decb56372bd512f6f71df96fcba49c4aae0ff2c0b53626c0f9e8a"
+  },
+  "generator": "scripts/gen_eval_sets.py",
+  "seed": 7
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "fraud.event.login.v1",
+  "event_id": "0192f000-0000-7000-8000-000000000101",
+  "account_id": "acc_000123",
+  "event_ts": "2026-10-01T10:00:00Z",
+  "device_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "ip_prefix": "203.0.113.0/24",
+  "country": "US",
+  "success": false,
+  "method": "otp"
+}
