@@ -50,10 +50,11 @@ What is not done, approximate or out of scope. Each entry names where it shows u
 ## Serving
 
 - **Triton was not run in the build environment.** `nvcr.io/nvidia/tritonserver` is blocked by the network
-  policy (pull returned `Forbidden` on 2026-10-16). The `triton` compose profile, model repository
-  (`serving/triton/`) and KServe v2 client (`internal/model/triton.go`, `TestKServeV2RequestShape` against a
-  recorded request/response) exist, but `TestTritonGoldenVector` skips unless `FRAUD_TEST_TRITON_URL` points at
-  a running Triton (`make triton-up`). `make verify` never requires Triton.
+  policy (pull returned `Forbidden` on 2026-10-16). The model repository (`serving/triton/`) and KServe v2
+  client (`internal/model/triton.go`, `TestKServeV2RequestShape` against a recorded request/response) exist,
+  but `TestTritonGoldenVector` skips unless `FRAUD_TEST_TRITON_URL` points at a running Triton. The
+  `make triton-up` target expects a `triton` profile in `compose.yaml`, which arrives with the compose stack
+  (T-43); until then the target fails. `make verify` never requires Triton.
 
 ## Model server throughput on a shared host
 
