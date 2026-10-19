@@ -27,7 +27,7 @@ the LLM can never change, delay or block a decision. All data is synthetic.
 ## Results
 
 All numbers below are offline, on synthetic data (generator seed 7), as recorded in
-[`evals/REPORT.md`](evals/REPORT.md) and [`PROGRESS.md`](PROGRESS.md). The eval suites ran at commit 2929005;
+[`evals/REPORT.md`](evals/REPORT.md) and [`PROGRESS.md`](PROGRESS.md). The eval suites ran at commit 2eba265;
 `make eval` does not re-run the benchmarks, so the latency rows are from earlier runs, as noted.
 
 | Area | Result | Source |
