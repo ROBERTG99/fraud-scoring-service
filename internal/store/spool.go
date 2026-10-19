@@ -115,13 +115,15 @@ func (s *Spool) Drain(commit func([]DecisionRecord) error) (int, error) {
 	if s.f != nil {
 		_ = s.f.Close()
 		s.f = nil
-		active := filepath.Join(s.dir, activeSpool)
-		if _, err := os.Stat(active); err == nil {
-			rotated := filepath.Join(s.dir, fmt.Sprintf("spool.%d.replay", time.Now().UnixNano()))
-			if err := os.Rename(active, rotated); err != nil {
-				s.mu.Unlock()
-				return 0, err
-			}
+	}
+	// Rotate the active file even when this process never opened it: a scorer killed while Postgres was down
+	// leaves its fsync'd decisions there, and the restarted process must replay them (T-48, D-075).
+	active := filepath.Join(s.dir, activeSpool)
+	if _, err := os.Stat(active); err == nil {
+		rotated := filepath.Join(s.dir, fmt.Sprintf("spool.%d.replay", time.Now().UnixNano()))
+		if err := os.Rename(active, rotated); err != nil {
+			s.mu.Unlock()
+			return 0, err
 		}
 	}
 	s.mu.Unlock()
