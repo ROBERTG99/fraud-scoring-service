@@ -250,3 +250,15 @@ it never matches (`docs/security.md`, open finding 18).
 The disk spool assumes one scorer process per `FRAUD_SPOOL_DIR`: `Drain` renames the active file, so a second
 process sharing the directory could keep writing into a file the first one replays and deletes. Compose runs
 one scorer on a named volume; replicas need a directory each (T-49 latency review).
+
+## The trained model depends on the CPU it is trained on
+
+XGBoost's training is reproducible on one platform (CI on Linux x86-64 rebuilds the committed baseline model
+bit for bit: `make eval` there gives `band_calibration_gap` 0.0081 and Gate PASS, `evals/REPORT.md`) but not
+across platforms. From the same data, seed and `n_jobs`, macOS arm64 trained `gbdt-0b1d9e9ed9` and Linux arm64
+`gbdt-741d763432`, and both miss one §11 gate on the eval set: `band_calibration_gap` 0.0759 and 0.0920 (limit
+0.05; PR-AUC 0.8617 and 0.8646, recall@1%FPR 0.9122 and 0.9168, both above their thresholds). So `make eval`,
+and with it `make verify`, fails at `eval-model` on arm64 machines (`docs/verification.md`). The gate is not
+loosened: train the model that ships on x86-64 (CI, or the SageMaker launcher's `ml.m5` instances), and treat
+the decline-band calibration as model-specific until isotonic calibration on the decline band is made robust.
+

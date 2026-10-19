@@ -227,6 +227,7 @@ dlq-peek: ## Show the latest DLQ messages
 verify: ## Everything except eval-live; the single gate
 	$(MAKE) lint
 	$(MAKE) typecheck
+	$(COMPOSE) --profile seed --profile jobs build # trivy in security scans the built images
 	$(MAKE) security
 	$(MAKE) test
 	$(MAKE) test-docker
