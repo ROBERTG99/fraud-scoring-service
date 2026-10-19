@@ -1,6 +1,8 @@
 package store
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	fraudv1 "github.com/ROBERTG99/fraud-scoring-service/gen/go/fraud/v1"
@@ -46,5 +48,35 @@ func TestDrainReplaysTheSpoolOfAProcessThatDied(t *testing.T) {
 	// Nothing is replayed twice.
 	if n, err := restarted.Drain(func([]DecisionRecord) error { return nil }); err != nil || n != 0 {
 		t.Fatalf("second drain replayed %d (%v), want 0", n, err)
+	}
+}
+
+// A crash mid-write leaves a torn last line with no newline. The next process appends while Postgres is still
+// down; its first record must not be glued onto the torn line (readSpoolFile would then drop it).
+func TestAppendAfterATornLineKeepsTheNewRecord(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, activeSpool), []byte(`{"decision":{"decisionId":"torn`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := OpenSpool(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	rec := DecisionRecord{Decision: &fraudv1.Decision{DecisionId: "0192f000-0000-7000-9000-000000000003", TransactionId: "0192f000-0000-7000-8000-000000000003"}, AccountID: "acc_3"}
+	if err := s.Append([]DecisionRecord{rec}); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	if _, err := s.Drain(func(rs []DecisionRecord) error {
+		for _, r := range rs {
+			got = append(got, r.Decision.DecisionId)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != rec.Decision.DecisionId {
+		t.Fatalf("replayed %v, want only %s", got, rec.Decision.DecisionId)
 	}
 }

@@ -92,8 +92,18 @@ func (s *Spool) Append(recs []DecisionRecord) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.f == nil {
-		f, err := os.OpenFile(filepath.Join(s.dir, activeSpool), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) // #nosec G304 -- spool dir from config
+		path := filepath.Join(s.dir, activeSpool)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) // #nosec G304 -- spool dir from config
 		if err != nil {
+			return err
+		}
+		// A crash mid-write can leave a torn last line; start on a fresh line so the next record stays readable.
+		torn, err := endsTorn(path)
+		if err == nil && torn {
+			_, err = f.WriteString("\n")
+		}
+		if err != nil {
+			_ = f.Close()
 			return err
 		}
 		s.f = f
@@ -106,6 +116,24 @@ func (s *Spool) Append(recs []DecisionRecord) error {
 	}
 	s.depth += len(recs)
 	return nil
+}
+
+// endsTorn reports whether the file at path is non-empty and does not end with a newline.
+func endsTorn(path string) (bool, error) {
+	f, err := os.Open(path) // #nosec G304 -- spool dir from config
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = f.Close() }()
+	st, err := f.Stat()
+	if err != nil || st.Size() == 0 {
+		return false, err
+	}
+	last := make([]byte, 1)
+	if _, err := f.ReadAt(last, st.Size()-1); err != nil {
+		return false, err
+	}
+	return last[0] != '\n', nil
 }
 
 // Drain rotates the active file and hands every pending record to commit; files are deleted only after
