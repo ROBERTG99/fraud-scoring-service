@@ -26,8 +26,8 @@ class FraudModel:
         ).start()
 
     def __is_ready__(self) -> bool:
-        # Retries the aliases that were missing at startup, so a model registered later is picked up.
-        return self.runtime.refresh()
+        # No load from the probe: this worker's model-watch thread picks up a model registered later.
+        return self.runtime.ready()
 
     @bentoml.api(route="/predict")  # type: ignore[untyped-decorator]
     def predict(self, inputs: list[list[float]], alias: str = "production") -> dict[str, Any]:

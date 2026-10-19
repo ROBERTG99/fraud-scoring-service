@@ -197,11 +197,11 @@ class ModelRuntime:
         log.info("loaded %s as @%s from %s", loaded.version, alias, source)
         return loaded
 
-    def refresh(self) -> bool:
-        """Loads the aliases still missing, at most once per retry interval; returns ready()."""
+    def refresh(self, force: bool = False) -> bool:
+        """Loads the aliases still missing, at most once per retry interval unless forced; returns ready()."""
         missing = [a for a in ALIASES if a not in self.models]
         now = self._clock()
-        due = self._last_attempt is None or now - self._last_attempt >= self.retry_interval_s
+        due = force or self._last_attempt is None or now - self._last_attempt >= self.retry_interval_s
         if missing and due and self._refreshing.acquire(blocking=False):
             try:
                 self._last_attempt = now
@@ -221,8 +221,7 @@ class ModelRuntime:
         not only the one that answers /readyz (T-43, D-073).
         """
         while not stop.is_set():
-            self._last_attempt = None  # the wait below already spaces the attempts
-            self.refresh()
+            self.refresh(force=True)  # the wait below already spaces the attempts
             if all(a in self.models for a in ALIASES):
                 return
             stop.wait(self.retry_interval_s)
