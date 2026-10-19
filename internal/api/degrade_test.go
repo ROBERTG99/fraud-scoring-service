@@ -130,3 +130,48 @@ func TestWriterOverloadIsResourceExhausted(t *testing.T) {
 		t.Fatalf("want Unavailable when even the spool fails, got %v", err)
 	}
 }
+
+// slowCommit behaves like the group writer when Postgres is slow: it waits for its deadline, then spools
+// (an fsync) before it returns.
+type slowCommit struct {
+	memDecisions
+	spool time.Duration
+}
+
+func (s *slowCommit) Commit(ctx context.Context, rec store.DecisionRecord) (*fraudv1.Decision, []byte, error) {
+	<-ctx.Done()
+	time.Sleep(s.spool) // the spool's fsync after the deadline
+	return rec.Decision, rec.RequestHash, nil
+}
+
+// FR-8 (T-50): with the model timing out and Postgres slow, the spool fallback must still fit in the Score
+// budget. The commit used to get every millisecond left, so the spool's fsync ran after 45 ms (CI e2e and the
+// compose demo measured 45.9 to 128.6 ms).
+func TestModelTimeoutAndSlowPostgresStayWithinTheScoreBudget(t *testing.T) {
+	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(200 * time.Millisecond):
+		case <-r.Context().Done():
+		}
+	}))
+	defer slow.Close()
+	h := newHarness(t)
+	h.srv.d.Model = model.NewBentoML(slow.URL, nil)
+	h.srv.d.Decisions = &slowCommit{spool: 3 * time.Millisecond}
+	_, _ = h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: journeyTx("0192f000-0000-7000-8000-0000000000b0")})
+	for i := 0; i < 5; i++ {
+		tx := journeyTx(fmt.Sprintf("0192f000-0000-7000-8000-0000000000b%d", i+1))
+		start := time.Now()
+		d, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: tx})
+		elapsed := time.Since(start)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if elapsed >= ScoreTimeout {
+			t.Fatalf("Score took %v with the model and Postgres both slow (budget %v)", elapsed, ScoreTimeout)
+		}
+		if !d.Degraded || !hasReason(d, "MODEL_UNAVAILABLE") {
+			t.Fatalf("decision %+v", d)
+		}
+	}
+}
