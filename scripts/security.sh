@@ -40,9 +40,9 @@ else # an empty requirements file would "pass" pip-audit: fail closed instead
 fi
 rm -f "$REQ.all"
 run pnpm-audit pnpm -C web audit --audit-level high
-run hadolint hadolint Dockerfile.go Dockerfile.summarizer serving/bentoml/Dockerfile deploy/mlflow/Dockerfile
-run checkov checkov --quiet --compact -d . --framework dockerfile --skip-path web/node_modules --skip-path third_party
-IMAGES=$(docker compose config --images 2>/dev/null | grep '^fraud/' || true)
+run hadolint hadolint Dockerfile.go Dockerfile.summarizer Dockerfile.test serving/bentoml/Dockerfile deploy/mlflow/Dockerfile deploy/seed/Dockerfile training/Dockerfile
+run checkov checkov --quiet --compact -d . --framework dockerfile --skip-path web/node_modules
+IMAGES=$(docker compose --profile seed --profile jobs config --images 2>/dev/null | grep '^fraud/' || true)
 if [ -z "$IMAGES" ]; then # no image scanned is not a pass
   ROWS+=("trivy|NOT RUN|docker compose config listed no fraud/ images")
   FAILED=1
@@ -54,8 +54,8 @@ for img in $IMAGES; do
   # patterns, e.g. the Anthropic SDK's '{"type": "service_account"}'); gitleaks covers this repository.
   run "trivy-secret-$tag" trivy image --quiet --scanners secret --skip-dirs /app/.venv --exit-code 1 "$img"
 done
-if [ -d infra/terraform ]; then run tflint tflint --chdir infra/terraform; else skip tflint "no infra/terraform yet (T-44)"; fi
-if [ -d .github/workflows ]; then run actionlint actionlint; else skip actionlint "no .github/workflows yet (T-45)"; fi
+run tflint tflint --chdir=infra/terraform --config="$PWD/infra/terraform/.tflint.hcl" --recursive
+run actionlint actionlint
 run licences .venv/bin/python scripts/check_licenses.py
 rm -f "$REQ"
 

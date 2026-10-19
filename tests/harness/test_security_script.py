@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-TOOLS = ("gitleaks", "gosec", "govulncheck", "bandit", "pip-audit", "pnpm", "hadolint", "checkov", "trivy")
+TOOLS = ("gitleaks", "gosec", "govulncheck", "bandit", "pip-audit", "pnpm", "hadolint", "checkov", "trivy", "tflint", "actionlint")
 
 
 def _stub(bin_dir: Path, name: str, body: str) -> None:

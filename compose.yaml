@@ -1,5 +1,9 @@
 name: fraud
 
+# The local stack (spec §16): `make up` (docker compose up -d --build --wait), `make seed`, then the console on
+# http://localhost:8500. Synthetic data only; containers are offline at runtime (Appendix A).
+# Every port is published on 127.0.0.1 only (D-049).
+
 # Service containers run with a read-only root, no capabilities and no privilege gain (D-055).
 x-hardened: &hardened
   read_only: true
@@ -9,22 +13,202 @@ x-hardened: &hardened
 
 x-build: &build
   context: .
-  network: host
+  network: ${COMPOSE_BUILD_NETWORK:-default} # host in the cloud sandbox (Appendix A; .env.example)
   args:
     HTTPS_PROXY: "${HTTPS_PROXY:-}"
 
+# Shared by the scorer, the feature-updater and the seed job. Development credentials only (migrations/00001).
+x-fraud-env: &fraud-env
+  FRAUD_ENV: dev # local stack: dev-issuer and plain-HTTP JWKS allowed (D-045)
+  FRAUD_SERVICE_TOKEN: ${FRAUD_SERVICE_TOKEN:-dev-service-token-change-me}
+  FRAUD_REDIS_ADDR: redis:6379
+  FRAUD_REDIS_PREFIX: fr
+  FRAUD_KAFKA_BROKERS: redpanda:9092
+  FRAUD_PG_DSN: postgres://fraud_app:fraud_app@postgres:5432/fraud?sslmode=disable
+  FRAUD_PG_MIGRATE_DSN: postgres://fraud:fraud@postgres:5432/fraud?sslmode=disable
+  FRAUD_ISSUER: http://dev-issuer:8515
+  FRAUD_JWKS_URL: http://dev-issuer:8515/.well-known/jwks.json
+  FRAUD_MODEL_URL: http://model-server:8514
+
 services:
+  # ---- data stores
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: fraud
+      POSTGRES_PASSWORD: fraud
+      POSTGRES_DB: fraud
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/10-mlflow.sql:ro
+    ports: ["127.0.0.1:8520:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fraud -d fraud"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: ["redisdata:/data"]
+    ports: ["127.0.0.1:8530:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  redpanda:
+    image: redpandadata/redpanda:v25.2.9
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=1G
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:8540
+      - --advertise-kafka-addr=internal://redpanda:9092,external://127.0.0.1:8540
+    volumes: ["redpandadata:/var/lib/redpanda/data"]
+    ports: ["127.0.0.1:8540:8540", "127.0.0.1:8541:9644"] # Kafka for host tools; admin API
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+    restart: unless-stopped
+
+  mlflow:
+    <<: *hardened
+    tmpfs: ["/tmp", "/home/mlflow"]
+    build: { <<: *build, dockerfile: deploy/mlflow/Dockerfile }
+    image: fraud/mlflow:dev
+    volumes: ["mlflow-artifacts:/mlflow/artifacts"]
+    ports: ["127.0.0.1:8560:5000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+
+  # ---- jobs
+  # Applies the goose migrations (idempotent) before anything that reads the schema starts.
+  migrate:
+    <<: *hardened
+    build: { <<: *build, dockerfile: Dockerfile.go, target: scorer }
+    image: fraud/scorer:dev
+    command: ["migrate"]
+    environment: *fraud-env
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  # `make seed` (docker compose run --rm seed): generate, train and register, replay 72 h (deploy/seed/Dockerfile).
+  seed:
+    <<: *hardened
+    tmpfs: ["/tmp", "/home/app"]
+    build: { <<: *build, dockerfile: deploy/seed/Dockerfile, target: seed }
+    image: fraud/seed:dev
+    profiles: [seed]
+    environment:
+      <<: *fraud-env
+      FRAUD_SCORER_GRPC: scorer:8510
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    volumes: ["seed-data:/data"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      scorer: { condition: service_healthy }
+      feature-updater: { condition: service_healthy }
+      model-server: { condition: service_healthy }
+      mlflow: { condition: service_healthy }
+    restart: "no"
+
+  # `make retention`: deletes rows past their retention period (role fraud_retention).
+  retention:
+    <<: *hardened
+    build: { <<: *build, dockerfile: Dockerfile.go, target: retention }
+    image: fraud/retention:dev
+    profiles: [jobs]
+    environment:
+      FRAUD_PG_DSN: postgres://fraud_retention:fraud_retention@postgres:5432/fraud?sslmode=disable
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: "no"
+
+  # ---- services
+  model-server:
+    <<: *hardened
+    build: { <<: *build, dockerfile: serving/bentoml/Dockerfile }
+    image: fraud/model-server:dev
+    environment:
+      FRAUD_ENV: dev
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      FRAUD_MODEL_RETRY_S: "5"
+    tmpfs: ["/tmp", "/home/app"]
+    volumes: ["model-cache:/var/cache/fraud-model"]
+    ports: ["127.0.0.1:8514:8514"]
+    # Liveness, not readiness: the registry is empty until `make seed` trains, and the scorer runs rules-only
+    # until /readyz turns 200 (spec §4.7, D-073). The model server retries the missing aliases every 5 s.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8514/livez', timeout=2).status == 200 else 1)"
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      retries: 20
+    depends_on:
+      mlflow: { condition: service_healthy }
+    restart: unless-stopped
+
+  dev-issuer:
+    <<: *hardened
+    build: { <<: *build, dockerfile: Dockerfile.go, target: dev-issuer }
+    image: fraud/dev-issuer:dev
+    environment:
+      FRAUD_ENV: dev
+      FRAUD_ISSUER: http://dev-issuer:8515
+      FRAUD_ISSUER_ADDR: ":8515"
+    ports: ["127.0.0.1:8515:8515"]
+    restart: unless-stopped
+
+  feature-updater:
+    <<: *hardened
+    build: { <<: *build, dockerfile: Dockerfile.go, target: feature-updater }
+    image: fraud/feature-updater:dev
+    environment:
+      <<: *fraud-env
+      FRAUD_UPDATER_HTTP_ADDR: ":8512"
+    ports: ["127.0.0.1:8512:8512"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      redpanda: { condition: service_healthy }
+    restart: unless-stopped
+
   scorer:
     <<: *hardened
     build: { <<: *build, dockerfile: Dockerfile.go, target: scorer }
     image: fraud/scorer:dev
     volumes: ["scorer-spool:/var/lib/fraud/spool", "audit-anchors:/var/lib/fraud/audit"]
     environment:
-      FRAUD_ENV: dev # local stack: plain-HTTP JWKS allowed (D-045)
+      <<: *fraud-env
       FRAUD_ADMIN_ADDR: ":8516" # metrics for Prometheus on the stack network, not published (D-052)
+      FRAUD_MODEL_BACKEND: ${FRAUD_MODEL_BACKEND:-bentoml}
+      FRAUD_TRITON_URL: http://triton:8000
+      # The seed and the demo replay weeks-old synthetic events with their own timestamps (D-041).
+      FRAUD_MAX_EVENT_AGE: "0"
       # Local stand-in for append-only storage outside the database (`make audit-verify`, D-050, D-057).
       FRAUD_AUDIT_ANCHORS: /var/lib/fraud/audit/anchors.jsonl
     ports: ["127.0.0.1:8510:8510", "127.0.0.1:8511:8511"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      redpanda: { condition: service_healthy }
+      dev-issuer: { condition: service_healthy }
+      model-server: { condition: service_healthy }
     restart: unless-stopped
 
   case-summarizer:
@@ -34,11 +218,79 @@ services:
     environment:
       FRAUD_ENV: dev # local stack: plain-HTTP JWKS allowed (D-045)
       FRAUD_SUMMARY_PROVIDER: fake
+      FRAUD_SUMMARIZER_PG_DSN: postgresql://fraud_summarizer:fraud_summarizer@postgres:5432/fraud
+      FRAUD_KAFKA_BROKERS: redpanda:9092
+      FRAUD_ISSUER: http://dev-issuer:8515
+      FRAUD_JWKS_URL: http://dev-issuer:8515/.well-known/jwks.json
       FRAUD_SUMMARIZER_ADMIN_ADDR: "0.0.0.0:8517" # metrics for Prometheus on the stack network, not published
     ports: ["127.0.0.1:8513:8513"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redpanda: { condition: service_healthy }
+      dev-issuer: { condition: service_healthy }
     restart: unless-stopped
 
-  # Every port is published on 127.0.0.1 only (D-049).
+  webserve:
+    <<: *hardened
+    build: { <<: *build, dockerfile: Dockerfile.go, target: webserve }
+    image: fraud/webserve:dev
+    environment:
+      FRAUD_ENV: dev # local stack: the dev-issuer's personas and tokens are proxied (audit M6 M4)
+      FRAUD_WEB_ADDR: ":8500"
+      FRAUD_WEB_API_URL: http://scorer:8511
+      FRAUD_WEB_ISSUER_URL: http://dev-issuer:8515
+      FRAUD_WEB_SUMMARIZER_URL: http://case-summarizer:8513
+    ports: ["127.0.0.1:8500:8500"]
+    depends_on:
+      scorer: { condition: service_healthy }
+      case-summarizer: { condition: service_healthy }
+      dev-issuer: { condition: service_healthy }
+    restart: unless-stopped
+
+  # ---- profile live: the case summarizer with a real provider (needs ANTHROPIC_API_KEY or OPENAI_API_KEY in
+  # the environment). Start it instead of the offline one:
+  #   docker compose stop case-summarizer && docker compose --profile live up -d case-summarizer-live
+  # It joins the same consumer group, so only one of the two should run.
+  case-summarizer-live:
+    <<: *hardened
+    build: { <<: *build, dockerfile: Dockerfile.summarizer }
+    image: fraud/case-summarizer:dev
+    profiles: [live]
+    environment:
+      FRAUD_ENV: dev
+      FRAUD_SUMMARY_PROVIDER: ${FRAUD_SUMMARY_PROVIDER_LIVE:-anthropic}
+      FRAUD_SUMMARY_MODEL: ${FRAUD_SUMMARY_MODEL:-claude-haiku-5-5}
+      FRAUD_LLM_DAILY_BUDGET_USD: ${FRAUD_LLM_DAILY_BUDGET_USD:-2}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      FRAUD_SUMMARIZER_PG_DSN: postgresql://fraud_summarizer:fraud_summarizer@postgres:5432/fraud
+      FRAUD_KAFKA_BROKERS: redpanda:9092
+      FRAUD_ISSUER: http://dev-issuer:8515
+      FRAUD_JWKS_URL: http://dev-issuer:8515/.well-known/jwks.json
+      FRAUD_SUMMARIZER_ADMIN_ADDR: "0.0.0.0:8517"
+    ports: ["127.0.0.1:8519:8513"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redpanda: { condition: service_healthy }
+      dev-issuer: { condition: service_healthy }
+    restart: unless-stopped
+
+  # ---- profile triton (spec FR-6): Triton on the same ONNX models, never required by `make verify`
+  # (docs/KNOWN_LIMITATIONS.md). `make triton-up` after `scripts/triton_repo.sh`; then
+  # FRAUD_MODEL_BACKEND=triton docker compose up -d scorer.
+  triton:
+    image: nvcr.io/nvidia/tritonserver:25.09-py3
+    profiles: [triton]
+    command: ["tritonserver", "--model-repository=/models", "--strict-model-config=false"]
+    volumes: ["./serving/triton/model_repository:/models:ro"]
+    ports: ["127.0.0.1:8550:8000", "127.0.0.1:8551:8001", "127.0.0.1:8552:8002"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:8000/v2/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+    restart: unless-stopped
+
   # ---- profile observability (spec §14): collector 8580/8581, Grafana 8590, Prometheus 8591, Jaeger 8592.
   # Services export with OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 (scorer, gRPC) or
   # http://otel-collector:4318 (summarizer, HTTP).
@@ -48,7 +300,8 @@ services:
     command: ["--config=/etc/otelcol/collector.yaml"]
     volumes: ["./deploy/otel/collector.yaml:/etc/otelcol/collector.yaml:ro"]
     ports: ["127.0.0.1:8580:4317", "127.0.0.1:8581:4318"]
-    depends_on: [jaeger]
+    depends_on:
+      jaeger: { condition: service_started } # no probe binary in the image
     restart: unless-stopped
 
   jaeger:
@@ -90,7 +343,9 @@ services:
       - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./deploy/grafana/fraud.json:/var/lib/grafana/dashboards/fraud.json:ro
     ports: ["127.0.0.1:8590:3000"]
-    depends_on: [prometheus, jaeger]
+    depends_on:
+      prometheus: { condition: service_healthy }
+      jaeger: { condition: service_started } # no probe binary in the image
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
       interval: 5s
@@ -110,5 +365,11 @@ services:
     restart: unless-stopped
 
 volumes:
+  pgdata:
+  redisdata:
+  redpandadata:
+  mlflow-artifacts:
+  model-cache:
+  seed-data:
   scorer-spool:
   audit-anchors:

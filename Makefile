@@ -27,9 +27,12 @@ BENCH_PROFILE ?= ci
 LIVE_EVAL_BUDGET_USD ?= 2
 
 # Test infrastructure from compose.test.yaml (ports 8521/8531/8543).
-TEST_ENV := FRAUD_TEST_PG_DSN=postgres://fraud:fraud@127.0.0.1:8521/fraud?sslmode=disable \
-	FRAUD_TEST_REDIS_ADDR=127.0.0.1:8531 \
-	FRAUD_TEST_KAFKA_BROKERS=127.0.0.1:8543
+# The environment wins, so `make test-docker` points the same targets at the service names.
+FRAUD_TEST_PG_DSN ?= postgres://fraud:fraud@127.0.0.1:8521/fraud?sslmode=disable
+FRAUD_TEST_REDIS_ADDR ?= 127.0.0.1:8531
+FRAUD_TEST_KAFKA_BROKERS ?= 127.0.0.1:8543
+TEST_ENV := FRAUD_TEST_PG_DSN=$(FRAUD_TEST_PG_DSN) FRAUD_TEST_REDIS_ADDR=$(FRAUD_TEST_REDIS_ADDR) \
+	FRAUD_TEST_KAFKA_BROKERS=$(FRAUD_TEST_KAFKA_BROKERS)
 
 GO_CORE_PKGS := ./internal/features/... ./internal/rules/... ./internal/decide/... ./internal/store/...
 
@@ -142,7 +145,7 @@ test-docker: ## The full test suite inside containers
 	./scripts/test_docker.sh
 
 e2e: ## Playwright end-to-end tests against the running stack
-	NODE_PATH=$(CURDIR)/web/node_modules $(PNPM) -C web exec playwright test --config ../tests/e2e/playwright.config.ts
+	NODE_PATH="$(CURDIR)/web/node_modules" $(PNPM) -C web exec playwright test --config ../tests/e2e/playwright.config.ts
 
 # ---------------------------------------------------------------- data, model
 .PHONY: proto gen-data train register-model feature-parity bench-model sagemaker-dry-run
@@ -235,7 +238,7 @@ verify-clean: ## make verify in a fresh clone in a temporary folder
 
 docs: ## Regenerate diagrams, OpenAPI, frontend types and screenshots
 	./scripts/proto.sh
-	E2E_SCREENSHOTS=1 NODE_PATH=$(CURDIR)/web/node_modules $(PNPM) -C web exec playwright test --config ../tests/e2e/playwright.config.ts screenshots.spec.ts
+	E2E_SCREENSHOTS=1 NODE_PATH="$(CURDIR)/web/node_modules" $(PNPM) -C web exec playwright test --config ../tests/e2e/playwright.config.ts screenshots.spec.ts
 
 clean: ## Remove containers, volumes, caches and build outputs
 	-$(COMPOSE) --profile '*' down -v --remove-orphans
