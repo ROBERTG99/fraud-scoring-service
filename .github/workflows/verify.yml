@@ -1,0 +1,45 @@
+name: verify
+
+# Spec §19 step 1 on a fresh checkout: `make bootstrap && make verify`, the single gate, with no API keys.
+# The other workflows run its parts on every pull request; this runs the whole target in one job.
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # gitleaks scans the history
+      - uses: ./.github/actions/setup
+      - name: Playwright browsers
+        run: pnpm -C web exec playwright install --with-deps chromium
+      - name: make verify (no .env, no API keys)
+        run: |
+          rm -f .env
+          make verify
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify
+          path: |
+            evals/REPORT.md
+            evals/reports/*.json
+            artifacts/security/
+            artifacts/e2e/report/
+          if-no-files-found: ignore
+      - if: always()
+        run: |
+          docker compose --profile seed --profile jobs down -v
+          make test-deps-down

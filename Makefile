@@ -182,6 +182,7 @@ eval: eval-model eval-decisions eval-summary eval-judge ## Offline evals with th
 
 eval-model:
 	@test -f artifacts/data/eval/events.jsonl || $(MAKE) gen-data SIZE=eval
+	@test -f $(MODEL_DIR)/model.onnx || $(MAKE) train # a fresh clone has no model yet
 	$(PY) python -m training.evaluate --data artifacts/data/eval --out evals/reports/model.json
 	$(PY) evalgate check evals/reports/model.json $(call baseline,model) --max-regression-pp 1.0
 
@@ -229,6 +230,8 @@ verify: ## Everything except eval-live; the single gate
 	$(MAKE) security
 	$(MAKE) test
 	$(MAKE) test-docker
+	$(MAKE) up # e2e drives the console of a running, seeded stack
+	$(MAKE) seed
 	$(MAKE) e2e
 	$(MAKE) eval
 	$(MAKE) bench

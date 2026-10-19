@@ -9,6 +9,9 @@
 # (scripts/bench/score.json). Services are stopped on exit; logs stay in artifacts/bench/.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# macOS has no setsid(1): start the process in its own session with Python's os.setsid. Every call here is
+# backgrounded with "&", so exec replaces that subshell and $! is the new session's leader.
+command -v setsid >/dev/null 2>&1 || setsid() { exec python3 -c 'import os, sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' "$@"; }
 PROFILE=${1:-${BENCH_PROFILE:-ci}}
 case "$PROFILE" in
   ci) RPS=300 CONC=50 ;;
