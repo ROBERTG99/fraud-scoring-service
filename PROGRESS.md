@@ -186,7 +186,7 @@ chore: configure commit attribution
 | T-44 | Terraform module | M7 | todo | |
 | T-45 | CI workflows | M7 | todo | |
 | T-46 | Demo scenario | M8 | todo | |
-| T-47 | Documentation set | M8 | todo | |
+| T-47 | Documentation set | M8 | done except the demo section (T-46) | Written at the end of M6 at the maintainer's request (D-070): README rewrite, `docs/{architecture,design-faq,evaluation,ai-development,verification}.md`, ADRs 0002–0009 with an index, `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`. `uv run pytest tests/unit/test_docs.py` (test_every_document_exists, test_the_design_faq_answers_every_question_with_file_references, test_readme_numbers_link_to_reports) → 3 passed; `make lint-md` → 66 files, 0 issues. `docs-editor` review at 2eba265: 5 blockers (seed window, KNOWN_LIMITATIONS line references and numbers, ops targets that need the compose stack), fixed in 9164e26. The README demo section and `make demo` wait on T-46. |
 | T-48 | Durability and chaos | M9 | todo | |
 | T-49 | Reviews and fixes | M9 | todo | |
 | T-50 | Final verification | M9 | todo | |

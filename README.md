@@ -40,7 +40,7 @@ All numbers below are offline, on synthetic data (generator seed 7), as recorded
 | Score latency | p50 11.3 ms, p95 19.6 ms, p99 30.5 ms at 300 requests/s for 60 s (budget p95 80 ms; run of 2026-10-17 at f9ab2a5) | [`evals/REPORT.md`](evals/REPORT.md), `make bench` |
 | Model server | p95 4.63 ms per prediction (measured on the first model version, fraud-gbdt/1) | [`PROGRESS.md`](PROGRESS.md) T-16, `make bench-model` |
 | Rules engine | 14.9 µs per 64-rule evaluation | [`PROGRESS.md`](PROGRESS.md) T-19, `go test -bench BenchmarkEval64Rules ./internal/rules` |
-| Tests | Go core coverage 86.4%, Python 93.11%, 662 pytest and 67 Vitest tests | [`PROGRESS.md`](PROGRESS.md) M6, `make test` |
+| Tests | Go core coverage 86.4%, Python 93.11%, 665 pytest and 67 Vitest tests | [`docs/verification.md`](docs/verification.md), `make test` |
 
 Live LLM evals have not been run: there was no provider key in the build environment
 ([`evals/REPORT.md`](evals/REPORT.md)). How each suite works is in [`docs/evaluation.md`](docs/evaluation.md).
