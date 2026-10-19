@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -131,23 +132,27 @@ func TestWriterOverloadIsResourceExhausted(t *testing.T) {
 	}
 }
 
-// slowCommit behaves like the group writer when Postgres is slow: it waits for its deadline, then spools
-// (an fsync) before it returns.
+// slowCommit behaves like the group writer when Postgres is slow: it waits for its deadline, then spools. It
+// records the time it was given.
 type slowCommit struct {
 	memDecisions
-	spool time.Duration
+	mu   sync.Mutex
+	left []time.Duration
 }
 
 func (s *slowCommit) Commit(ctx context.Context, rec store.DecisionRecord) (*fraudv1.Decision, []byte, error) {
+	deadline, _ := ctx.Deadline()
+	s.mu.Lock()
+	s.left = append(s.left, time.Until(deadline))
+	s.mu.Unlock()
 	<-ctx.Done()
-	time.Sleep(s.spool) // the spool's fsync after the deadline
 	return rec.Decision, rec.RequestHash, nil
 }
 
-// FR-8 (T-50): with the model timing out and Postgres slow, the spool fallback must still fit in the Score
-// budget. The commit used to get every millisecond left, so the spool's fsync ran after 45 ms (CI e2e and the
-// compose demo measured 45.9 to 128.6 ms).
-func TestModelTimeoutAndSlowPostgresStayWithinTheScoreBudget(t *testing.T) {
+// FR-8 (T-50, D-078): with the model timing out, the commit's deadline must leave SpoolReserve of the Score
+// budget for the spool fallback. The commit used to get every millisecond left, so the spool's fsync ran after
+// 45 ms (CI e2e and the compose demo measured 45.9 to 128.6 ms). The check is on deadlines, not wall time.
+func TestModelTimeoutAndSlowPostgresLeaveTheSpoolReserve(t *testing.T) {
 	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-time.After(200 * time.Millisecond):
@@ -157,21 +162,47 @@ func TestModelTimeoutAndSlowPostgresStayWithinTheScoreBudget(t *testing.T) {
 	defer slow.Close()
 	h := newHarness(t)
 	h.srv.d.Model = model.NewBentoML(slow.URL, nil)
-	h.srv.d.Decisions = &slowCommit{spool: 3 * time.Millisecond}
-	_, _ = h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: journeyTx("0192f000-0000-7000-8000-0000000000b0")})
+	commits := &slowCommit{}
+	h.srv.d.Decisions = commits
 	for i := 0; i < 5; i++ {
 		tx := journeyTx(fmt.Sprintf("0192f000-0000-7000-8000-0000000000b%d", i+1))
 		start := time.Now()
 		d, err := h.srv.Score(context.Background(), &fraudv1.ScoreRequest{Transaction: tx})
-		elapsed := time.Since(start)
 		if err != nil {
 			t.Fatal(err)
-		}
-		if elapsed >= ScoreTimeout {
-			t.Fatalf("Score took %v with the model and Postgres both slow (budget %v)", elapsed, ScoreTimeout)
 		}
 		if !d.Degraded || !hasReason(d, "MODEL_UNAVAILABLE") {
 			t.Fatalf("decision %+v", d)
 		}
+		commits.mu.Lock()
+		left := commits.left[len(commits.left)-1]
+		commits.mu.Unlock()
+		// The commit started at least ModelTimeout after start; its deadline must end SpoolReserve before
+		// the Score deadline (start + ScoreTimeout).
+		if spent := time.Since(start); left > ScoreTimeout-SpoolReserve-ModelTimeout || spent < ModelTimeout {
+			t.Fatalf("commit got %v after a %v model timeout (want <= %v)", left, ModelTimeout, ScoreTimeout-SpoolReserve-ModelTimeout)
+		}
+	}
+}
+
+func TestCommitTimeoutKeepsTheSpoolReserve(t *testing.T) {
+	now := time.Now()
+	cases := []struct {
+		left, want time.Duration
+	}{
+		{45 * time.Millisecond, PostgresTimeout},                    // plenty of time: the Postgres budget
+		{25 * time.Millisecond, 25*time.Millisecond - SpoolReserve}, // after a model timeout
+		{SpoolReserve - time.Millisecond, 0},                        // nothing left: spool at once
+		{-time.Millisecond, 0},                                      // already late
+	}
+	for _, c := range cases {
+		ctx, cancel := context.WithDeadline(context.Background(), now.Add(c.left))
+		if got := commitTimeout(ctx, now); got != c.want {
+			t.Errorf("left %v: commit timeout %v, want %v", c.left, got, c.want)
+		}
+		cancel()
+	}
+	if got := commitTimeout(context.Background(), now); got != PostgresTimeout {
+		t.Errorf("no deadline: %v, want %v", got, PostgresTimeout)
 	}
 }
