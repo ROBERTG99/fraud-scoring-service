@@ -52,9 +52,9 @@ What is not done, approximate or out of scope. Each entry names where it shows u
 - **Triton was not run in the build environment.** `nvcr.io/nvidia/tritonserver` is blocked by the network
   policy (pull returned `Forbidden` on 2026-10-16). The model repository (`serving/triton/`) and KServe v2
   client (`internal/model/triton.go`, `TestKServeV2RequestShape` against a recorded request/response) exist,
-  but `TestTritonGoldenVector` skips unless `FRAUD_TEST_TRITON_URL` points at a running Triton. The
-  `make triton-up` target expects a `triton` profile in `compose.yaml`, which arrives with the compose stack
-  (T-43); until then the target fails. `make verify` never requires Triton.
+  but `TestTritonGoldenVector` skips unless `FRAUD_TEST_TRITON_URL` points at a running Triton. The `triton`
+  profile exists in `compose.yaml` (T-43, `make triton-up` after `scripts/triton_repo.sh`) but was not started
+  in this build either: the image is several GB and was not pulled. `make verify` never requires Triton.
 
 ## Model server throughput on a shared host
 
@@ -82,8 +82,8 @@ f9ab2a5, load 0.5) but 6.28% with a concurrent `go build` (load 8.5, M5 review),
   loses them on restart. The summarizer creates one trace per `decisions` message (APPROVE ones included),
   so a long backlog evicts older scorer spans: in a host run that consumed a topic shared with earlier runs,
   the scorer's spans were evicted before the check (`scripts/obs_host.sh`, then fresh infrastructure).
-- The T-41 evidence ran the profile's images on host networking against `scripts/seed_host.sh`; the same
-  check against the full compose stack after `make demo` waits on T-43.
+- The T-41 evidence ran the profile's images on host networking against `scripts/seed_host.sh`. The same
+  check against the compose stack (`docker compose --profile observability up -d`) was not run.
 - The dashboard's DLQ and rule-error series are absent until the first such event (labelled counters).
 
 ## Device features under 90-day gaps
@@ -207,14 +207,32 @@ because it lacks the number. FakeLLM's statements always carry it (faithfulness 
 live model may phrase evidence without the value, which lowers faithfulness and can turn summaries
 `unfaithful`. Watch the faithfulness score in `make eval-live` before relying on live summaries.
 
-## The demo depends on the shipped model and runs on the host stack
+## The demo depends on the shipped model
 
 `make demo` (T-46) asserts that the scripted takeover is REVIEWed, which needs the model to score it in the
 review band (0.30 to 0.85). The shipped model weighs the hour of day: the scripted account's features score
 1.00 at hour 4 UTC and 0.65 at hour 14 (D-071), so the scenario places the purchase between 13:00 and 15:00
 UTC. A retrained model can move the score out of the band; the `ato_review` checkpoint then fails and
-says what came back. The demo runs against `FULL=1 scripts/seed_host.sh`, where stopping the model server
-means pausing it (SIGSTOP); the compose stack's `docker compose stop` arrives with T-43. The shadow
+says what came back. "Stopping" the model server means pausing it: SIGSTOP on the host stack,
+`docker compose pause` on the compose stack, so the scorer sees it unreachable without a restart. The shadow
 checkpoint compares the production version with itself (agreement 100%) until a distinct shadow version is
 registered, and the risk engineer's promotion decision (`make register-model ALIAS=production`) is not
 scripted.
+
+## The compose stack on a laptop
+
+Measured on Docker Desktop (macOS arm64, 10 vCPU and 8 GB for the VM) with the repository inside a synced
+cloud-drive folder (`PROGRESS.md`, T-43, T-46):
+
+- The degraded demo checkpoint (`model_unavailable_rules_only`, every call under the 45 ms Score budget with the
+  model server paused) passed 2 of 3 consecutive `make demo` runs (slowest 25.4 and 26.3 ms); the third saw one
+  call at 53.2 ms, in the same second as a Postgres commit that missed its 30 ms deadline and was spooled, so the
+  whole VM stalled. Sequential calls with the model paused measured 22.5 to 31 ms over 92 calls. The CI e2e job
+  runs the demo on a Linux runner.
+- `make seed` scored 16,943 transactions with 680 degraded (531 `MODEL_UNAVAILABLE`, 149
+  `FEATURES_UNAVAILABLE`): the 20 ms model and 8 ms Redis budgets are tight for a 250 tx/s replay inside the
+  VM. The host stack (`scripts/seed_host.sh`) degrades far fewer (`PROGRESS.md`, T-31).
+- `make test-docker` runs the Go packages four at a time (`GOFLAGS=-p=4`): with all of them at once under
+  `-race`, one integration test missed its 8 ms Redis budget for lack of CPU (D-073).
+- The model server's compose healthcheck is liveness (`/livez`): before `make seed` registers a model the stack
+  is healthy and scores rules-only (D-073).
