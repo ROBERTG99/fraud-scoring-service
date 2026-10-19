@@ -78,3 +78,74 @@ def test_fallback_defaults_are_p90(prepared: T.Prepared) -> None:
     d = T.fallback_defaults(prepared.x[prepared.split == "train"])
     assert set(d) == set(T.FALLBACK_FEATURES)
     assert d["minutes_since_pwd_change"] == 43200
+
+
+def _isotonic_only_graph(xs: np.ndarray, ys: np.ndarray) -> bytes:
+    """The calibration nodes alone, fed a [n, 2] probability tensor like the tree ensemble's output."""
+    import onnx
+    from onnx import TensorProto, helper
+
+    from training.export_onnx import INPUT, OUTPUT, isotonic_nodes
+
+    nodes, inits = isotonic_nodes(xs, ys, INPUT)
+    graph = helper.make_graph(
+        nodes,
+        "iso",
+        [helper.make_tensor_value_info(INPUT, TensorProto.FLOAT, [None, 2])],
+        [helper.make_tensor_value_info(OUTPUT, TensorProto.FLOAT, [None, 1])],
+        inits,
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 15)], ir_version=8)
+    onnx.checker.check_model(model)
+    return model.SerializeToString()
+
+
+def test_isotonic_graph_error_does_not_grow_with_the_breakpoints() -> None:
+    # T-48 (D-076): a model trained on linux/arm64 missed the 1e-5 parity bound on one row because the graph
+    # summed float32 rounding over every segment below p. With 2,000 breakpoints at slope <= 10 the error of
+    # the calibrated map must stay at float32 precision.
+    rng = np.random.default_rng(7)
+    xs = np.sort(rng.uniform(0.0, 1.0, 2001))
+    xs[0], xs[-1] = 0.0, 1.0
+    ys, _ = T.bounded_slope(xs, np.sort(rng.uniform(0.0, 1.0, 2001)))
+    p = np.concatenate([rng.uniform(-0.01, 1.01, 20_000), xs[::7]]).astype(np.float32)
+    probs = np.stack([1 - p, p], axis=1).astype(np.float32)
+    got = run_onnx(_isotonic_only_graph(xs, ys), probs).astype(np.float64)
+    want = np.clip(np.interp(p.astype(np.float64), xs, ys), 0.0, 1.0)
+    assert float(np.max(np.abs(got - want))) < 1e-6
+
+
+def test_tree_scores_do_not_depend_on_the_runtime_thread_count() -> None:
+    # T-48 (D-076): onnxruntime summed the 300 trees in float32, in an order that depends on the thread count
+    # and the CPU; one linux/arm64 run moved a raw score by 1.3e-6, which the calibration slope (<= 10) made
+    # 1.3e-5 and failed the parity bound. The exported trees must accumulate in double.
+    import onnxruntime as ort
+    from xgboost import XGBClassifier
+
+    from training.export_onnx import INPUT, _probabilities_output, _tree_model
+
+    rng = np.random.default_rng(7)
+    x = rng.normal(size=(4000, 13)).astype(np.float32)
+    y = (x[:, 0] + 0.5 * x[:, 1] * x[:, 2] + rng.normal(scale=0.8, size=4000) > 1.2).astype(np.int8)
+    model = XGBClassifier(n_estimators=300, max_depth=6, learning_rate=0.08, random_state=7).fit(x, y)
+    onnx_bytes = _tree_model(model, "xgboost").SerializeToString()
+    probe = rng.normal(size=(5000, 13)).astype(np.float32)
+
+    def scores(threads: int) -> np.ndarray:
+        opts = ort.SessionOptions()
+        opts.intra_op_num_threads = threads
+        sess = ort.InferenceSession(onnx_bytes, sess_options=opts, providers=["CPUExecutionProvider"])
+        name = _probabilities_output(onnx_load(onnx_bytes))
+        out = dict(zip([o.name for o in sess.get_outputs()], sess.run(None, {INPUT: probe}), strict=True))
+        return np.asarray(out[name], dtype=np.float64)[:, 1]
+
+    single, many = scores(1), scores(4)
+    assert float(np.max(np.abs(single - many))) < 1e-7
+    exact = model.predict_proba(probe)[:, 1].astype(np.float64)
+    assert float(np.max(np.abs(single - exact))) < 5e-7
+
+
+def onnx_load(model_bytes: bytes):  # type: ignore[no-untyped-def]
+    import onnx
+
+    return onnx.load_from_string(model_bytes)
