@@ -245,3 +245,47 @@ def test_outside_dev_a_local_model_needs_a_pinned_digest(
     monkeypatch.delenv("FRAUD_MODEL_SHA256_PRODUCTION")
     trusted = ModelRuntime(model_dir=str(model_dir), use_mlflow=False, require_pin=False)
     assert trusted.load("production").source == "local"
+
+
+def test_a_model_registered_after_startup_is_loaded_by_the_next_readiness_check(
+    model_dir: Path, tmp_path: Path
+) -> None:
+    # Compose starts the model server before `make seed` trains and registers a model (T-43, D-073).
+    late = tmp_path / "late"
+    clock = [100.0]
+    rt = ModelRuntime(
+        model_dir=str(late), cache_dir=str(tmp_path / "cache"), use_mlflow=False, clock=lambda: clock[0]
+    )
+    rt.load_all()
+    assert not rt.refresh()
+    shutil.copytree(model_dir, late)
+    clock[0] += 1.0
+    assert not rt.refresh()  # retries are rate limited
+    clock[0] += rt.retry_interval_s
+    assert rt.refresh() and rt.ready()
+    assert set(rt.models) == {"production", "shadow"}
+
+
+def test_every_worker_loads_a_late_model_without_a_readiness_probe(model_dir: Path, tmp_path: Path) -> None:
+    # BentoML runs several worker processes and /readyz reaches only one of them: a worker that never answers a
+    # probe must still load a model registered after it started (T-43: one of two workers kept answering 503).
+    import threading
+    import time
+
+    late = tmp_path / "late"
+    rt = ModelRuntime(model_dir=str(late), cache_dir=str(tmp_path / "cache"), use_mlflow=False)
+    rt.retry_interval_s = 0.05
+    rt.load_all()
+    stop = threading.Event()
+    watcher = threading.Thread(target=rt.watch, args=(stop,), daemon=True)
+    watcher.start()
+    try:
+        shutil.copytree(model_dir, late)
+        deadline = time.monotonic() + 5
+        while not (rt.ready() and "shadow" in rt.models) and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert rt.ready() and set(rt.models) == {"production", "shadow"}
+        watcher.join(timeout=2)
+        assert not watcher.is_alive()  # it stops once every alias is loaded
+    finally:
+        stop.set()
