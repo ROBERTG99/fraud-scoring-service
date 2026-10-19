@@ -149,3 +149,21 @@ def onnx_load(model_bytes: bytes):  # type: ignore[no-untyped-def]
     import onnx
 
     return onnx.load_from_string(model_bytes)
+
+
+def test_double_trees_handle_a_zero_margin_base_score() -> None:
+    # onnxmltools leaves out base_values when the base margin is 0 (base_score 0.5); the rewrite must not need it.
+    import onnxruntime as ort
+    from xgboost import XGBClassifier
+
+    from training.export_onnx import INPUT, _probabilities_output, _tree_model
+
+    rng = np.random.default_rng(3)
+    x = rng.normal(size=(2000, 13)).astype(np.float32)
+    y = (x[:, 0] > 0.3).astype(np.int8)
+    model = XGBClassifier(n_estimators=40, max_depth=3, base_score=0.5, random_state=7).fit(x, y)
+    m = _tree_model(model, "xgboost")
+    sess = ort.InferenceSession(m.SerializeToString(), providers=["CPUExecutionProvider"])
+    out = dict(zip([o.name for o in sess.get_outputs()], sess.run(None, {INPUT: x[:500]}), strict=True))
+    got = np.asarray(out[_probabilities_output(m)], dtype=np.float64)[:, 1]
+    assert float(np.max(np.abs(got - model.predict_proba(x[:500])[:, 1]))) < 5e-7

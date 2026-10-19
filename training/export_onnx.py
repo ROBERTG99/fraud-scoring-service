@@ -68,7 +68,8 @@ def accumulate_in_double(m: onnx.ModelProto) -> onnx.ModelProto:
             ("target_weights_as_tensor", "class_weights"),
             ("base_values_as_tensor", "base_values"),
         ):
-            values = np.asarray(attrs[source], dtype=np.float64)
+            # onnxmltools omits base_values when the base margin is 0 (base_score 0.5).
+            values = np.asarray(attrs.get(source, [0.0]), dtype=np.float64)
             regressor.attribute.append(helper.make_attribute(name, numpy_helper.from_array(values, name)))
         one = numpy_helper.from_array(np.array([[1.0]], dtype=np.float32), tree_p + "_one")
         graph.initializer.append(one)
