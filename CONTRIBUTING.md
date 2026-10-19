@@ -8,9 +8,9 @@ those files win.
 
 The project is pre-release. Milestones M0 to M6 are done and M7 to M9 are not started
 ([`PROGRESS.md`](PROGRESS.md)). The targets whose scripts or compose services arrive in those milestones
-(`make up`, `make seed`, `make demo`, `make triton-up`, `make audit-verify`, `make retention`,
+(`make up`, `make seed`, `make triton-up`, `make audit-verify`, `make retention`,
 `make dlq-peek`, `make test-docker`, `make tf-check`, `make verify-clean`) do not run yet; the
-[README](README.md) quick start runs the services on the host instead.
+[README](README.md) quick start runs the services on the host instead, and `make demo` runs against them.
 
 ## Setup
 

@@ -2,10 +2,16 @@ import { defineConfig, devices } from "@playwright/test";
 
 // Runs against a running stack: `docker compose up` (console on :8500) or `FULL=1 scripts/seed_host.sh`
 // (E2E_BASE_URL=http://127.0.0.1:18500). The stack must hold seeded open cases (`make seed`).
-// screenshots.spec.ts rewrites docs/images/ and only runs under `make docs` (E2E_SCREENSHOTS=1).
+// screenshots.spec.ts rewrites docs/images/ and only runs under `make docs` (E2E_SCREENSHOTS=1);
+// demo.spec.ts checks a demo run and only runs under `make demo` (DEMO_CHECKPOINTS, scripts/demo.sh).
+const ignored = [
+  ...(process.env.E2E_SCREENSHOTS ? [] : ["screenshots.spec.ts"]),
+  ...(process.env.DEMO_CHECKPOINTS ? [] : ["demo.spec.ts"]),
+];
+
 export default defineConfig({
   testDir: ".",
-  testIgnore: process.env.E2E_SCREENSHOTS ? [] : ["screenshots.spec.ts"],
+  testIgnore: ignored,
   outputDir: "../../artifacts/e2e/results",
   reporter: [
     ["list"],

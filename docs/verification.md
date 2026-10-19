@@ -48,7 +48,7 @@ These spec §19 steps need work that is not built yet, or a credential the envir
   does not exist yet, and `make verify` includes `test-docker`, `e2e` on the compose stack, `bench` and
   `tf-check`.
 - **Step 2, compose stack, `make seed`, `make demo`, `make e2e`, `make test-docker`**: wait on the compose
-  stack (T-43) and the demo script (T-46). The end-to-end suite last ran against the host stack (PROGRESS
+  stack (T-43). `make demo` and the end-to-end suite run against the host stack instead (PROGRESS T-46,
   T-35).
 - **Step 3, the `reviewer` over the whole history**: not run; milestone reviews ran per milestone (PROGRESS,
   milestone table).

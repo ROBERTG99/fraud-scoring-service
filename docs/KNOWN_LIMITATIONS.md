@@ -83,7 +83,7 @@ f9ab2a5, load 0.5) but 6.28% with a concurrent `go build` (load 8.5, M5 review),
   so a long backlog evicts older scorer spans: in a host run that consumed a topic shared with earlier runs,
   the scorer's spans were evicted before the check (`scripts/obs_host.sh`, then fresh infrastructure).
 - The T-41 evidence ran the profile's images on host networking against `scripts/seed_host.sh`; the same
-  check against the full compose stack after `make demo` waits on T-43 and T-46.
+  check against the full compose stack after `make demo` waits on T-43.
 - The dashboard's DLQ and rule-error series are absent until the first such event (labelled counters).
 
 ## Device features under 90-day gaps
@@ -206,3 +206,15 @@ A statement must carry its fact (D-059, D-061): "The device is new." citing `fea
 because it lacks the number. FakeLLM's statements always carry it (faithfulness 1.0, `make eval-summary`); a
 live model may phrase evidence without the value, which lowers faithfulness and can turn summaries
 `unfaithful`. Watch the faithfulness score in `make eval-live` before relying on live summaries.
+
+## The demo depends on the shipped model and runs on the host stack
+
+`make demo` (T-46) asserts that the scripted takeover is REVIEWed, which needs the model to score it in the
+review band (0.30 to 0.85). The shipped model weighs the hour of day: the scripted account's features score
+1.00 at hour 4 UTC and 0.65 at hour 14 (D-071), so the scenario places the purchase between 13:00 and 15:00
+UTC. A retrained model can move the score out of the band; the `ato_review` checkpoint then fails and
+says what came back. The demo runs against `FULL=1 scripts/seed_host.sh`, where stopping the model server
+means pausing it (SIGSTOP); the compose stack's `docker compose stop` arrives with T-43. The shadow
+checkpoint compares the production version with itself (agreement 100%) until a distinct shadow version is
+registered, and the risk engineer's promotion decision (`make register-model ALIAS=production`) is not
+scripted.

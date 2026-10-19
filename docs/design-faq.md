@@ -3,7 +3,7 @@
 Answers to the fifteen questions of spec §18, in the spec's order, with `path:line` references into this
 repository and decision numbers from `docs/DECISIONS.md`. Status at the time of writing: milestones M0 to M6
 are done (`PROGRESS.md`, session handoff); M7 to M9 are not. The compose stack (T-43), Terraform (T-44), CI
-(T-45), the demo (T-46) and the durability and chaos tests (T-48) are still `todo` (`PROGRESS.md:185-190`).
+(T-45) and the durability and chaos tests (T-48) are still `todo` (`PROGRESS.md:185-190`).
 The documentation set (T-47), this page included, is being written ahead of M7 (D-070). ADR 0001 holds the
 feature-spec v2 decision, so the eight ADRs of spec §18 are numbered 0002 to 0009 (D-070). All data is
 synthetic (`cmd/gen`, seed 7), and every number below names the command or report it comes from.

@@ -25,7 +25,6 @@ Not built yet (M7 to M9, `PROGRESS.md` status `todo`):
   Redpanda) plus processes started by `scripts/seed_host.sh`, `scripts/bench.sh` or `scripts/obs_host.sh`.
 - **T-44, Terraform.** There is no `infra/terraform/`; `make tf-check` and `make lint-tf` fail.
 - **T-45, CI.** There is no `.github/workflows/`.
-- **T-46, the demo.** `make demo` has no scenario behind it yet.
 - **T-48, durability and chaos.** `TestDurabilityKill` (NFR-7, "0 lost decisions when the scorer is killed
   under 1,000 RPS") does not exist, so the spool's crash behaviour is untested under load.
 - T-47 (this documentation set), T-49 (final reviews) and T-50 (final verification) are also open.
