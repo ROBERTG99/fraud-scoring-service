@@ -208,7 +208,14 @@ func TestRetriedBatchDoesNotDuplicateDLQ(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer dlq.Close()
+	// Wait for the first DLQ record (a loaded runner can take seconds to fetch), then keep reading for 2 s
+	// more so that a duplicate from a retried batch would be counted.
 	n := 0
+	firstCtx, fcancel := context.WithTimeout(ctx, 20*time.Second)
+	defer fcancel()
+	for n == 0 && firstCtx.Err() == nil {
+		n += dlq.PollFetches(firstCtx).NumRecords()
+	}
 	pollCtx, pcancel := context.WithTimeout(ctx, 2*time.Second)
 	defer pcancel()
 	for pollCtx.Err() == nil {
