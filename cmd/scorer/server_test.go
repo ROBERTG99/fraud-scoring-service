@@ -341,16 +341,27 @@ func TestScoreContinuesTheCallersTrace(t *testing.T) {
 	if _, err := healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{}); err != nil {
 		t.Fatal(err)
 	}
+	// grpc-go ends the server span (the stats handler's End event) after it has written the status, so the
+	// gateway can answer before the span is recorded (seen on CI at cb95269): wait for it.
 	spans := map[string]sdktrace.ReadOnlySpan{}
-	for _, s := range rec.Ended() {
-		spans[s.Name()] = s
-		if strings.Contains(s.Name(), "grpc.health") {
-			t.Fatalf("health checks are traced: %s", s.Name())
+	var server sdktrace.ReadOnlySpan
+	for wait := time.Now().Add(2 * time.Second); ; {
+		for _, s := range rec.Ended() {
+			spans[s.Name()] = s
 		}
+		var ok bool
+		if server, ok = spans["fraud.v1.Scorer/Score"]; ok {
+			break
+		}
+		if time.Now().After(wait) {
+			t.Fatalf("no gRPC server span among %v", spans)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
-	server, ok := spans["fraud.v1.Scorer/Score"]
-	if !ok {
-		t.Fatalf("no gRPC server span among %v", spans)
+	for name := range spans {
+		if strings.Contains(name, "grpc.health") {
+			t.Fatalf("health checks are traced: %s", name)
+		}
 	}
 	if server.SpanKind() != trace.SpanKindServer || server.SpanContext().TraceID().String() != traceID {
 		t.Fatalf("server span kind %v trace %s, want the caller's trace %s", server.SpanKind(), server.SpanContext().TraceID(), traceID)

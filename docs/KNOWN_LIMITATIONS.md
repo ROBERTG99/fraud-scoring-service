@@ -228,7 +228,11 @@ cloud-drive folder (`PROGRESS.md`, T-43, T-46):
   model server paused) first passed 2 of 3 runs here and failed once on Linux CI (45.9 ms): the commit took the
   time the model left and spooled after the deadline. With D-078's spool reserve, 8 of 8 consecutive runs passed
   (slowest 27.1 to 31.4 ms). An fsync slower than the 12 ms reserve still overruns the budget; on Docker Desktop
-  traces showed commits up to 33.9 ms.
+  traces showed commits up to 33.9 ms. The same overrun reaches GitHub Actions: the `e2e` workflow passed this checkpoint on
+  e63e191 and 9a28857 and failed it on cb95269 (slowest 81.6 ms of 20; the scorer log shows one decision of that
+  phase spooled and replayed), so the console steps that follow it did not run. A degraded decision whose commit
+  misses its window waits for the spool fsync; answering before the fsync would break commit-before-respond
+  (FR-10), so the budget holds only while the disk fsyncs within the reserve.
 - `make seed` scored 16,943 transactions with 680 degraded (531 `MODEL_UNAVAILABLE`, 149
   `FEATURES_UNAVAILABLE`): the 20 ms model and 8 ms Redis budgets are tight for a 250 tx/s replay inside the
   VM. The host stack (`scripts/seed_host.sh`) degrades far fewer (`PROGRESS.md`, T-31).
