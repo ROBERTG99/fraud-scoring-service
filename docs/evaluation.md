@@ -240,10 +240,12 @@ reports and the tracked `evals/REPORT.md`.
 
 ## Current results
 
-Every number in this section is copied from the file named next to it. The `model`, `decisions` and
-`summaries` reports were written on 2026-10-18 at commit 2929005a15; `latency.json` was written on 2026-10-17
-at commit f9ab2a5 (`created_at` and `git_sha` in each file), because `make eval` does not re-run the bench.
-The JSON reports are local files (git-ignored); `evals/REPORT.md` is the tracked record of the same run.
+Every number in this section is copied from the file named next to it. All reports come from GitHub Actions
+(x86-64) at f1dc295, written on 2026-10-20 (`created_at`; `git_sha` a99a7223ab is the pull request's merge
+ref of f1dc295 into main): `model`, `decisions` and `summaries` from the `evals / gate` job's `evals`
+artifact, `latency.json` from the `ci / bench` job's `bench` artifact, and the judge calibration from
+`make eval-judge`, whose line matches the CI report's word for word (`docs/verification.md`). The JSON reports
+are git-ignored; `evals/REPORT.md` is the tracked record of the same run.
 
 ### Summary
 
@@ -293,7 +295,7 @@ From `evals/REPORT.md` (`make eval-decisions`, `evals/reports/decisions.json`):
 | `reason_code_set` | 1.0000 | ≥ 1 | 1.0000 | +0.00 |
 | `degraded_handling` | 1.0000 | ≥ 1 | 1.0000 | +0.00 |
 
-90 cases (test split), dataset sha256 127e2b9d8e70; p50 1.3 ms, p95 4.7 ms; cost USD 0.0000. `evalgate check`
+90 cases (test split), dataset sha256 127e2b9d8e70; p50 1.4 ms, p95 1.9 ms; cost USD 0.0000. `evalgate check`
 against the baseline: **PASS** (`evals/REPORT.md`).
 
 ### `summaries`
@@ -307,7 +309,7 @@ From `evals/REPORT.md` (`make eval-summary`, `evals/reports/summaries.json`):
 | `pattern_accuracy` | 0.9028 | ≥ 0.85 | 0.9028 | +0.00 |
 | `pii_to_provider` | 0.0000 | ≤ 0 | 0.0000 | +0.00 |
 
-72 cases (test split), dataset sha256 c1a90b71d766; p50 31.5 ms, p95 50.5 ms; cost USD 0.0000; model
+72 cases (test split), dataset sha256 c1a90b71d766; p50 26.0 ms, p95 69.4 ms; cost USD 0.0000; model
 fake-case-summary-v1. `evalgate check` against the baseline: **PASS** (`evals/REPORT.md`).
 
 Pattern accuracy is 65/72 with a 95% CI of 0.833–0.958 (`docs/KNOWN_LIMITATIONS.md`, from the `ci_low` and
@@ -336,13 +338,13 @@ From `evals/REPORT.md` (`make bench`, `evals/reports/latency.json`):
 
 | Metric | Value | Threshold | Baseline | Δ |
 |---|---|---|---|---|
-| `degraded_rate` | 0.0094 | ≤ 0.05 | 0.0087 | +0.07 pp |
-| `p95_ms` | 19.6 ms | ≤ 80 | 21.8 ms | -2.2 ms |
-| `p99_ms` | 30.5 ms | – | 28.4 ms | +2.2 ms |
+| `degraded_rate` | 0.0158 | ≤ 0.05 | 0.0087 | +0.72 pp |
+| `p95_ms` | 12.8 ms | ≤ 80 | 21.8 ms | -9.0 ms |
+| `p99_ms` | 22.5 ms | – | 28.4 ms | -5.9 ms |
 | `success_rate` | 1.0000 | ≥ 0.999 | 1.0000 | +0.00 pp |
 
-Profile ci: 300 of 300 rps for 60 s; p50 11.3 ms, p95 19.6 ms, p99 30.5 ms (budget p95 80 ms). Degraded
-decisions in the window: 169 of 17,999. `evalgate check` against the baseline: **PASS** (`evals/REPORT.md`).
+Profile ci: 300 of 300 rps for 60 s; p50 6.5 ms, p95 12.8 ms, p99 22.5 ms (budget p95 80 ms). Degraded
+decisions in the window: 285 of 18,000. `evalgate check` against the baseline: **PASS** (`evals/REPORT.md`).
 
 The bench shares a 4-vCPU container with the whole stack, so the degraded share depends on host load, and the
 `laptop` profile target (NFR-1) is not met there (`docs/KNOWN_LIMITATIONS.md`, "Model server throughput on a

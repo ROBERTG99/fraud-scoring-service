@@ -68,9 +68,10 @@ workers or Triton.
 The NFR-1 laptop target (2,000 RPS, p95 < 50 ms, p99 < 90 ms) is not met in the 4-vCPU build container,
 where ghz, the scorer, BentoML, Postgres, Redis and Redpanda share the CPUs: `make bench BENCH_PROFILE=laptop`
 achieved 586 of 2,000 rps with p95 603.8 ms, p99 728.5 ms and 99.3% of decisions degraded (Redis reads miss
-the 8 ms budget, so features fall back). The CI profile on the same machine passes (`make bench`: 300 rps,
-p95 19.6 ms, 0.94% degraded; [`evals/REPORT.md`](../evals/REPORT.md)). The laptop number must be measured on a machine with the load generator on
-separate cores; nothing here shows it is reachable.
+the 8 ms budget, so features fall back). The CI profile on the same machine passes (`make bench` at f9ab2a5:
+300 rps, p95 19.6 ms, 0.94% degraded), and on GitHub Actions at f1dc295 (p95 12.8 ms, 1.58% degraded;
+[`evals/REPORT.md`](../evals/REPORT.md)). The laptop number must be measured on a machine with the load
+generator on separate cores; nothing here shows it is reachable.
 
 The CI profile's degraded share depends on how busy the host is: 0.94% on a quiet host (`make bench` at
 f9ab2a5, load 0.5) but 6.28% with a concurrent `go build` (load 8.5, M5 review), where p95 was still 42.0 ms.
