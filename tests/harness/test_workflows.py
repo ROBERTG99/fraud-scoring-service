@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -51,9 +52,10 @@ def test_ci_covers_lint_types_tests_and_bench() -> None:
 
 
 def test_evals_use_the_released_evalgate_action() -> None:
-    text = run_text(workflow("evals.yml"))
-    assert "ROBERTG99/evalgate/action@v0.1.0" in text
-    assert "evals/reports/baseline/" in (WF / "evals.yml").read_text(encoding="utf-8")
+    raw = (WF / "evals.yml").read_text(encoding="utf-8")
+    # v0.1.0, pinned by its commit SHA because the job can write PR comments.
+    assert "ROBERTG99/evalgate/action@0681335a1b6b842cb881583fdfa78d698f83375a # v0.1.0" in raw
+    assert "evals/reports/baseline/" in raw
 
 
 def test_docker_terraform_e2e_and_release() -> None:
@@ -99,3 +101,19 @@ def test_repository_integrations() -> None:
     for p in (ROOT / ".github").rglob("*.md"):
         text = p.read_text(encoding="utf-8")
         assert "Co-Authored-By" not in text and "Generated with Claude Code" not in text, p
+
+
+def test_jobs_with_write_permissions_pin_actions_by_commit_sha() -> None:
+    # A job whose token can write must not run code a moved tag could replace (security.md finding 17).
+    pinned = re.compile(r"^[^@\s]+@[0-9a-f]{40}$")
+    for name in sorted(p.name for p in WF.glob("*.yml")):
+        doc = workflow(name)
+        for job_name, job in doc["jobs"].items():
+            perms = job.get("permissions", doc.get("permissions", {}))
+            writes = perms == "write-all" or (isinstance(perms, dict) and "write" in perms.values())
+            if not writes:
+                continue
+            for step in job.get("steps", []):
+                uses = step.get("uses")
+                if uses and not uses.startswith("./"):
+                    assert pinned.match(uses), f"{name} job {job_name}: {uses} is not pinned by commit SHA"

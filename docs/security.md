@@ -156,8 +156,9 @@ the same script on every pull request:
     would close this.
 16. **Provider keys in the `live` profile are environment variables**, visible to `docker inspect` on the
     host; Compose `secrets:` would keep them out of the container metadata.
-17. **CI supply chain.** Third-party actions are pinned by tag in the workflows that hold only `contents:
-    read` (D-074); `release.yml`, which can push images and sign provenance, pins them by commit SHA (D-077).
+17. **CI supply chain.** Third-party actions are pinned by tag in jobs that hold only `contents: read`
+    (D-074); every job whose token can write (`release.yml`, `evals.yml` `suites`, `codeql.yml` `analyze`) pins
+    them by commit SHA (D-077, D-079, `test_jobs_with_write_permissions_pin_actions_by_commit_sha`).
     `terraform.yml` downloads Terraform and tflint without a checksum check, and the e2e workflow uploads the
     compose logs as an artifact (synthetic data and development credentials only).
 18. **The SageMaker role is not complete for a real job.** It has no `ecr:GetAuthorizationToken` (AWS grants it
