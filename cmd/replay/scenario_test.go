@@ -535,3 +535,15 @@ func TestDemoFlagsSelectTheScenario(t *testing.T) {
 		}
 	}
 }
+
+// When a call is not decided rules-only, the checkpoint says which call and what came back, so a CI failure
+// can be told apart from a demo bug (T-50: CI saw 19 of 20 with no clue which one).
+func TestDemoDegradedPhaseNamesTheCallThatWasNotRulesOnly(t *testing.T) {
+	f := newDemoFixture()
+	f.scorer.degraded = func(call int) bool { return call != 7 }
+	cps := byID(runDemoPhase(context.Background(), f.env, phaseDegraded, &demoState{}))
+	c := cps["model_unavailable_rules_only"]
+	if c.OK || !strings.Contains(c.Detail, "call 7: ") || !strings.Contains(c.Detail, "model fraud-gbdt") {
+		t.Fatalf("checkpoint = %+v, want a failure naming call 7 and its model", c)
+	}
+}

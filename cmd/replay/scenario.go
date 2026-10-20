@@ -497,6 +497,7 @@ func (d *demo) degraded(ctx context.Context) []checkpoint {
 	const id, fr = "model_unavailable_rules_only", "FR-8"
 	acc, dev := d.account("dg"), d.device("dg")
 	rulesOnly, maxMs := 0, 0.0
+	var others []string // calls not decided rules-only, for the checkpoint's detail
 	var big *fraudv1.Decision
 	var failure string
 	for i := range degradedCalls {
@@ -511,6 +512,8 @@ func (d *demo) degraded(ctx context.Context) []checkpoint {
 		}
 		if dec.Degraded && dec.ModelVersion == "none" && slices.Contains(dec.ReasonCodes, reasonModelDown) {
 			rulesOnly++
+		} else {
+			others = append(others, fmt.Sprintf("call %d: model %s, %s", i+1, dec.ModelVersion, strings.Join(dec.ReasonCodes, ",")))
 		}
 		maxMs = max(maxMs, float64(dec.LatencyMs))
 		big = dec
@@ -526,7 +529,7 @@ func (d *demo) degraded(ctx context.Context) []checkpoint {
 		bigAction = strings.TrimPrefix(big.Action.String(), "ACTION_")
 	}
 	out := []checkpoint{d.check(id, fr, ok, "model server stopped: %d of %d decided rules-only (%s, model none), slowest %.1f ms (budget %d), USD 250 → %s%s",
-		rulesOnly, degradedCalls, reasonModelDown, maxMs, scoreBudgetMs, bigAction, failure)}
+		rulesOnly, degradedCalls, reasonModelDown, maxMs, scoreBudgetMs, bigAction, failure+notRulesOnly(others))}
 	return append(out, d.liveMetrics(ctx))
 }
 
@@ -694,4 +697,12 @@ func runDemo(ctx context.Context, o options, log *slog.Logger) (bool, error) {
 		fmt.Printf("demo: %s %d/%d %s (%s): %s\n", mark, slices.Index(demoCheckpoints, c.ID)+1, len(demoCheckpoints), c.ID, c.FR, c.Detail)
 	}
 	return ok, nil
+}
+
+// notRulesOnly lists the calls of the degraded phase that were not decided rules-only (at most three).
+func notRulesOnly(others []string) string {
+	if len(others) == 0 {
+		return ""
+	}
+	return "; not rules-only: " + strings.Join(others[:min(len(others), 3)], "; ")
 }
