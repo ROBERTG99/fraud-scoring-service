@@ -25,6 +25,8 @@ type Spool struct {
 	mu    sync.Mutex
 	f     *os.File
 	depth int
+	// syncFile makes appended lines durable; nil means (*os.File).Sync. Tests wrap it to time the disk.
+	syncFile func(*os.File) error
 }
 
 type spoolLine struct {
@@ -111,7 +113,11 @@ func (s *Spool) Append(recs []DecisionRecord) error {
 	if _, err := s.f.WriteString(buf.String()); err != nil {
 		return err
 	}
-	if err := s.f.Sync(); err != nil {
+	syncFn := (*os.File).Sync
+	if s.syncFile != nil {
+		syncFn = s.syncFile
+	}
+	if err := syncFn(s.f); err != nil {
 		return err
 	}
 	s.depth += len(recs)

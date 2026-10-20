@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net"
 	"net/url"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -184,18 +185,29 @@ func TestSpoolReplayAfterPostgresRecovers(t *testing.T) {
 	}
 	defer w.Close()
 
+	// The bound is on the writer, not the disk: a loaded CI runner's fsync took 38 ms (T-50), and an fsync
+	// slower than the Score budget's spool reserve is a documented limitation (D-078, D-080).
+	var fsync atomic.Int64
+	w.spool.syncFile = func(f *os.File) error {
+		start := time.Now()
+		defer func() { fsync.Add(int64(time.Since(start))) }()
+		return f.Sync()
+	}
+
 	proxy.Cut()
 	const n = 20
 	for i := 0; i < n; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+		fsync.Store(0)
 		start := time.Now()
 		d, _, err := w.Commit(ctx, record(2000+i, fraudv1.Action_ACTION_REVIEW))
 		cancel()
 		if err != nil {
 			t.Fatalf("commit during outage must spool, got %v", err)
 		}
-		if d == nil || time.Since(start) > 60*time.Millisecond {
-			t.Fatalf("spooled commit took %v", time.Since(start))
+		elapsed, disk := time.Since(start), time.Duration(fsync.Load())
+		if d == nil || elapsed-disk > 60*time.Millisecond {
+			t.Fatalf("spooled commit took %v, %v of it in fsync", elapsed, disk)
 		}
 	}
 	if w.SpoolDepth() < n {
