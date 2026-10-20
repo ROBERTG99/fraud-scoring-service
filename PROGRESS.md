@@ -17,11 +17,10 @@ Build progress for `fraud-scoring-service`, driven by `docs/specs/000-build-spec
 
 ## Session handoff (read this first)
 
-Last updated 2026-10-19. Status: **M0–M5 done and reviewed. M6: T-41 and T-42 done; every finding of the
-M6 security audit (H1–H3, M1–M9, L1–L11) and of nine review rounds is fixed (D-041 to D-069); round 9's code
-review said ship and its audit found Lows only, fixed without a further round (maintainer's call). From M8, T-46 (demo) and T-47 (documentation) are done. M7 is next.** `make lint` stops at `lint-tf` until T-44 adds
-`infra/terraform` and `scripts/terraform.sh`; run `lint-go lint-py lint-web lint-proto lint-md` meanwhile.
-Data is generator v2 with feature spec v2 (D-026). Branch `feat/friendly-johnson-15rki1`, pushed.
+Last updated 2026-10-19. Status: **M0–M9 done; T-50 (final verification) done, every Global Definition of
+Done box checked with its evidence below.** Branch `feat/finish-dod-113cf8`, PR
+[#5](https://github.com/ROBERTG99/fraud-scoring-service/pull/5). What is left needs the maintainer (above).
+Data is generator v2 with feature spec v2 (D-026).
 
 ### Resume checklist
 
@@ -185,29 +184,29 @@ chore: configure commit attribution
 | T-47 | Documentation set | M8 | done | Written at the end of M6 at the maintainer's request (D-070), the README demo section with T-46: README rewrite, `docs/{architecture,design-faq,evaluation,ai-development,verification}.md`, ADRs 0002–0009 with an index, `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`. `uv run pytest tests/unit/test_docs.py` (test_every_document_exists, test_the_design_faq_answers_every_question_with_file_references, test_readme_numbers_link_to_reports) → 3 passed; `make lint-md` → 66 files, 0 issues. `docs-editor` review at 2eba265: 5 blockers (seed window, KNOWN_LIMITATIONS line references and numbers, ops targets that need the compose stack), fixed in 9164e26. The README demo section and `make demo` wait on T-46. |
 | T-48 | Durability and chaos | M9 | done | `tests/integration/durability_test.go`, `scripts/chaos.sh` (D-075). Test first: `TestDurabilityKill` (real scorer binary, ~1,000 Score/s, Postgres cut through `testutil.Proxy` after 1 s, SIGKILL after 2 s, restart on the same spool) failed: 216 of 1,194 received decisions lost, because `Spool.Drain` never rotated a dead process's `spool.jsonl`; `TestDrainReplaysTheSpoolOfAProcessThatDied` reproduced it in a unit test. After the fix: `go test -tags integration -run TestDurabilityKill ./tests/integration` → 1,026 of 1,026 received decisions stored, **0 lost**, 0 with another decision_id; the control `TestDurabilityKillWithoutTheSpoolLosesDecisions` → 195 lost (so the spool path is exercised). `scripts/chaos.sh` on the compose stack (46 s): model server paused → 20 of 20 decided, `fraud_degraded_total{reason="model"}` +20; Redis stopped → `{reason="features"}` +20; Postgres stopped → spool depth 20, drained after recovery; Redpanda stopped → `fraud_outbox_unsent` > 0, 0 after recovery; MLflow stopped → restarted model server ready from its cache; LLM provider → `test_provider_failure_writes_fallback`. |
 | T-49 | Reviews and fixes | M9 | done | Four reviews over `git diff main..HEAD` (D-077): `reviewer` → **ship**, no blockers (it confirmed no Co-Authored-By/Claude trailers in the branch); `latency-reviewer` → ship (the double-precision ONNX graph measured p95 9.7 µs per row against 9.7 µs before); `ml-reviewer` → one latent bug: `KeyError: 'base_values'` at base_score 0.5, fixed with `test_double_trees_handle_a_zero_margin_base_score`; `security-auditor` → no High; before merge M1 (terraform wrapper → allow-list with every AWS credential source disabled, `tests/harness/test_terraform_wrapper.py`, 13 passed), M2 (`release.yml` actions pinned by SHA) and L1 (stale `docs/security.md`), all fixed; the rest documented as open findings 2, 6, 14–20. Reviewer notes fixed: torn spool line (`TestAppendAfterATornLineKeepsTheNewRecord`), readiness probe no longer loads a model. CI found more, each fixed with a test: ruff SIM300; `artifacts/coverage` missing on a fresh checkout; `TestGroupCommitBatchesConcurrentWrites` needed every commit in Postgres (relay config); govulncheck scoped to `./cmd/...` (testcontainers' docker client is test-only; `moby/go-archive` raised to v0.3.0); pip-audit skips the VCS evalgate. CodeQL: one py/incomplete-url-substring-sanitization false positive in a test, rewritten. `make security` → PASS on every scanner, govulncheck included (2026-10-19). |
-| T-50 | Final verification | M9 | in progress | `docs/verification.md` (fresh clone at 271e373 on macOS arm64, CI at 3f9a346), `tests/unit/test_docs.py::test_verification_has_authorship_check`, `BUILD.md` moved with `git mv -f`. Fixes found on the way, each with a test: role migrations raced on a fresh server (`TestRoleMigrationsTolerateConcurrentRuns`); the spool fallback ran past the Score budget (D-078, Jaeger traces; `TestModelTimeoutAndSlowPostgresLeaveTheSpoolReserve`); `make verify` needed a model before `eval`, a seeded stack before `e2e`, images before `security`; `setsid` missing on macOS; the DLQ test's fixed 2 s window. Screenshots recaptured on the compose stack (the old `timeline.png` showed the 100x amount bug). **Left for the next session:** confirm the `verify` workflow is green on e4a158b or later (it failed on 3f9a346 at the DLQ test, since fixed); commit `evals/REPORT.md` from the CI `evals / gate` artifact of the final commit; tick the remaining Global DoD boxes with that evidence; update the PR description. On arm64 `make eval` fails at `band_calibration_gap` (KNOWN_LIMITATIONS). |
+| T-50 | Final verification | M9 | done | `docs/verification.md` (fresh clone on macOS arm64; CI on PR #5), `tests/unit/test_docs.py::test_verification_has_authorship_check`, `BUILD.md` moved with `git mv -f`. CI `verify` (`make bootstrap && make verify` on a fresh Linux x86-64 checkout, no keys) → success at 9831ca7 (run 39360807372); `evals/REPORT.md` from that run (Gate PASS 4 of 4). Fixes found on the way, each with a test: role-migration race, spool reserve in the Score budget (D-078), `make verify` ordering, macOS `setsid`, flaky DLQ, spool-bound and gRPC-span tests, action pins for write-token jobs (D-079), demo detail for calls that are not rules-only. Screenshots recaptured. |
 
 ## Global Definition of Done
 
-- [ ] `make verify` passes from a fresh clone (§19) with no API keys set.
-- [ ] `docker compose up -d --wait` brings every service to healthy; `make seed` and `make demo` run the scripted scenario end to end.
-- [ ] `make test-docker` runs the full test suite inside containers and passes.
-- [ ] Unit, integration, contract and E2E suites pass; line coverage is at least 85% on core packages and 70% overall.
-- [ ] Offline evals meet every threshold in §11, and `evals/REPORT.md` is generated by script from the latest run.
-- [ ] Lint, format and type checks are clean.
-- [ ] Security scans report no high or critical findings, or each one is documented with a reason in `docs/security.md`.
-- [ ] Every workflow in §17 exists and passes actionlint; if a GitHub remote exists and CI results can be observed, the pushed branch is green.
+- [x] `make verify` passes from a fresh clone (§19) with no API keys set. (CI `verify` workflow: `make bootstrap && make verify`, no `.env`, no keys, on a fresh `ubuntu-24.04` checkout, run 39360807372 at 9831ca7 → success. On the macOS arm64 laptop every part passes except `eval-model`, whose arm64-trained model misses `band_calibration_gap` — KNOWN_LIMITATIONS, `docs/verification.md`.)
+- [x] `docker compose up -d --wait` brings every service to healthy; `make seed` and `make demo` run the scripted scenario end to end. (Fresh clone: up 51 s, seed 97 s, "demo: all 13 checkpoints OK"; CI `e2e` at f1dc295 → success; T-43, T-46.)
+- [x] `make test-docker` runs the full test suite inside containers and passes. (Fresh clone at 3f9a346 → pass; CI `docker / test-docker` → success; T-43.)
+- [x] Unit, integration, contract and E2E suites pass; line coverage is at least 85% on core packages and 70% overall. (`make test` at 3f9a346: Go core 86.9%, total 77.0%; Python 691 passed, 92.96%, `src/fraud_summarizer` 95.3%; Vitest 67; `make e2e` 49 passed.)
+- [x] Offline evals meet every threshold in §11, and `evals/REPORT.md` is generated by script from the latest run. (`evals/REPORT.md` from `scripts/build_report.py` in the CI `verify` run at 9831ca7: Gate PASS, 4 of 4; x86-64 rebuilds the baseline model.)
+- [x] Lint, format and type checks are clean. (`make lint`, `make typecheck` pass in the fresh clone and in CI.)
+- [x] Security scans report no high or critical findings, or each one is documented with a reason in `docs/security.md`. (`make security` PASS on every scanner, govulncheck included; accepted and open findings in `docs/security.md`; T-49.)
+- [x] Every workflow in §17 exists and passes actionlint; if a GitHub remote exists and CI results can be observed, the pushed branch is green. (Seven §17 workflows plus `verify`; `test_workflows.py`, actionlint clean; every check on PR #5 green at the final commit — `docs/verification.md`.)
 - [x] Every screen in §13 is implemented with loading, empty, error and success states; axe reports no serious violations; Playwright captured the screenshots in `docs/images/`. (Vitest state tests per screen; `make e2e` 35 passed with 0 serious axe violations; 10 screenshots, T-35. Screenshots recaptured on the compose stack on 2026-10-19, T-50.)
-- [ ] The harness in §7 is complete: CLAUDE.md, AGENTS.md, settings, hooks with passing tests, rules, subagents, skills and `.mcp.json`.
-- [ ] Every document in §18 exists, and every number in the README points to the command or report that produced it.
-- [ ] The `reviewer` subagent's final verdict is "ship", and `security-review` findings are fixed or documented.
-- [ ] `PROGRESS.md` has every task checked with evidence, and `docs/KNOWN_LIMITATIONS.md` lists what is not done.
-- [ ] Every commit is authored and committed by the maintainer, and no commit message or pull request contains `Co-Authored-By`, `Claude-Session` or "Generated with Claude Code" (checked as in §19).
-- [ ] `BUILD.md` lives at `docs/specs/000-build-spec.md`; all work is committed, and pushed when a remote exists.
-- [ ] FR-1 to FR-13 each have a passing named test in `PROGRESS.md`.
+- [x] The harness in §7 is complete: CLAUDE.md, AGENTS.md, settings, hooks with passing tests, rules, subagents, skills and `.mcp.json`. (`tests/harness/` passes: hooks, docs, make targets, repo files; T-01 to T-04, T-45 integrations.)
+- [x] Every document in §18 exists, and every number in the README points to the command or report that produced it. (`tests/unit/test_docs.py` 4 passed; T-47.)
+- [x] The `reviewer` subagent's final verdict is "ship", and `security-review` findings are fixed or documented. (T-49: reviewer ship; security-auditor before-merge items fixed, rest documented.)
+- [x] `PROGRESS.md` has every task checked with evidence, and `docs/KNOWN_LIMITATIONS.md` lists what is not done. (T-01 to T-50 done.)
+- [x] Every commit is authored and committed by the maintainer, and no commit message or pull request contains `Co-Authored-By`, `Claude-Session` or "Generated with Claude Code" (checked as in §19). (`docs/verification.md`, Authorship: maintainer only, plus GitHub as committer of web-merged PRs; trailer grep printed nothing; PR #5 description checked.)
+- [x] `BUILD.md` lives at `docs/specs/000-build-spec.md`; all work is committed, and pushed when a remote exists. (`git mv -f` in 415fee7; branch pushed.)
+- [x] FR-1 to FR-13 each have a passing named test in `PROGRESS.md`. (Table below.)
 - [x] `make bench` p95 < 80 ms at 300 RPS; the laptop run (2,000 RPS) is reported as measured. (ci: p95 21.8 ms at 300 rps; laptop profile measured and failing in the 4-vCPU container: 586 rps, p95 603.8 ms, 99.3% degraded — T-39, KNOWN_LIMITATIONS.)
 - [x] §11 thresholds met: recall@1%FPR ≥ 0.80 (rules-only baseline reported), faithfulness ≥ 0.95, PII to provider 0. (`make eval-model`: combined at the valid-chosen threshold 0.9161, at the shipped review threshold 0.8387, rules-only 0.6012; `make eval-summary` offline: faithfulness 1.0, PII 0.0 — T-37, T-38.)
-- [ ] `make feature-parity` 0 mismatches; `TestDurabilityKill` 0 lost decisions; `make tf-check` passes without AWS credentials; Triton is never required by `make verify`.
+- [x] `make feature-parity` 0 mismatches; `TestDurabilityKill` 0 lost decisions; `make tf-check` passes without AWS credentials; Triton is never required by `make verify`. (CI `integration` runs `make feature-parity`; `TestDurabilityKill` 1,026 of 1,026 stored, 0 lost; `make tf-check` with credentials stripped; `make verify` has no Triton step.)
 
 ## Functional requirement tests
 
@@ -221,10 +220,10 @@ chore: configure commit attribution
 | FR-6 | `internal/model/golden_test.go::TestGoldenVectorScore` (BentoML, within 1e-5); Triton skipped — `docs/KNOWN_LIMITATIONS.md` | pass / Triton skip recorded |
 | FR-7 | `internal/decide/combine_test.go::TestRuleR003WithLowScoreReviews` | pass |
 | FR-8 | `internal/api/degrade_test.go::TestModelTimeoutRulesOnlyWithin35ms`, `::TestRedisDownBiasesToReview`, `internal/store/writer_test.go::TestSpoolReplayAfterPostgresRecovers`, `::TestHungPostgresSpoolsInsteadOfOverloading` | pass |
-| FR-9 | `internal/api/shadow_test.go::TestShadowFailureDoesNotChangeDecisions` | pass (console screen pending T-34) |
+| FR-9 | `internal/api/shadow_test.go::TestShadowFailureDoesNotChangeDecisions` | pass (console shadow screen: `screens.test.tsx`, T-34) |
 | FR-10 | `internal/store/writer_test.go::TestCommitBeforeRespond`, `internal/store/outbox_test.go::TestRelayCrashProducesDuplicatesWithSameDecisionID` | pass |
 | FR-11 | `tests/unit/test_pipeline.py::test_happy_path_stores_verified_summary_and_steps`, `tests/unit/test_consumer.py::test_duplicate_decision_processed_once`, `::test_provider_failure_writes_fallback`, `tests/integration/test_summarizer_consumer.py::test_consumer_writes_summary_for_review_event` | pass (pipeline, consumer, Postgres + Redpanda) |
-| FR-12 | `tests/unit/test_sagemaker_launch.py::test_dry_run_request_shape`, `::test_submit_to_moto` | launcher pass; Terraform pending T-44 |
+| FR-12 | `tests/unit/test_sagemaker_launch.py::test_dry_run_request_shape`, `::test_submit_to_moto` | pass (launcher; Terraform module: `make tf-check`, `terraform test` 2 passed, T-44) |
 | FR-13 | `internal/api/cases_test.go::TestAnalystCannotTestRule`, `internal/store::TestLabelWritesAuditRow`, `tests/contract/test_openapi_contract.py`, `tests/e2e/label-case.spec.ts`, `tests/e2e/a11y.spec.ts` | pass (API, console unit tests, e2e 35 passed on the host stack) |
 
 ## Milestone reviews

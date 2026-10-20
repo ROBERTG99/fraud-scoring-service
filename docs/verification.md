@@ -7,7 +7,7 @@ no provider key was present in either.
 | Item | Value |
 |---|---|
 | Date | 2026-10-19 |
-| Commit | 271e373 for the fresh-clone run; `make test` and `make test-docker` re-run at 3f9a346 after the two fixes below. CI: 3f9a346 (all workflows) and e4a158b (running at the time of writing) |
+| Commit | 271e373 for the fresh-clone run; `make test` and `make test-docker` re-run at 3f9a346 after the two fixes below. CI: 9831ca7 (every workflow, `verify` included) and f1dc295 (`e2e`) |
 | Laptop | macOS 27.0.1 arm64, 10 CPUs, Docker Desktop 29.8.2 (8 GB VM); the clone in a local temporary folder, not the synced working copy |
 | Toolchains | go1.26.9, Python 3.12 (uv 0.11.8), Node v22.16.0, pnpm 10.28.0, Terraform 1.16.5, tflint 0.63.1 |
 | CI | GitHub Actions `ubuntu-24.04` runners, [ROBERTG99/fraud-scoring-service#5](https://github.com/ROBERTG99/fraud-scoring-service/pull/5) |
@@ -39,14 +39,17 @@ wall-clock times.
 On GitHub Actions the same parts run as separate jobs on every push, and the `verify` workflow runs the whole
 target in one job:
 
-| Workflow (3f9a346) | Result |
+| Workflow | Result |
 |---|---|
-| `ci` (lint, typecheck, unit, integration with coverage gates and feature parity, bench at 300 RPS) | pass |
-| `e2e` (`make up`, `make seed`, Playwright and axe, `make demo`) | pass |
-| `evals` (decisions and summaries through `ROBERTG99/evalgate/action@v0.1.0`; `make eval` Gate PASS 4 of 4, `band_calibration_gap` 0.0081) | pass |
-| `docker` (every image, `make security`, `make test-docker`) | pass |
-| `terraform`, `codeql` | pass |
-| `verify` (`make bootstrap && make verify` in one job) | **fail**: `TestRetriedBatchDoesNotDuplicateDLQ` counted DLQ records in a fixed 2 s window and saw none on the loaded runner; fixed in e4a158b (waits for the first record, then 2 s more for duplicates). The re-run on e4a158b had not finished when this was written (T-50 open) |
+| `verify` (`make bootstrap && make verify` in one job, no `.env`, no keys), 9831ca7, run 39360807372 | pass. Earlier runs failed on test timing under the whole-target load: the DLQ count window (fixed in e4a158b), the spooled-commit bound and a gRPC span read (fixed in cb95269 and 9831ca7, each with a test) |
+| `ci` (lint, typecheck, unit, integration with coverage gates and feature parity, bench at 300 RPS), 9831ca7 | pass |
+| `evals` (decisions and summaries through `ROBERTG99/evalgate/action@v0.1.0` pinned to its commit; `make eval` Gate PASS 4 of 4, `band_calibration_gap` 0.0081), 9831ca7 | pass |
+| `docker` (every image, `make security`, `make test-docker`), 9831ca7 | pass |
+| `terraform`, `codeql`, 9831ca7 | pass |
+| `e2e` (`make up`, `make seed`, Playwright and axe, `make demo`) | pass at f1dc295. At 9831ca7 one of the 20 degraded-phase demo calls was not decided rules-only (no detail was recorded); f1dc295 makes the checkpoint name such calls, and that run passed all 13 checkpoints |
+
+`evals/REPORT.md` is the report this `verify` run generated. Its commit line, 2f722f3, is the merge ref GitHub
+builds for a pull request (9831ca7 merged onto `main`).
 
 ## Step 2: compose stack, seed, demo, e2e, test-docker
 

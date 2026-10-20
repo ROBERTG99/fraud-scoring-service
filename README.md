@@ -5,10 +5,9 @@ point-in-time features in Redis, a calibrated gradient-boosted model served over
 reason codes. A separate Python worker writes LLM case summaries for analysts, and is kept off the scoring path:
 the LLM can never change, delay or block a decision. All data is synthetic.
 
-> **Status.** Milestones M0 to M8 of the [build specification](docs/specs/000-build-spec.md) are done, and M9's
-> durability and chaos tests: scoring, features, model, rules, persistence, the case summarizer, the analyst
-> console, evaluation, tracing, the security review, the compose stack, the SageMaker Terraform module, CI and the
-> scripted demo. Open items are in [`PROGRESS.md`](PROGRESS.md) and
+> **Status.** Every milestone (M0 to M9) of the [build specification](docs/specs/000-build-spec.md) is done and
+> its Global Definition of Done is checked, each item with its evidence in [`PROGRESS.md`](PROGRESS.md);
+> [`docs/verification.md`](docs/verification.md) records the final run. What is not done is in
 > [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md).
 
 ## What it does
@@ -38,7 +37,7 @@ All numbers below are offline, on synthetic data (generator seed 7), as recorded
 | Calibration | ECE 0.0007 (gate ≤ 0.02); PR-AUC 0.8740 | [`evals/REPORT.md`](evals/REPORT.md), `make eval-model` |
 | Decisions | 90 of 90 golden test cases exact on action and reason codes | [`evals/REPORT.md`](evals/REPORT.md), `make eval-decisions` |
 | Summaries | schema-valid 1.0, faithfulness 1.0, pattern accuracy 0.9028, PII to provider 0 (offline FakeLLM) | [`evals/REPORT.md`](evals/REPORT.md), `make eval-summary` |
-| Score latency | p50 11.3 ms, p95 19.6 ms, p99 30.5 ms at 300 requests/s for 60 s (budget p95 80 ms; run of 2026-10-17 at f9ab2a5) | [`evals/REPORT.md`](evals/REPORT.md), `make bench` |
+| Score latency | p50 6.5 ms, p95 12.8 ms, p99 22.5 ms at 300 requests/s for 60 s (budget p95 80 ms; CI run of 2026-10-20 at f1dc295) | [`evals/REPORT.md`](evals/REPORT.md), `make bench` |
 | Model server | p95 4.63 ms per prediction (measured on the first model version, fraud-gbdt/1) | [`PROGRESS.md`](PROGRESS.md) T-16, `make bench-model` |
 | Rules engine | 14.9 µs per 64-rule evaluation | [`PROGRESS.md`](PROGRESS.md) T-19, `go test -bench BenchmarkEval64Rules ./internal/rules` |
 | Tests | Go core coverage 86.4%, Python 93.11%, 665 pytest and 67 Vitest tests | [`docs/verification.md`](docs/verification.md), `make test` |
