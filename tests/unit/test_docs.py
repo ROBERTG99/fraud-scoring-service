@@ -72,3 +72,15 @@ def test_readme_numbers_link_to_reports() -> None:
     ]
     assert not unsourced, unsourced
     assert "under construction" not in readme.lower()
+
+
+def test_verification_has_authorship_check() -> None:
+    """Spec §19 steps 5-6: verification.md records both authorship commands and what they printed."""
+    text = (ROOT / "docs" / "verification.md").read_text(encoding="utf-8")
+    assert "git log --format='%an <%ae> | %cn <%ce>' | sort -u" in text
+    assert "git log --format=%B | grep -E 'Co-Authored-By|Claude-Session|Generated with Claude Code'" in text
+    section = text[text.index("## Authorship") :]
+    identities = re.findall(r"^ROBERTG99 <[^>]+> \| \S+ <[^>]+>$", section, re.M)
+    assert identities, "the identities printed by the first command"
+    assert "printed nothing" in section
+    assert re.search(r"^\| Commit \| [0-9a-f]{7,40}", text, re.M)
