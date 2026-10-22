@@ -2,7 +2,7 @@ package auth
 
 import "testing"
 
-// Security audit M6 M4: the dev-issuer mints tokens for anyone, and JWKS over plain HTTP can be spoofed;
+// Security audit: the dev-issuer mints tokens for anyone, and JWKS over plain HTTP can be spoofed;
 // both are allowed only when FRAUD_ENV=dev says so.
 func TestDevModeAndJWKSURL(t *testing.T) {
 	t.Setenv("FRAUD_ENV", "")

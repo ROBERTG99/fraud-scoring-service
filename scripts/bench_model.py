@@ -1,4 +1,4 @@
-"""make bench-model: single-row latency of the BentoML model server (NFR-4: p95 < 8 ms).
+"""make bench-model: single-row latency of the BentoML model server (target: p95 < 8 ms).
 
 Uses FRAUD_MODEL_URL when a server is already running (compose), otherwise starts
 `bentoml serve` on 127.0.0.1:8514 with FRAUD_MODEL_DIR=artifacts/model. Writes an evalgate.report.v1

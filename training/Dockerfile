@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# SageMaker training image (FR-12): `training.sagemaker_entry` reads the `train` channel and writes the
+# SageMaker training image: `training.sagemaker_entry` reads the `train` channel and writes the
 # calibrated ONNX model to /opt/ml/model. Pushed to the ECR repository from
 # infra/terraform/modules/sagemaker_training; never built or pushed by CI.
 FROM python:3.12-slim AS build

@@ -1,4 +1,4 @@
-"""Judge calibration (spec §11): agreement of the usefulness judge with labels known by construction.
+"""Judge calibration: agreement of the usefulness judge with labels known by construction.
 
 `python -m evals.graders.judge --split test` measures the judge of `config/llm_routes.yaml` route
 `judge_usefulness` (FakeLLM offline, the configured model with `FRAUD_JUDGE_PROVIDER` set by

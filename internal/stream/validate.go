@@ -14,7 +14,7 @@ import (
 	"github.com/ROBERTG99/fraud-scoring-service/schemas"
 )
 
-// Topic names (spec §4.4).
+// Topic names.
 const (
 	TopicLogin       = "events.login"
 	TopicDevice      = "events.device"

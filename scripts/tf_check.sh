@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# `make tf-check` (spec §16, T-44): fmt, init (no backend), validate, test (mock_provider), tflint and checkov
+# `make tf-check`: fmt, init (no backend), validate, test (mock_provider), tflint and checkov
 # over infra/terraform, with no AWS credentials. Each step must pass.
 set -euo pipefail
 cd "$(dirname "$0")/.."

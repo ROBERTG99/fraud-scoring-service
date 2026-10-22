@@ -1,4 +1,4 @@
-"""Fail when line coverage of one package is below a minimum (spec §10: src/fraud_summarizer ≥ 85%).
+"""Fail when line coverage of one package is below a minimum.
 
 Usage: python scripts/pycover.py --package src/fraud_summarizer --min 85 [--data-file .coverage]
 Reads the data file pytest-cov wrote; prints the measured percentage.

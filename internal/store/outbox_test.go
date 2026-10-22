@@ -17,7 +17,7 @@ import (
 	"github.com/ROBERTG99/fraud-scoring-service/internal/stream"
 )
 
-// FR-10: the relay crashes after producing but before marking rows sent; on restart the rows are sent
+// The relay crashes after producing but before marking rows sent; on restart the rows are sent
 // again, the duplicates carry the same decision_id, and a consumer deduplicating on decision_id
 // (processed_messages) processes each decision once.
 func TestRelayCrashProducesDuplicatesWithSameDecisionID(t *testing.T) {
@@ -212,7 +212,7 @@ func TestSpoolKeepsTheTraceparent(t *testing.T) {
 }
 
 // relayWriterConfig gives batches a deadline far above the 200 ms default: these tests need every commit in
-// the outbox, and under package-wide -race load a slow first batch would otherwise be spooled.
+// The outbox, and under package-wide -race load a slow first batch would otherwise be spooled.
 func relayWriterConfig(t *testing.T) WriterConfig {
 	return WriterConfig{SpoolDir: t.TempDir(), BatchTimeout: 10 * time.Second}
 }

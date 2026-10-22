@@ -1,4 +1,4 @@
-"""Summarizer HTTP API (spec §4.4): auth, RBAC, idempotent regenerate."""
+"""Summarizer HTTP API: auth, RBAC, idempotent regenerate."""
 
 from __future__ import annotations
 
@@ -148,7 +148,7 @@ def test_regenerate_is_idempotent_and_role_checked(client: TestClient, store: St
 
 
 def test_health_ready_and_no_public_metrics_or_docs(client: TestClient) -> None:
-    """Audit M6 L2: metrics are on the admin listener; the API document is generated offline."""
+    """Security audit: metrics are on the admin listener; the API document is generated offline."""
     assert client.get("/healthz").json() == {"status": "ok"}
     assert client.get("/readyz").json() == {"status": "ready"}
     for path in ("/metrics", "/docs", "/redoc", "/openapi.json"):
@@ -171,7 +171,7 @@ def test_metrics_are_served_on_the_admin_listener() -> None:
 
 
 def test_console_requests_are_limited_per_user(client: TestClient) -> None:
-    """Audit M6 L6: the scorer's 20 req/s per user applies to the summarizer's API too."""
+    """Security audit: the scorer's 20 req/s per user applies to the summarizer's API too."""
     svc = client.app.state.services  # type: ignore[attr-defined]
     svc.request_limit = TokenBucket(2)
     url = f"/v1/summaries/{CASE_ID}"
@@ -310,7 +310,7 @@ def test_a_rate_limited_regenerate_does_not_consume_its_key(client: TestClient) 
 
 
 def test_jwks_url_needs_https_outside_dev(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keys fetched over plain HTTP could be swapped in transit (audit M6 M4, D-045)."""
+    """Keys fetched over plain HTTP could be swapped in transit (security audit, D-045)."""
     monkeypatch.delenv("FRAUD_ENV", raising=False)
     check_jwks_url("https://issuer.example/.well-known/jwks.json")
     for bad in ("http://127.0.0.1:8515/.well-known/jwks.json", "file:///etc/jwks.json", "issuer/jwks"):
@@ -323,7 +323,7 @@ def test_jwks_url_needs_https_outside_dev(monkeypatch: pytest.MonkeyPatch) -> No
 
 
 async def test_remote_keys_single_flight_backoff_and_stale_cap() -> None:
-    """Audit M6 L3, as internal/auth TestRemoteKeysSingleFlightBackoffAndStaleCap."""
+    """Security audit, as internal/auth TestRemoteKeysSingleFlightBackoffAndStaleCap."""
     import httpx
 
     from fraud_summarizer.auth import RemoteKeys
@@ -419,7 +419,7 @@ def test_dev_database_credentials_only_in_dev(monkeypatch: pytest.MonkeyPatch) -
 def test_the_dsn_check_reads_passfiles_services_and_certificates_as_libpq(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Security audit round 4 (L1): any existing passfile or sslcert passed without being read."""
+    """Security audit round 4: any existing passfile or sslcert passed without being read."""
     from fraud_summarizer.auth import check_database_dsn
 
     for var in (

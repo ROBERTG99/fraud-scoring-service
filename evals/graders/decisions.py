@@ -1,4 +1,4 @@
-"""`decisions` suite (spec §11): target and graders.
+"""`decisions` suite: target and graders.
 
 The target streams each case through `cmd/evaldecide` (the real ScorerServer, rule set and combination
 table with the feature store and model stubbed by the case), one long-lived process per eval run.

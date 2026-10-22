@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse guard: blocks the actions the build specification forbids (§0 rule 8, §1.1, §7).
+"""PreToolUse guard: blocks the actions CLAUDE.md lists under "Never do" and "Commit attribution".
 
 Exit code 2 blocks the tool call and shows stderr to the agent. Malformed input never blocks.
 Standard library only, so it runs before any dependency is installed.
@@ -18,19 +18,19 @@ TRAILERS = re.compile(r"Co-Authored-By|Claude-Session|Generated with Claude Code
 BASH_RULES: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(r"\bterraform\b[^;&|]*\b(apply|destroy)\b"),
-        "terraform apply/destroy is forbidden (§0 rule 8)",
+        "terraform apply/destroy is forbidden",
     ),
     (
         re.compile(r"\bgit\b[^;&|]*\bpush\b[^;&|]*(\s--force(-with-lease)?\b|\s-f\b|\s\+[\w./-]+)"),
-        "force pushes are forbidden (§0 rule 5)",
+        "force pushes are forbidden",
     ),
     (
         re.compile(r"\bgit\b[^;&|]*\bconfig\b(?![^;&|]*--get)[^;&|]*\buser\.\w+"),
-        "changing git identity (git config user.*) is forbidden (§1.1)",
+        "changing git identity (git config user.*) is forbidden",
     ),
     (
         re.compile(r"\bGIT_(AUTHOR|COMMITTER)_(NAME|EMAIL|DATE)\s*="),
-        "setting GIT_AUTHOR_*/GIT_COMMITTER_* is forbidden (§1.1)",
+        "setting GIT_AUTHOR_*/GIT_COMMITTER_* is forbidden",
     ),
     (
         re.compile(r"\bgh\s+repo\s+(create|delete|archive|rename)\b"),
@@ -87,9 +87,9 @@ def check_bash(command: str, root: Path) -> None:
         if pattern.search(command):
             block(reason)
     if re.search(r"\bgit\b[^;&|]*\b(commit|tag)\b", command) and TRAILERS.search(command):
-        block("commit attribution trailers are forbidden (§1.1)")
+        block("commit attribution trailers are forbidden")
     if re.search(r"\bgh\s+pr\s+(create|edit)\b", command) and TRAILERS.search(command):
-        block("pull request attribution is forbidden (§1.1)")
+        block("pull request attribution is forbidden")
     check_rm(command, root)
     for match in re.finditer(r"(>>?|\btee\b(\s+-a)?|\bsed\s+-i\S*)\s+([^\s;&|]+)", command):
         target = match.group(3).strip("'\"")

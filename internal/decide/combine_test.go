@@ -30,7 +30,7 @@ var (
 	r009 = rules.Match{ID: "R009", ReasonCode: "BLOCKED_MCC", Action: rules.Decline, Final: true}
 )
 
-// FR-7: rule R003 matches and the model scores 0.10 → REVIEW with CARD_TESTING_BURST.
+// Rule R003 matches and the model scores 0.10 → REVIEW with CARD_TESTING_BURST.
 func TestRuleR003WithLowScoreReviews(t *testing.T) {
 	got := Combine(ruleSet(t), Input{Matches: []rules.Match{r003}, Score: 0.10, ModelOK: true, FeaturesOK: true, AmountMinor: 150})
 	if got.Action != rules.Review || !reflect.DeepEqual(got.ReasonCodes, []string{"CARD_TESTING_BURST"}) || got.Degraded {

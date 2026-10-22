@@ -24,7 +24,7 @@ type Persona struct {
 	Role string `json:"role"`
 }
 
-// Personas from spec §4.1.
+// Personas for local development.
 var Personas = []Persona{
 	{ID: "analyst-1", Name: "Analyst One", Role: auth.RoleAnalyst},
 	{ID: "risk-1", Name: "Risk Engineer One", Role: auth.RoleRiskEngineer},
@@ -46,7 +46,7 @@ func main() {
 		os.Exit(telemetry.Healthcheck(envOr("FRAUD_HEALTHCHECK_URL", "http://127.0.0.1:8515/healthz")))
 	}
 	log := telemetry.NewLogger("dev-issuer")
-	if !auth.DevMode() { // it mints console tokens for anyone who asks (audit M6 M4)
+	if !auth.DevMode() { // it mints console tokens for anyone who asks (security audit)
 		log.Error("dev-issuer runs only with FRAUD_ENV=dev")
 		os.Exit(2)
 	}

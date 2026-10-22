@@ -31,7 +31,7 @@ interface Props {
 export function LabelDialog({ caseId, session, onClose }: Props) {
   const [label, setLabel] = useState<LabelValue | null>(null);
   const [note, setNote] = useState("");
-  // One key per dialog: a retry after a network error is the same request (spec §4.7).
+  // One key per dialog: a retry after a network error is the same request.
   const [idempotencyKey] = useState(newIdempotencyKey);
   const mutation = useLabelCase();
   const titleId = useId();

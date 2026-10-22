@@ -5,7 +5,7 @@ What is not done, approximate or out of scope. Each entry names where it shows u
 ## Features
 
 - **Out-of-order device and MCC sightings are approximate.** `fr:{acc}:dev` and `fr:{acc}:mcc` keep only the
-  latest sighting per member (`ZADD GT`, spec §4.4). If an event later than a transaction arrives before the
+  latest sighting per member (`ZADD GT`). If an event later than a transaction arrives before the
   transaction is scored, that device or MCC looks unseen as of the transaction: `distinct_devices_24h` can
   under-count and `new_device` / `mcc_novel_30d` can read 1 instead of 0. A later event is never counted
   (`TestOutOfOrderWithinFiveMinutes`). Transaction windows and credential changes are exact.
@@ -32,7 +32,7 @@ What is not done, approximate or out of scope. Each entry names where it shows u
   load for recall; it is a rule-set change (`rules/`), not a model change.
 - **Fraud is easier to catch at night.** `cmd/gen` starts fraud incidents uniformly over the day
   (`generator.go`) while legitimate activity follows a daily curve, so night hours hold a much larger share
-  of fraud than of legitimate transactions, and `hour_of_day_utc` is a model feature. The M5 ML review found
+  of fraud than of legitimate transactions, and `hour_of_day_utc` is a model feature. An ML review found
   that recall drops when the model is retrained without it, most for friendly fraud; no committed command
   reproduces that ablation. Real fraud timing differs.
 - **The temporal test measures sampling variation, not drift.** The model is trained on the demo data and
@@ -42,7 +42,7 @@ What is not done, approximate or out of scope. Each entry names where it shows u
   some transaction ids collide (different transactions). No feature uses an id, but loading both data sets
   into one stack breaks transaction-id idempotency.
 - **ONNX parity is checked on demo data only.** The training check (`training/train.py`, 1e-5 on demo valid
-  and test) does not cover the eval data, where the M5 ML review saw a few rows just over 1e-5; float32
+  and test) does not cover the eval data, where a model review saw a few rows just over 1e-5; float32
   output also ties some scores. No decision changes at the review or decline thresholds.
 - **The decisions suite is a conformance check.** Its expected actions restate the rule text, so 1.0 shows
   the Go engine applies the YAML rules and combination table as written, not that the rules are good.
@@ -53,8 +53,8 @@ What is not done, approximate or out of scope. Each entry names where it shows u
   policy (pull returned `Forbidden` on 2026-10-16). The model repository (`serving/triton/`) and KServe v2
   client (`internal/model/triton.go`, `TestKServeV2RequestShape` against a recorded request/response) exist,
   but `TestTritonGoldenVector` skips unless `FRAUD_TEST_TRITON_URL` points at a running Triton. The `triton`
-  profile exists in `compose.yaml` (T-43, `make triton-up` after `scripts/triton_repo.sh`) but was not started
-  in this build either: the image is several GB and was not pulled. `make verify` never requires Triton.
+  profile exists in `compose.yaml` (`make triton-up` after `scripts/triton_repo.sh`) but was not started
+  in the reference environment: the image is several GB and was not pulled. `make verify` never requires Triton.
 
 ## Model server throughput on a shared host
 
@@ -62,10 +62,10 @@ The Python model server (BentoML) is the scorer's throughput limit when everythi
 machine. Measurements in docs/DECISIONS.md D-024: without request batching, 250 tx/s with shadow scoring
 degraded 40% of decisions to rules-only (`MODEL_UNAVAILABLE`). The batching client fixed that for the seed
 rate: 63 of 16,863 degraded (0.37%) on gen v1 data (D-024) and 59 of 16,904 on gen v2 data
-(`scripts/seed_report.py`, PROGRESS T-31). Higher rates (the 1,000 RPS load target) need more model-server
+(`scripts/seed_report.py`). Higher rates (the 1,000 RPS load target) need more model-server
 workers or Triton.
 
-The NFR-1 laptop target (2,000 RPS, p95 < 50 ms, p99 < 90 ms) is not met in the 4-vCPU build container,
+The laptop target (2,000 RPS, p95 < 50 ms, p99 < 90 ms) is not met in the 4-vCPU build container,
 where ghz, the scorer, BentoML, Postgres, Redis and Redpanda share the CPUs: `make bench BENCH_PROFILE=laptop`
 achieved 586 of 2,000 rps with p95 603.8 ms, p99 728.5 ms and 99.3% of decisions degraded (Redis reads miss
 the 8 ms budget, so features fall back). The CI profile on the same machine passes (`make bench` at f9ab2a5:
@@ -74,7 +74,7 @@ the 8 ms budget, so features fall back). The CI profile on the same machine pass
 generator on separate cores; nothing here shows it is reachable.
 
 The CI profile's degraded share depends on how busy the host is: 0.94% on a quiet host (`make bench` at
-f9ab2a5, load 0.5) but 6.28% with a concurrent `go build` (load 8.5, M5 review), where p95 was still 42.0 ms.
+f9ab2a5, load 0.5) but 6.28% with a concurrent `go build` (load 8.5), where p95 was still 42.0 ms.
 `cmd/benchreport` fails over 5% degraded, so run the bench on an otherwise idle machine.
 
 ## Observability
@@ -83,7 +83,7 @@ f9ab2a5, load 0.5) but 6.28% with a concurrent `go build` (load 8.5, M5 review),
   loses them on restart. The summarizer creates one trace per `decisions` message (APPROVE ones included),
   so a long backlog evicts older scorer spans: in a host run that consumed a topic shared with earlier runs,
   the scorer's spans were evicted before the check (`scripts/obs_host.sh`, then fresh infrastructure).
-- The T-41 evidence ran the profile's images on host networking against `scripts/seed_host.sh`. The same
+- The observability check (`scripts/obs_host.sh`) ran the profile's images on host networking against `scripts/seed_host.sh`. The same
   check against the compose stack (`docker compose --profile observability up -d`) was not run.
 - The dashboard's DLQ and rule-error series are absent until the first such event (labelled counters).
 
@@ -210,7 +210,7 @@ live model may phrase evidence without the value, which lowers faithfulness and 
 
 ## The demo depends on the shipped model
 
-`make demo` (T-46) asserts that the scripted takeover is REVIEWed, which needs the model to score it in the
+`make demo` asserts that the scripted takeover is REVIEWed, which needs the model to score it in the
 review band (0.30 to 0.85). The shipped model weighs the hour of day: the scripted account's features score
 1.00 at hour 4 UTC and 0.65 at hour 14 (D-071), so the scenario places the purchase between 13:00 and 15:00
 UTC. A retrained model can move the score out of the band; the `ato_review` checkpoint then fails and
@@ -223,7 +223,7 @@ scripted.
 ## The compose stack on a laptop
 
 Measured on Docker Desktop (macOS arm64, 10 vCPU and 8 GB for the VM) with the repository inside a synced
-cloud-drive folder (`PROGRESS.md`, T-43, T-46):
+cloud-drive folder:
 
 - The degraded demo checkpoint (`model_unavailable_rules_only`, every call under the 45 ms Score budget with the
   model server paused) first passed 2 of 3 runs here and failed once on Linux CI (45.9 ms): the commit took the
@@ -233,10 +233,10 @@ cloud-drive folder (`PROGRESS.md`, T-43, T-46):
   e63e191 and 9a28857 and failed it on cb95269 (slowest 81.6 ms of 20; the scorer log shows one decision of that
   phase spooled and replayed), so the console steps that follow it did not run. A degraded decision whose commit
   misses its window waits for the spool fsync; answering before the fsync would break commit-before-respond
-  (FR-10), so the budget holds only while the disk fsyncs within the reserve.
+  (ADR 0007), so the budget holds only while the disk fsyncs within the reserve.
 - `make seed` scored 16,943 transactions with 680 degraded (531 `MODEL_UNAVAILABLE`, 149
   `FEATURES_UNAVAILABLE`): the 20 ms model and 8 ms Redis budgets are tight for a 250 tx/s replay inside the
-  VM. The host stack (`scripts/seed_host.sh`) degrades far fewer (`PROGRESS.md`, T-31).
+  VM. The host stack (`scripts/seed_host.sh`) degrades far fewer.
 - `make test-docker` runs the Go packages four at a time (`GOFLAGS=-p=4`): with all of them at once under
   `-race`, one integration test missed its 8 ms Redis budget for lack of CPU (D-073).
 - The model server's compose healthcheck is liveness (`/livez`): before `make seed` registers a model the stack
@@ -254,15 +254,15 @@ it never matches (`docs/security.md`, open finding 18).
 
 The disk spool assumes one scorer process per `FRAUD_SPOOL_DIR`: `Drain` renames the active file, so a second
 process sharing the directory could keep writing into a file the first one replays and deletes. Compose runs
-one scorer on a named volume; replicas need a directory each (T-49 latency review).
+one scorer on a named volume; replicas need a directory each.
 
 ## The trained model depends on the CPU it is trained on
 
 XGBoost's training is reproducible on one platform (CI on Linux x86-64 rebuilds the committed baseline model
 bit for bit: `make eval` there gives `band_calibration_gap` 0.0081 and Gate PASS, `evals/REPORT.md`) but not
 across platforms. From the same data, seed and `n_jobs`, macOS arm64 trained `gbdt-0b1d9e9ed9` and Linux arm64
-`gbdt-741d763432`, and both miss one §11 gate on the eval set: `band_calibration_gap` 0.0759 and 0.0920 (limit
+`gbdt-741d763432`, and both miss one gate of `evals/suites/model.yaml`: `band_calibration_gap` 0.0759 and 0.0920 (limit
 0.05; PR-AUC 0.8617 and 0.8646, recall@1%FPR 0.9122 and 0.9168, both above their thresholds). So `make eval`,
-and with it `make verify`, fails at `eval-model` on arm64 machines (`docs/verification.md`). The gate is not
+and with it `make verify`, fails at `eval-model` on arm64 machines. The gate is not
 loosened: train the model that ships on x86-64 (CI, or the SageMaker launcher's `ml.m5` instances), and treat
 the decline-band calibration as model-specific until isotonic calibration on the decline band is made robust.

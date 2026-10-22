@@ -1,12 +1,12 @@
 """Model runtime behind the BentoML service: ONNX sessions per alias, loaded from MLflow or a local dir.
 
-Load order per alias (spec §4.7, MLflow row):
+Load order per alias:
 1. MLflow registry `models:/fraud-gbdt@<alias>` (downloaded into the cache dir),
 2. the last cached artifact in FRAUD_MODEL_CACHE/<alias>,
 3. FRAUD_MODEL_DIR (a local `make train` output; used for both aliases),
 otherwise the alias is not ready and /readyz fails.
 
-Every source is checked against the SHA-256 recorded for it before an InferenceSession is built (audit M6 M6),
+Every source is checked against the SHA-256 recorded for it before an InferenceSession is built,
 and a model with no recorded digest at all is refused (round 2, D-059):
 `FRAUD_MODEL_SHA256_<ALIAS>` when the deployment pins one, the registry's `onnx_sha256` version tag for an
 MLflow download (required), and the `onnx_sha256` that training wrote into model_meta.json.
@@ -128,7 +128,7 @@ class ModelRuntime:
         self.models: dict[str, LoadedModel] = {}
         self._lock = threading.Lock()
         # An alias missing at startup (the registry is empty until `make seed` trains) is retried at most
-        # this often, from the readiness check (T-43, D-073).
+        # this often, from the readiness check (D-073).
         self.retry_interval_s = float(os.environ.get("FRAUD_MODEL_RETRY_S", "5"))
         self._clock = clock
         self._last_attempt: float | None = None
@@ -152,7 +152,7 @@ class ModelRuntime:
         errors: list[str] = []
         cached = self.cache_dir / alias
         if self.use_mlflow:
-            # Fail fast when MLflow is down so the cached artifact takes over (spec §4.7).
+            # Fail fast when MLflow is down so the cached artifact takes over.
             os.environ.setdefault("MLFLOW_HTTP_REQUEST_MAX_RETRIES", "1")
             os.environ.setdefault("MLFLOW_HTTP_REQUEST_BACKOFF_FACTOR", "0")
             os.environ.setdefault("MLFLOW_HTTP_REQUEST_TIMEOUT", "5")
@@ -218,7 +218,7 @@ class ModelRuntime:
         """Retries the missing aliases every retry interval until all are loaded or stop is set.
 
         Each BentoML worker process runs one, so every worker picks up a model registered after it started,
-        not only the one that answers /readyz (T-43, D-073).
+        not only the one that answers /readyz (D-073).
         """
         while not stop.is_set():
             self.refresh(force=True)  # the wait below already spaces the attempts

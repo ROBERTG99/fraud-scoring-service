@@ -1,4 +1,4 @@
-"""Graders and targets of the decisions and summaries suites (T-38)."""
+"""Graders and targets of the decisions and summaries suites."""
 
 from __future__ import annotations
 

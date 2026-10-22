@@ -129,7 +129,7 @@ func (j *jwksServer) set(f func(*jwksServer)) { j.mu.Lock(); f(j); j.mu.Unlock()
 
 func (j *jwksServer) n() int { j.mu.Lock(); defer j.mu.Unlock(); return j.calls }
 
-// Audit M6 L3: one fetch for many concurrent misses, none while backing off after a failure, and stale keys
+// Security audit: one fetch for many concurrent misses, none while backing off after a failure, and stale keys
 // are served while the issuer is down, but not forever.
 func TestRemoteKeysSingleFlightBackoffAndStaleCap(t *testing.T) {
 	s, _ := NewSigner("iss")

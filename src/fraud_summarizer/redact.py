@@ -1,9 +1,9 @@
-"""PII redaction before any provider call (spec §15): emails, phone numbers, card numbers (Luhn) and SSNs.
+"""PII redaction before any provider call: emails, phone numbers, card numbers (Luhn) and SSNs.
 
 Synthetic identifiers (account tokens, salted device hashes, /24 IP prefixes, UUIDs) are not PII and are kept.
 
 Numbers are not matched with one regular expression per kind: adjacent numbers ("+44 20 7946 0958 4111 1111
-1111 1111") would merge into a span that is valid as neither and be left in place (M6 review). Instead each
+1111 1111") would merge into a span that is valid as neither and be left in place (review). Instead each
 run of digit groups is split into groups, every card-shaped and phone-shaped window of consecutive groups is
 a candidate, and the non-overlapping set that redacts the most digits wins. Text is NFKC-normalised first
 (fullwidth digits, no-break and thin spaces), with zero-width characters removed and Unicode dashes folded,
@@ -51,7 +51,7 @@ DATE_TIME = re.compile(
     r"\b\d{4}-\d{2}-\d{2}(?:[ T](?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?(?!:?\d))?\b"
     r"|\b\d{4}/\d{1,2}/\d{1,2}\b|\b\d{1,2}/\d{1,2}/\d{4}\b"
 )
-# IPv4 addresses and prefixes are not phone numbers (facts carry /24 prefixes, spec §15).
+# IPv4 addresses and prefixes are not phone numbers (facts carry /24 prefixes).
 IPV4 = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?:/\d{1,2})?(?![\d.])")
 # Salted hashes (hex, 32+ characters) and UUIDs are identifiers, not numbers: a digit run inside one can
 # pass Luhn by chance.
@@ -316,7 +316,7 @@ def _layouts(k: int) -> tuple[tuple[int, ...], ...]:
 
 def _layout_digits(run: str, window: list[tuple[int, int, bool]], shape: tuple[int, ...]) -> str | None:
     """The window's digits read in this layout: a group right after "%" may start with the two hex digits of an
-    escape ("%40", "%20") or with card digits, and the layout says which (M6 review round 5). One check per
+    escape ("%40", "%20") or with card digits, and the layout says which (review round 5). One check per
     layout, so the cost is linear in the groups (round 6: every combination of readings was tried)."""
     out = []
     for (a, b, pct), n in zip(window, shape, strict=True):

@@ -55,7 +55,7 @@ tests:
               summary: Oldest unsent decision in the outbox is older than 60 s
               runbook: docs/runbook.md#outboxunsentage
 
-  # Near the thresholds (M6 review), so moving either threshold breaks a test. Buckets 40 ms and 60 ms, all
+  # Near the thresholds, so moving either threshold breaks a test. Buckets 40 ms and 60 ms, all
   # observations under 60 ms; histogram_quantile interpolates p95 = 40 + 20 * (0.95 - f) / (1 - f) ms for a
   # fraction f under 40 ms: f = 11/12 gives 48 ms (no alert), f = 7/8 gives 52 ms (alert).
   - interval: 1m

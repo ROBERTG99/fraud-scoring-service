@@ -1,4 +1,4 @@
-"""Model eval report (T-37, spec §11 `model` suite).
+"""Model eval report.
 
 Scores the temporal test split of the eval data (`make gen-data SIZE=eval`, 2M events) with the serving
 artifact: the ONNX graph loaded through `serving/bentoml/runtime.py`, so the probabilities are exactly what

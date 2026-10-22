@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installs every toolchain dependency the Makefile needs. Idempotent; safe to rerun.
-# Same install path locally and in the cloud (spec §1.3, §7 build tools).
+# Same install path locally and in the cloud.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -71,7 +71,7 @@ if ! command -v terraform >/dev/null 2>&1; then
   rm -rf "$tmp"
 fi
 
-# registry.terraform.io may be unreachable (Appendix A): install the AWS provider into the
+# registry.terraform.io may be unreachable: install the AWS provider into the
 # implicit local mirror from releases.hashicorp.com so `terraform init` works offline.
 PLUGIN_DIR="$HOME/.terraform.d/plugins/registry.terraform.io/hashicorp/aws/${AWS_PROVIDER_VERSION}/${OS}_${GOARCH}"
 if [ ! -d "$PLUGIN_DIR" ] && ! curl -fsS -m 5 -o /dev/null https://registry.terraform.io/.well-known/terraform.json 2>/dev/null; then

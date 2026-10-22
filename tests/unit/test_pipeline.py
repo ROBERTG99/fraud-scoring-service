@@ -1,4 +1,4 @@
-"""Summary pipeline, faithfulness and injection defence (spec FR-11, T-22)."""
+"""Summary pipeline, faithfulness and injection defence."""
 
 from __future__ import annotations
 

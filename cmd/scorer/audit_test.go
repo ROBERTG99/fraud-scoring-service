@@ -30,7 +30,7 @@ func TestAuditKeyFromEnv(t *testing.T) {
 	}
 }
 
-// Outside dev mode, verification without anchors cannot see removed entries, so it refuses to run (M6 round 2).
+// Outside dev mode, verification without anchors cannot see removed entries, so it refuses to run (review round 2).
 func TestAuditVerifyNeedsAnchorsOutsideDev(t *testing.T) {
 	t.Setenv("FRAUD_ENV", "")
 	t.Setenv("FRAUD_AUDIT_KEY", strings.Repeat("ab", 32))
@@ -45,7 +45,7 @@ func TestAuditVerifyNeedsAnchorsOutsideDev(t *testing.T) {
 	}
 }
 
-// Lifting the event_ts age bound is for replaying historical data on a local stack only (round 2, H2).
+// Lifting the event_ts age bound is for replaying historical data on a local stack only (security audit round 2).
 func TestEventAgeBoundLiftsOnlyInDevMode(t *testing.T) {
 	t.Setenv("FRAUD_ENV", "")
 	if _, err := eventAge("0"); err == nil {

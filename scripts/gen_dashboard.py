@@ -1,4 +1,4 @@
-"""Write deploy/grafana/fraud.json, the provisioned Grafana dashboard of the `observability` profile (spec §14).
+"""Write deploy/grafana/fraud.json, the provisioned Grafana dashboard of the `observability` profile.
 
 `python scripts/gen_dashboard.py` regenerates it; `tests/unit/test_observability.py` fails when the
 committed file differs. Colors (dataviz reference palette, dark steps): actions take categorical slots 1-3

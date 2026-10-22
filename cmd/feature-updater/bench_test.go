@@ -22,7 +22,7 @@ import (
 	"github.com/ROBERTG99/fraud-scoring-service/internal/testutil"
 )
 
-// minUpdaterEventsPerSec is NFR-3.
+// minUpdaterEventsPerSec is the updater throughput floor.
 const minUpdaterEventsPerSec = 10_000
 
 func syntheticRecords(n int) []*kgo.Record {
@@ -96,6 +96,6 @@ func BenchmarkUpdater(b *testing.B) {
 	}
 	b.ReportMetric(best, "events/s")
 	if best < minUpdaterEventsPerSec {
-		b.Fatalf("feature-updater throughput %.0f events/s < %d (NFR-3)", best, minUpdaterEventsPerSec)
+		b.Fatalf("feature-updater throughput %.0f events/s < %d", best, minUpdaterEventsPerSec)
 	}
 }

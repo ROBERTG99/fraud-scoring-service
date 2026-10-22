@@ -1,4 +1,4 @@
-"""Write evals/REPORT.md from the latest eval reports (`make eval`, spec §11).
+"""Write evals/REPORT.md from the latest eval reports (`make eval`).
 
 Reads `evals/reports/{model,decisions,summaries,latency}.json` (evalgate.report.v1) and the baselines in
 `evals/reports/baseline/`, and states the mode (offline, cassette or live), the models and prompt hash, every
@@ -189,7 +189,7 @@ def render(reports_dir: Path, baseline_dir: Path) -> str:
     if live is None:
         live_line = (
             "Live evals (`make eval-live`): not run — no provider key in this environment; every number above "
-            "is offline (spec §19 step 4)."
+            "is offline."
         )
     else:
         lr = live[0]
@@ -219,7 +219,7 @@ def render(reports_dir: Path, baseline_dir: Path) -> str:
     gate_all = "PASS" if verdicts and all(verdicts) else "FAIL"
     skipped = "".join(f", {n} not run" for n in not_run)
     out += [
-        f"Gate: **{gate_all}** ({sum(verdicts)} of {len(verdicts)} checks pass{skipped}; thresholds from spec §11, "
+        f"Gate: **{gate_all}** ({sum(verdicts)} of {len(verdicts)} checks pass{skipped}; thresholds in `evals/suites/`, "
         "regressions over 1 pp with a 95% paired-bootstrap interval excluding 0).",
         "",
         live_line,

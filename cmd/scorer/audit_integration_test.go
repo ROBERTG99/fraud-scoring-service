@@ -17,7 +17,7 @@ import (
 )
 
 // audit-verify outside dev mode, on a chain with entries, refuses an anchors file that holds no anchor; once
-// audit-anchor has written one it verifies (M6 review round 4: requireAnchors wired into auditVerify).
+// audit-anchor has written one it verifies (review round 4: requireAnchors wired into auditVerify).
 func TestAuditVerifyRefusesAChainWithNoAnchorOutsideDev(t *testing.T) {
 	admin := testutil.NewDatabase(t)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)

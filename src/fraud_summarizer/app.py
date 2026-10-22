@@ -106,16 +106,14 @@ class Services:
     pipeline: SummaryPipeline
     verifier: TokenVerifier
     background: list[asyncio.Task[Any]] = field(default_factory=list)
-    # Paid regenerations per user per hour, counted in Postgres (NFR-9, audit M6 L6).
+    # Paid regenerations per user per hour, counted in Postgres (security audit).
     regenerate_limit: int = 20
     regenerate_window_s: float = 3600.0
-    request_limit: TokenBucket = field(
-        default_factory=lambda: TokenBucket(20)
-    )  # spec §4.4: 20 req/s per user
+    request_limit: TokenBucket = field(default_factory=lambda: TokenBucket(20))  # 20 req/s per user
 
 
 def start_admin_metrics(addr: str) -> WSGIServer:
-    """Serve /metrics on addr ("host:port"), apart from the API port (audit M6 L2)."""
+    """Serve /metrics on addr ("host:port"), apart from the API port (security audit)."""
     host, _, port = addr.rpartition(":")
     server, _thread = start_http_server(int(port), host or "127.0.0.1")
     return server
@@ -263,7 +261,7 @@ def create_app(factory: Factory | None = None) -> FastAPI:
         if decision_id is None:
             raise HTTPException(404, "case not found")
         # Keys are scoped to the case: the same key on another case is a different request. Each
-        # regeneration is a paid model call, bounded per user (NFR-9); a refused request records nothing,
+        # regeneration is a paid model call, bounded per user; a refused request records nothing,
         # so it can be retried with the same key.
         outcome = await svc.store.record_regeneration(
             who.subject,

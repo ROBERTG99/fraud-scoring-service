@@ -1,7 +1,7 @@
-"""Generate the eval datasets (T-36) with seed 7: decisions, summaries and judge calibration.
+"""Generate the eval datasets with seed 7: decisions, summaries and judge calibration.
 
 Every label is known by construction: a decision case is built from a template whose expected action and
-reason codes follow from `rules/rules.v2026.10.2.yaml` and the combination table (spec §4.4); a summary case
+reason codes follow from `rules/rules.v2026.10.2.yaml` and the combination table; a summary case
 is built from a scenario of `cmd/gen/PATTERNS.md` and labelled with that scenario's pattern; a judge item is
 a summary written to be useful, or one corrupted on purpose. Nothing here reads model or summarizer output.
 
@@ -517,7 +517,7 @@ class Scenario:
         rules = fired_rules(features, self.mcc)
         extra = ["MODEL_UNAVAILABLE"] if degraded else model_code(self.score or 0.0)
         reasons = sorted(rules + extra)
-        # The case must be a REVIEW under the combination table (§4.4): band, then rule actions.
+        # The case must be a REVIEW under the combination table: band, then rule actions.
         band = (
             ("REVIEW" if self.amount >= 20_000 else "APPROVE") if degraded else decide_band(self.score or 0.0)
         )

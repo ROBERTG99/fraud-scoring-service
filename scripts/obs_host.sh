@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Host run of the `observability` profile against the seed_host.sh stack (T-41 evidence): the collector,
+# Host run of the `observability` profile against the seed_host.sh stack: the collector,
 # Jaeger, Prometheus and Grafana from compose.yaml's images on host networking, with their configs pointed at
 # 127.0.0.1 (collector 18580/18581, Prometheus 18591, Grafana 18590, Jaeger UI 16686), then FULL=1
 # seed_host.sh with tracing on, then scripts/obs_verify.py. Containers are named obs-*; remove them with

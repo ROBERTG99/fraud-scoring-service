@@ -11,7 +11,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-// Partitions per topic (spec FR-2).
+// Partitions per topic.
 const Partitions = 12
 
 // AllTopics lists every topic the system uses.

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# The `seed` job (`make seed`, spec §16): migrate, generate the demo data (cmd/gen, seed 7), train and
+# The `seed` job (`make seed`): migrate, generate the demo data (cmd/gen, seed 7), train and
 # register `fraud-gbdt` in MLflow with the production and shadow aliases, then replay the last 72 h through
 # the scorer (cmd/seed). Go binaries next to the training environment, since the job runs both.
 ARG GO_IMAGE=golang:1.26.10@sha256:672c944cfd07599b5f1bb179869270cdc94c6254e41db4d431259693cb286b82

@@ -10,7 +10,7 @@ export PATH := $(GOBIN):$(HOME)/.local/bin:$(CURDIR)/.cache/bin:$(PATH)
 
 GO ?= go
 export GOTOOLCHAIN := auto
-# Root holds Dockerfile.go (spec §16), so Go package trees are listed explicitly.
+# Root holds Dockerfile.go, so Go package trees are listed explicitly.
 GO_PKGS := ./cmd/... ./internal/... ./gen/... ./schemas/... ./features/... ./migrations/... ./tests/... ./scripts/gocover/...
 UV ?= uv
 PNPM ?= pnpm
@@ -89,7 +89,7 @@ lint-proto:
 	buf format -d --exit-code
 
 lint-md:
-	$(PNPM) -C web exec markdownlint-cli2 --config ../.markdownlint-cli2.jsonc $(addprefix ../,$(shell git ls-files '*.md' | grep -v '^docs/specs/' | grep -v '^BUILD.md$$'))
+	$(PNPM) -C web exec markdownlint-cli2 --config ../.markdownlint-cli2.jsonc $(addprefix ../,$(shell git ls-files '*.md'))
 
 lint-tf:
 	./scripts/terraform.sh fmt -check -recursive infra/terraform

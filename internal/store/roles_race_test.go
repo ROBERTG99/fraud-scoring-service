@@ -21,7 +21,7 @@ import (
 var roleBlock = regexp.MustCompile(`(?s)-- \+goose StatementBegin\n(DO \$\$.*?\$\$;)\n-- \+goose StatementEnd`)
 
 // Roles are cluster-wide: on a fresh server, databases migrated in parallel (the Go test packages do this)
-// both found a role missing and both created it; the loser failed with a unique violation (T-50 fresh-clone
+// both found a role missing and both created it; the loser failed with a unique violation (fresh-clone
 // run). The migrations' own role blocks, renamed to fresh roles, must succeed when run concurrently.
 func TestRoleMigrationsTolerateConcurrentRuns(t *testing.T) {
 	admin := testutil.PostgresAdminDSN(t)

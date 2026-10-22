@@ -32,7 +32,7 @@ describe.each([
   ["dark", theme(":root")],
   ["light", theme(':root[data-theme="light"]')],
 ])("%s theme", (_name, t) => {
-  it("has the spec palette tokens", () => {
+  it("has the design palette tokens", () => {
     for (const k of ["bg", "panel", "text", "accent", "decline", "review", "approve"])
       expect(t[k]).toBeDefined();
   });
@@ -67,7 +67,7 @@ describe.each([
   });
 });
 
-it("dark theme uses the spec colours", () => {
+it("dark theme uses the design colours", () => {
   const t = theme(":root");
   expect([t.bg, t.panel, t.text, t.accent, t.decline, t.review, t.approve]).toEqual([
     "#0b1220",

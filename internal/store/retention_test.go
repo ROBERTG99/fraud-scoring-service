@@ -11,7 +11,7 @@ import (
 	"github.com/ROBERTG99/fraud-scoring-service/internal/testutil"
 )
 
-// TestRetentionDeletesOnlyExpiredRows: spec §4.5 retention (400 days decisions and their cases, summaries,
+// TestRetentionDeletesOnlyExpiredRows: retention (400 days decisions and their cases, summaries,
 // labels and shadow rows; 7 days sent outbox rows; 90 days step records and processed messages), never the
 // audit log, never an unsent outbox row of a kept decision.
 func TestRetentionDeletesOnlyExpiredRows(t *testing.T) {

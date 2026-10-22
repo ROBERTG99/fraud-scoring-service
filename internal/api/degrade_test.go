@@ -29,7 +29,7 @@ func hasReason(d *fraudv1.Decision, code string) bool {
 	return false
 }
 
-// FR-8: the model server sleeps 50 ms → Score returns within 35 ms, rules-only, MODEL_UNAVAILABLE, model_version "none".
+// The model server sleeps 50 ms → Score returns within 35 ms, rules-only, MODEL_UNAVAILABLE, model_version "none".
 func TestModelTimeoutRulesOnlyWithin35ms(t *testing.T) {
 	slow := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		select {
@@ -71,7 +71,7 @@ func TestModelTimeoutRulesOnlyWithin35ms(t *testing.T) {
 	}
 }
 
-// FR-8: Redis down → conservative defaults biased to REVIEW with FEATURES_UNAVAILABLE.
+// Redis down → conservative defaults biased to REVIEW with FEATURES_UNAVAILABLE.
 func TestRedisDownBiasesToReview(t *testing.T) {
 	dead := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", MaxRetries: -1, DialTimeout: 5 * time.Millisecond})
 	defer func() { _ = dead.Close() }()
@@ -95,7 +95,7 @@ func TestRedisDownBiasesToReview(t *testing.T) {
 		if !d.Degraded || !hasReason(d, "FEATURES_UNAVAILABLE") || hasReason(d, "MODEL_UNAVAILABLE") || d.Action != c.want {
 			t.Fatalf("amount %d: %+v", c.amount, d)
 		}
-		// The features used are the spec defaults (training p90) plus request fields.
+		// The features used are the feature spec defaults (training p90) plus request fields.
 		if d.Features["mcc_novel_30d"] != float64(features.DefaultSpec().Fallback["mcc_novel_30d"]) || d.Features["amount_minor"] != float64(c.amount) {
 			t.Fatalf("fallback features %v", d.Features)
 		}
@@ -149,7 +149,7 @@ func (s *slowCommit) Commit(ctx context.Context, rec store.DecisionRecord) (*fra
 	return rec.Decision, rec.RequestHash, nil
 }
 
-// FR-8 (T-50, D-078): with the model timing out, the commit's deadline must leave SpoolReserve of the Score
+// D-078: with the model timing out, the commit's deadline must leave SpoolReserve of the Score
 // budget for the spool fallback. The commit used to get every millisecond left, so the spool's fsync ran after
 // 45 ms (CI e2e and the compose demo measured 45.9 to 128.6 ms). The check is on deadlines, not wall time.
 func TestModelTimeoutAndSlowPostgresLeaveTheSpoolReserve(t *testing.T) {
@@ -178,7 +178,7 @@ func TestModelTimeoutAndSlowPostgresLeaveTheSpoolReserve(t *testing.T) {
 		left := commits.left[len(commits.left)-1]
 		commits.mu.Unlock()
 		// The commit started at least ModelTimeout after start; its deadline must end SpoolReserve before
-		// the Score deadline (start + ScoreTimeout).
+		// The Score deadline (start + ScoreTimeout).
 		if spent := time.Since(start); left > ScoreTimeout-SpoolReserve-ModelTimeout || spent < ModelTimeout {
 			t.Fatalf("commit got %v after a %v model timeout (want <= %v)", left, ModelTimeout, ScoreTimeout-SpoolReserve-ModelTimeout)
 		}

@@ -143,7 +143,7 @@ func KeysFromJWKS(doc JWKS) (StaticKeys, error) {
 	return out, nil
 }
 
-// JWKS cache policy (audit M6 L3).
+// JWKS cache policy (security audit).
 const (
 	jwksFresh       = 10 * time.Minute // a known kid is served without a refetch
 	jwksMinInterval = 10 * time.Second // at most one fetch attempt per interval, failed or not

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for any coding agent working in this repository. `CLAUDE.md` has the full version; this file
+Guidance for AI coding assistants working in this repository. `CLAUDE.md` has the full version; this file
 holds the same essentials.
 
 ## Project
@@ -35,5 +35,4 @@ asynchronous Python case summarizer that uses an LLM only for analyst summaries.
 · `training/`, `serving/` · `src/fraud_summarizer/` · `prompts/`, `evals/` · `migrations/`, `deploy/`,
 `infra/terraform/` · `web/` · `tests/`.
 
-Specification: `docs/specs/000-build-spec.md`. Progress: `PROGRESS.md`. Decisions: `docs/DECISIONS.md`.
-ADRs: `docs/adr/`.
+Decisions: `docs/DECISIONS.md`. ADRs: `docs/adr/`. Changes: `CHANGELOG.md`.

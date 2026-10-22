@@ -15,7 +15,7 @@ trainer). In spec v1, `new_device` was 1 only when the device had no sighting at
 days. A successful login counts as a sighting, and an account takeover logs in on the attacker's device
 before buying, so `new_device` was 0 for nearly every takeover and mule transaction in the synthetic data
 (14 of 95,717 train and test transactions had `new_device=1`). Rule R001 (`new_device` within 60 minutes
-of a credential change) could practically never fire, although the product journey (spec §3.4) and
+of a credential change) could practically never fire, although the product journey and
 `cmd/gen/PATTERNS.md` rely on it. The v1 value was also order-sensitive online: it read the device's
 latest sighting (`ZADD GT`), so a later sighting applied early made an old device look new
 (docs/DECISIONS.md D-025).

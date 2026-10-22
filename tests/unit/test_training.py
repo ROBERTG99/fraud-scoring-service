@@ -1,4 +1,4 @@
-"""Training pipeline: temporal split, calibration map and ONNX parity (spec FR-5, T-14)."""
+"""Training pipeline: temporal split, calibration map and ONNX parity."""
 
 from __future__ import annotations
 
@@ -101,7 +101,7 @@ def _isotonic_only_graph(xs: np.ndarray, ys: np.ndarray) -> bytes:
 
 
 def test_isotonic_graph_error_does_not_grow_with_the_breakpoints() -> None:
-    # T-48 (D-076): a model trained on linux/arm64 missed the 1e-5 parity bound on one row because the graph
+    # D-076: a model trained on linux/arm64 missed the 1e-5 parity bound on one row because the graph
     # summed float32 rounding over every segment below p. With 2,000 breakpoints at slope <= 10 the error of
     # the calibrated map must stay at float32 precision.
     rng = np.random.default_rng(7)
@@ -116,7 +116,7 @@ def test_isotonic_graph_error_does_not_grow_with_the_breakpoints() -> None:
 
 
 def test_tree_scores_do_not_depend_on_the_runtime_thread_count() -> None:
-    # T-48 (D-076): onnxruntime summed the 300 trees in float32, in an order that depends on the thread count
+    # D-076: onnxruntime summed the 300 trees in float32, in an order that depends on the thread count
     # and the CPU; one linux/arm64 run moved a raw score by 1.3e-6, which the calibration slope (<= 10) made
     # 1.3e-5 and failed the parity bound. The exported trees must accumulate in double.
     import onnxruntime as ort

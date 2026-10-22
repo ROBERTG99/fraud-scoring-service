@@ -1,4 +1,4 @@
-"""The Claude Code harness (spec §7) is complete and well-formed."""
+"""The Claude Code configuration in .claude/ is complete and well-formed."""
 
 from __future__ import annotations
 
@@ -96,7 +96,7 @@ def test_claude_md_under_200_lines() -> None:
     for needle in (
         "make verify",
         "Co-Authored-By",
-        "PROGRESS.md",
+        "CHANGELOG.md",
         "docs/DECISIONS.md",
         "docs/adr",
         "terraform apply",

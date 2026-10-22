@@ -1,4 +1,4 @@
-"""Summarizer telemetry (spec §14): the Score trace continues from Kafka, steps map to gen_ai.*/app.* spans."""
+"""Summarizer telemetry: the Score trace continues from Kafka, steps map to gen_ai.*/app.* spans."""
 
 from __future__ import annotations
 

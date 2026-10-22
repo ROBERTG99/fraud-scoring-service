@@ -1,10 +1,10 @@
 package features
 
-// FEATURES_UNAVAILABLE path (spec FR-8): when Redis errors or exceeds 8 ms the scorer uses the
+// FEATURES_UNAVAILABLE path: when Redis errors or exceeds 8 ms the scorer uses the
 // conservative training p90 defaults from features/spec.yaml (fallback_defaults), plus the request
 // fields that need no history. The combination table then replaces the model band.
 
-// Fallback returns conservative defaults (spec fallback_defaults) for a transaction when Redis is down.
+// Fallback returns conservative defaults (fallback_defaults in the feature spec) for a transaction when Redis is down.
 func (s *Store) Fallback(tx Tx) Vector {
 	return FallbackVector(s.spec, tx)
 }

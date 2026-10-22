@@ -10,11 +10,11 @@ Accepted.
 
 ## Context
 
-The scorer needs a calibrated probability for one 13-feature row within 20 ms (spec §4.7), for two aliases:
-`production`, which decides, and `shadow`, which is only compared (FR-9). The model is one ONNX graph
+The scorer needs a calibrated probability for one 13-feature row within 20 ms, for two aliases:
+`production`, which decides, and `shadow`, which is only compared (see ADR 0008). The model is one ONNX graph
 (ADR 0005) registered in MLflow as `fraud-gbdt` with aliases. Serving is CPU only; GPU serving is out of
-scope (spec §3.3). Everything must run offline in this build environment, and `make verify` must never need
-an optional component. The spec (FR-6) asks for BentoML with onnxruntime by default and NVIDIA Triton
+scope. Everything must run offline, and `make verify` must never need
+an optional component. The design calls for BentoML with onnxruntime by default and NVIDIA Triton
 (KServe v2) as an option, both behind one Go interface.
 
 ## Decision
@@ -39,7 +39,7 @@ an optional component. The spec (FR-6) asks for BentoML with onnxruntime by defa
 - **Triton by default.** A C++ server with an ONNX Runtime backend and server-side batching, but its image comes
   from `nvcr.io`, which this environment's network policy blocks (`docs/KNOWN_LIMITATIONS.md`, "Serving"), so the
   default stack could not have been built or tested here.
-- **TorchServe.** Rejected in spec §5; the model is not a PyTorch model.
+- **TorchServe.** Rejected; the model is not a PyTorch model.
 - **A hand-written FastAPI server around onnxruntime.** Possible, but BentoML already provides workers,
   readiness, request validation and packaging.
 - **onnxruntime inside the Go scorer.** See ADR 0005.
@@ -50,9 +50,9 @@ Positive:
 
 - The default path runs and is tested here: 5 golden vectors through HTTP within 1e-6
   (`test_predict_golden_vector`), both aliases through the Go client within 1e-5 (`TestGoldenVectorScore`,
-  `PROGRESS.md` T-16, T-17).
-- Single-row latency: p50 2.99 ms, p95 4.63 ms, p99 6.65 ms over 2,000 requests, against the 8 ms NFR-4 budget
-  (`make bench-model`, `PROGRESS.md` T-16).
+  `make bench-model`).
+- Single-row latency: p50 2.99 ms, p95 4.63 ms, p99 6.65 ms over 2,000 requests, against the 8 ms model-server budget
+  (`make bench-model`).
 - Loading from MLflow aliases, the digest checks and the feature-spec check live in one Python module, which
   the model eval also uses (`make eval-model` loads the artifact through `ModelRuntime`, D-033).
 - Swapping backends needs no scorer code change, and `make verify` never needs Triton.
@@ -61,12 +61,12 @@ Negative:
 
 - BentoML is the throughput limit on a shared host. Without the batcher, 250 tx/s with shadow scoring degraded
   6,771 of 16,863 decisions to rules-only (D-024); with it, the CI bench passes (p95 19.6 ms at 300 rps,
-  `evals/REPORT.md`), but the laptop profile reached 586 of 2,000 rps (`PROGRESS.md` T-39). Higher rates need
+  `evals/REPORT.md`), but the laptop profile reached 586 of 2,000 rps (`make bench BENCH_PROFILE=laptop`). Higher rates need
   more workers or Triton (`docs/KNOWN_LIMITATIONS.md`, "Model server throughput on a shared host").
 - Shadow scoring doubles the load on the same server (D-024).
 - Triton has never run in this repository. Only the request and response shapes are tested, against a
   recorded exchange (`TestKServeV2RequestShape`); `TestTritonGoldenVector` skips without a Triton URL. The
-  `triton` compose profile that `make triton-up` starts is part of T-43 and not built.
+  `triton` compose profile is started by `make triton-up`.
 - The Triton path lacks parts of the default one: it loads files from the model repository rather than MLflow
   aliases, its digest check runs once in `scripts/triton_repo.sh` rather than at load time, and
   `config.pbtxt` sets `max_batch_size: 0`, so batching still comes only from the Go `Batcher`.

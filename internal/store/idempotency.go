@@ -15,7 +15,7 @@ import (
 	fraudv1 "github.com/ROBERTG99/fraud-scoring-service/gen/go/fraud/v1"
 )
 
-// IdempotencyTTL is how long a decision is replayable from Redis (spec §4.4).
+// IdempotencyTTL is how long a decision is replayable from Redis.
 const IdempotencyTTL = 24 * time.Hour
 
 // RedisIdempotency stores serialized decisions at fr:idem:score:{transaction_id} with SET NX. Each value is

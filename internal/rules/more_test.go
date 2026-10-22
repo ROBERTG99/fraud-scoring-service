@@ -135,7 +135,7 @@ func TestReloadRejectsOtherFeatureSpec(t *testing.T) {
 	}
 }
 
-// TestCompileExprRejectsUnboundedWork: security audit M6 H1. A 60-character expression with nested
+// TestCompileExprRejectsUnboundedWork: security audit. A 60-character expression with nested
 // predicates over ranges ran for seconds per sample inside the scorer; rules only ever need comparisons,
 // boolean logic, membership and min/max/abs over the env.
 func TestCompileExprRejectsUnboundedWork(t *testing.T) {

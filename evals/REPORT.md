@@ -4,9 +4,9 @@
 
 Mode: **offline**. Prompt case_summary.v1 (sha256 e2bca451625c). Commit a99a7223ab.
 
-Gate: **PASS** (5 of 5 checks pass; thresholds from spec §11, regressions over 1 pp with a 95% paired-bootstrap interval excluding 0).
+Gate: **PASS** (5 of 5 checks pass; thresholds in `evals/suites/`, regressions over 1 pp with a 95% paired-bootstrap interval excluding 0).
 
-Live evals (`make eval-live`): not run — no provider key in this environment; every number above is offline (spec §19 step 4).
+Live evals (`make eval-live`): not run — no provider key in this environment; every number above is offline.
 
 Judge calibration (`make eval-judge`) (offline: the rule-based FakeLLM judge, whose pattern test reuses FakeLLM's classifier): offline, fake-judge-v1, 40 test labels: agreement 0.900 (min 0.8), kappa 0.800: PASS.
 

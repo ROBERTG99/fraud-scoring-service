@@ -15,7 +15,7 @@ features are only correct if each account's events are applied in order (docs/DE
 happens otherwise: 8,970 of 16,863 decisions had `new_device=1` against 4 point-in-time, on generator v1 data). Decisions must reach
 the case summarizer at least once, from an outbox (ADR 0007). The feature-updater and the summarizer consume
 independently, history must be replayable for seeding and tests, and the whole system must run offline on a
-laptop without a cloud account. The spec (§5) picks Redpanda with franz-go and names SQS as the rejected
+laptop without a cloud account. The choice is Redpanda with franz-go; SQS is the rejected
 alternative.
 
 ## Decision
@@ -27,7 +27,7 @@ All asynchronous traffic uses the Kafka protocol: Redpanda locally (`compose.tes
   partitions (`internal/stream/kafka.go:15-18`), replication 1 locally (`cmd/feature-updater/main.go:87`).
 - Every message is keyed by `account_id`, so one account's events stay in one partition, in order. Values
   are JSON validated against `schemas/events/` in Go and Python; invalid messages go to `events.dlq` with the
-  error, and the offset is committed (`cmd/feature-updater/updater.go:82-140`, FR-2,
+  error, and the offset is committed (`cmd/feature-updater/updater.go:82-140`,
   `TestUpdaterRoutesInvalidToDLQ`).
 - Consumers commit offsets only after their handler succeeds: the feature-updater per partition batch
   (`internal/stream/consumer.go:30-31`), the summarizer per processed prefix
@@ -56,12 +56,12 @@ Positive:
 - Tests run without a broker: `kfake` drives the relay crash test (`TestRelayCrashProducesDuplicatesWithSameDecisionID`)
   and the updater tests; integration tests use Redpanda from `compose.test.yaml`.
 - Headers carry trace context, so a summary joins its decision's trace even when published minutes later
-  (29 of 29 sampled traces, `scripts/obs_verify.py`, `PROGRESS.md` T-41).
+  (29 of 29 sampled traces, `scripts/obs_verify.py`).
 
 Negative:
 
-- A broker has to run. Locally it is one Redpanda node with replication 1; the compose service for it is part
-  of T-43 and not built.
+- A broker has to run. Locally it is one Redpanda node with replication 1; the compose service is `redpanda`
+  in `compose.yaml`.
 - Delivery is at least once, so every consumer deduplicates: ZSET members by `event_id`, `processed_messages`
   by `decision_id`, `ON CONFLICT DO NOTHING` inserts.
 - There is no broker-side redelivery or visibility timeout. Retry and dead-lettering are written in each

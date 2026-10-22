@@ -1,4 +1,4 @@
-"""`summaries` suite (spec §11): target and graders.
+"""`summaries` suite: target and graders.
 
 The target runs the real case-summary pipeline (redaction, gateway, schema validation, faithfulness) on one
 case with the providers of `config/llm_routes.yaml`: FakeLLM offline (`FRAUD_SUMMARY_PROVIDER=fake`, the

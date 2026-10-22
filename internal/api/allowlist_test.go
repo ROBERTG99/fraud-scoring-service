@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// The Score allowlists and the Kafka schema accept the same values (spec §15; audit M6 L4).
+// The Score allowlists and the Kafka schema accept the same values.
 func TestAllowlistsMatchTheTransactionSchema(t *testing.T) {
 	raw, err := os.ReadFile("../../schemas/events/transaction.json")
 	if err != nil {

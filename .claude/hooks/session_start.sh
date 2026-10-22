@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SessionStart (Claude Code on the web only): start Docker and install toolchains (spec Appendix A).
+# SessionStart (Claude Code on the web only): start Docker and install toolchains.
 # Idempotent and synchronous, so tests and linters work as soon as the session starts.
 set -uo pipefail
 [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] || exit 0

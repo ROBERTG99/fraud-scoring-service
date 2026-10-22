@@ -13,8 +13,8 @@ security fixes land there through pull requests.
 ## Reporting a vulnerability
 
 Please report vulnerabilities privately through GitHub: open the repository's **Security** tab and choose
-**Report a vulnerability**, which creates a private security advisory visible only to the maintainer. Do not
-open a public issue, pull request or discussion for a vulnerability.
+**Report a vulnerability**, which creates a private security advisory visible only to the project's
+maintainers. Do not open a public issue, pull request or discussion for a vulnerability.
 
 A useful report includes:
 
@@ -37,6 +37,6 @@ advisory, test or fixture. Planted test values such as `4111` test card numbers,
 
 [`docs/security.md`](docs/security.md) describes the trust boundaries, a STRIDE analysis per component, the
 OWASP Top 10 for LLM applications, the results of `make security`, and the accepted and open findings. The
-findings of the M6 security audit and where each was fixed are listed in
+findings of the security audit and where each was fixed are listed in
 [`docs/DECISIONS.md`](docs/DECISIONS.md) (D-041 to D-069). Known gaps are in
 [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md).

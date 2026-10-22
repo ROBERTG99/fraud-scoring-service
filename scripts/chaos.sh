@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Chaos run (spec §4.7, T-48) on the compose stack after `make up && make seed`: take each dependency down in
-# turn, score transactions through the public API, and check that the outage emits its §4.7 signal and that the
+# Chaos run on the compose stack after `make up && make seed`: take each dependency down in
+# turn, score transactions through the public API, and check that the outage emits its signal and that the
 # signal clears once the dependency is back. Prints one PASS/FAIL line per outage; exit 0 only if all pass.
 #
 #   Model server down  → fraud_degraded_total{reason="model"} grows; decisions keep coming

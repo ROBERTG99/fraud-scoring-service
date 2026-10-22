@@ -1,4 +1,4 @@
-"""BentoML model server (spec FR-6, T-16)."""
+"""BentoML model server."""
 
 from __future__ import annotations
 
@@ -115,7 +115,7 @@ def _sha(path: Path) -> str:
 
 
 def test_refuses_a_model_file_whose_digest_differs_from_its_metadata(model_dir: Path, tmp_path: Path) -> None:
-    """Audit M6 M6: a swapped model.onnx must not be served."""
+    """Security audit: a swapped model.onnx must not be served."""
     meta = json.loads((model_dir / "model_meta.json").read_text(encoding="utf-8"))
     (model_dir / "model_meta.json").write_text(
         json.dumps({**meta, "onnx_sha256": "0" * 64}), encoding="utf-8"
@@ -250,7 +250,7 @@ def test_outside_dev_a_local_model_needs_a_pinned_digest(
 def test_a_model_registered_after_startup_is_loaded_by_the_next_readiness_check(
     model_dir: Path, tmp_path: Path
 ) -> None:
-    # Compose starts the model server before `make seed` trains and registers a model (T-43, D-073).
+    # Compose starts the model server before `make seed` trains and registers a model (D-073).
     late = tmp_path / "late"
     clock = [100.0]
     rt = ModelRuntime(
@@ -268,7 +268,7 @@ def test_a_model_registered_after_startup_is_loaded_by_the_next_readiness_check(
 
 def test_every_worker_loads_a_late_model_without_a_readiness_probe(model_dir: Path, tmp_path: Path) -> None:
     # BentoML runs several worker processes and /readyz reaches only one of them: a worker that never answers a
-    # probe must still load a model registered after it started (T-43: one of two workers kept answering 503).
+    # probe must still load a model registered after it started (one of two workers kept answering 503).
     import threading
     import time
 

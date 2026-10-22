@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   # fmt, validate, test (mock_provider "aws"), tflint and checkov. No AWS credentials exist in this
-  # workflow and nothing is ever applied (spec §0 rule 8).
+  # workflow and nothing is ever applied.
   tf-check:
     runs-on: ubuntu-24.04
     timeout-minutes: 20

@@ -2,7 +2,7 @@ package features
 
 import "testing"
 
-// TestRedisClientsUseConfiguredCredentials: security audit M6 M3. Deployments run Redis with AUTH (an ACL
+// TestRedisClientsUseConfiguredCredentials: security audit. Deployments run Redis with AUTH (an ACL
 // user per service); every client takes its credentials from the environment.
 func TestRedisClientsUseConfiguredCredentials(t *testing.T) {
 	t.Setenv("FRAUD_REDIS_USERNAME", "scorer")

@@ -1,4 +1,4 @@
-"""Behaviour of the Claude Code hooks in .claude/hooks (spec §7)."""
+"""Behaviour of the Claude Code hooks in .claude/hooks."""
 
 from __future__ import annotations
 

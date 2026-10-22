@@ -33,7 +33,7 @@ func strip(d *fraudv1.Decision) *fraudv1.Decision {
 		ModelVersion: d.ModelVersion, RulesVersion: d.RulesVersion, Degraded: d.Degraded}
 }
 
-// FR-9: with the shadow backend failing on every call, 1,000 decisions equal the run with shadow disabled.
+// With the shadow backend failing on every call, 1,000 decisions equal the run with shadow disabled.
 func TestShadowFailureDoesNotChangeDecisions(t *testing.T) {
 	run := func(withShadow bool) ([]*fraudv1.Decision, *model.ShadowRunner) {
 		h := newHarness(t)

@@ -1,4 +1,4 @@
-# Decisions suite (spec §11): 150 golden transactions decided by the real scorer (cmd/evaldecide).
+# Decisions suite: 150 golden transactions decided by the real scorer (cmd/evaldecide).
 schema: evalgate.suite.v1
 name: decisions
 description: Exact action, reason-code set and degraded handling on transactions labelled by construction.

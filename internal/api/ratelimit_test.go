@@ -58,7 +58,7 @@ type ctxStream struct {
 func (s ctxStream) Context() context.Context { return s.ctx }
 
 // A rate limit on stream opens does not bound how many stay open: each live stream costs the scorer a
-// snapshot every 2 s, so a user may hold only MaxStreamsPerUser at once (audit M6 M5).
+// snapshot every 2 s, so a user may hold only MaxStreamsPerUser at once (security audit).
 func TestConcurrentStreamsPerUserAreCapped(t *testing.T) {
 	rl := NewRateLimiter(1000, nil)
 	release := make(chan struct{})

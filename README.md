@@ -5,10 +5,7 @@ point-in-time features in Redis, a calibrated gradient-boosted model served over
 reason codes. A separate Python worker writes LLM case summaries for analysts, and is kept off the scoring path:
 the LLM can never change, delay or block a decision. All data is synthetic.
 
-> **Status.** Every milestone (M0 to M9) of the [build specification](docs/specs/000-build-spec.md) is done and
-> its Global Definition of Done is checked, each item with its evidence in [`PROGRESS.md`](PROGRESS.md);
-> [`docs/verification.md`](docs/verification.md) records the final run. What is not done is in
-> [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md).
+> Known gaps and open items are listed in [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md).
 
 ## What it does
 
@@ -27,7 +24,7 @@ the LLM can never change, delay or block a decision. All data is synthetic.
 ## Results
 
 All numbers below are offline, on synthetic data (generator seed 7), as recorded in
-[`evals/REPORT.md`](evals/REPORT.md) and [`PROGRESS.md`](PROGRESS.md). The eval suites ran at commit 2eba265;
+[`evals/REPORT.md`](evals/REPORT.md) and the commands in the Source column. The eval suites ran at commit 2eba265;
 `make eval` does not re-run the benchmarks, so the latency rows are from earlier runs, as noted.
 
 | Area | Result | Source |
@@ -38,11 +35,11 @@ All numbers below are offline, on synthetic data (generator seed 7), as recorded
 | Decisions | 90 of 90 golden test cases exact on action and reason codes | [`evals/REPORT.md`](evals/REPORT.md), `make eval-decisions` |
 | Summaries | schema-valid 1.0, faithfulness 1.0, pattern accuracy 0.9028, PII to provider 0 (offline FakeLLM) | [`evals/REPORT.md`](evals/REPORT.md), `make eval-summary` |
 | Score latency | p50 6.5 ms, p95 12.8 ms, p99 22.5 ms at 300 requests/s for 60 s (budget p95 80 ms; CI run of 2026-10-20 at f1dc295) | [`evals/REPORT.md`](evals/REPORT.md), `make bench` |
-| Model server | p95 4.63 ms per prediction (measured on the first model version, fraud-gbdt/1) | [`PROGRESS.md`](PROGRESS.md) T-16, `make bench-model` |
-| Rules engine | 14.9 µs per 64-rule evaluation | [`PROGRESS.md`](PROGRESS.md) T-19, `go test -bench BenchmarkEval64Rules ./internal/rules` |
-| Tests | Go core coverage 86.4%, Python 93.11%, 665 pytest and 67 Vitest tests | [`docs/verification.md`](docs/verification.md), `make test` |
+| Model server | p95 4.63 ms per prediction (measured on the first model version, fraud-gbdt/1) | `make bench-model` |
+| Rules engine | 14.9 µs per 64-rule evaluation | `go test -bench BenchmarkEval64Rules ./internal/rules` |
+| Tests | Go core coverage 86.4%, Python 93.11%, 665 pytest and 67 Vitest tests | `make test`, `make test-docker` |
 
-Live LLM evals have not been run: there was no provider key in the build environment
+Live LLM evals have not been run: there was no provider key in the environment that produced the report
 ([`evals/REPORT.md`](evals/REPORT.md)). How each suite works is in [`docs/evaluation.md`](docs/evaluation.md).
 
 ## Architecture
@@ -71,13 +68,13 @@ decisions only. The full design, the Score sequence and the degraded modes are i
 
 ## Screenshots
 
-Captured by the end-to-end suite (`E2E_SCREENSHOTS=1`, PROGRESS T-35) against the host stack.
+Captured by the end-to-end suite (`E2E_SCREENSHOTS=1`) against the host stack.
 
 ![Review queue](docs/images/queue.png)
 ![Case detail with the AI summary](docs/images/case-detail.png)
 
 More in [`docs/images/`](docs/images/): timeline (captured before the amount-display fix, so it shows
-amounts 100 times too large; PROGRESS), shadow comparison, live metrics, rules, the label dialog and
+amounts 100 times too large), shadow comparison, live metrics, rules, the label dialog and
 the Grafana dashboard.
 
 ## Quick start
@@ -92,7 +89,7 @@ make seed    # generate the demo data (seed 7), train and register the model, re
 The console is then on <http://localhost:8500>; sign in by picking a synthetic persona from the dev issuer (an
 analyst can label cases). Without make: `docker compose up -d --build --wait` and
 `docker compose run --rm seed`. From empty volumes on a laptop (Docker Desktop, macOS arm64) `make up` took
-94 s and `make seed` 104 s, once the images were built (`PROGRESS.md`, T-43). `make down` stops the stack;
+94 s and `make seed` 104 s, once the images were built. `make down` stops the stack;
 `docker compose down -v` also deletes its data.
 
 For development, the toolchains come from `make bootstrap` (Go, Python with uv, Node with pnpm; see
@@ -102,7 +99,7 @@ them).
 
 ## Demo
 
-With the stack from the quick start running (compose or host), `make demo` plays the spec's user journeys
+With the stack from the quick start running (compose or host), `make demo` plays three user journeys
 offline in about ten seconds. Each run uses fresh accounts.
 
 1. **Analyst.** A USD 940 online purchase comes from a new device two minutes after an email change. It is
@@ -117,19 +114,19 @@ a checkpoint, and the demo fails unless all of them pass. The checkpoint lines o
 (decision and case IDs shortened):
 
 ```text
-demo: OK   1/10 ato_review (FR-1, FR-3, FR-7): USD 940 online, new device, email changed 2 min earlier: REVIEW in 8.0 ms, score 0.65, NEW_DEVICE_AFTER_CREDENTIAL_CHANGE,MODEL_SCORE_ELEVATED (model fraud-gbdt/3) (want REVIEW with NEW_DEVICE_AFTER_CREDENTIAL_CHANGE in < 50 ms)
-demo: OK   2/10 idempotent_replay (FR-1): same transaction_id scored twice: decision 01a1526d…a97b, then 01a1526d…a97b
-demo: OK   3/10 card_testing_burst (FR-7): eight USD 1.50 tests in 10 min, then USD 2.00: DECLINE in 4.2 ms, score 1.00, CARD_TESTING_BURST,MODEL_SCORE_HIGH (model fraud-gbdt/3) (want CARD_TESTING_BURST)
-demo: OK   4/10 invalid_event_dlq (FR-2): login event without its required fields (events.login partition 3 offset 15785) is in events.dlq
-demo: OK   5/10 case_persisted (FR-10, FR-13): decision 01a1526d…a97b is open case 82d34c4c…0bfb in the review queue
-demo: OK   6/10 summary_verified (FR-11): ok after 0.0 s: pattern account_takeover, 3 of 3 evidence items verified, faithfulness 1.00, model fake-case-summary-v1; decision unchanged: true
-demo: OK   7/10 shadow_compared (FR-9): 16901 comparisons in 24 h, shadow fraud-gbdt/3 against primary fraud-gbdt/3, agreement 100.0%
-demo: OK   8/10 model_unavailable_rules_only (FR-8): model server stopped: 20 of 20 decided rules-only (MODEL_UNAVAILABLE, model none), slowest 28.2 ms (budget 45), USD 250 → REVIEW
-demo: OK   9/10 live_metrics_degraded (FR-8, FR-13): live metrics (last 10 s): 18 MODEL_UNAVAILABLE, degraded rate 64%
-demo: OK   10/10 model_recovered (FR-8): model server back: decision 1 used model fraud-gbdt/3 after 0.0 s (REVIEW in 5.2 ms, score 0.56, MODEL_SCORE_ELEVATED (model fraud-gbdt/3))
-demo: OK   11/13 console_case (FR-13, console): the analyst opens the demo case with its reason codes and AI summary
-demo: OK   12/13 evidence_highlights_fact (FR-13, console): selecting an evidence item highlights its fact
-demo: OK   13/13 label_leaves_queue (FR-13, console): the analyst labels the case fraud after the row preview
+demo: OK   1/10 ato_review: USD 940 online, new device, email changed 2 min earlier: REVIEW in 8.0 ms, score 0.65, NEW_DEVICE_AFTER_CREDENTIAL_CHANGE,MODEL_SCORE_ELEVATED (model fraud-gbdt/3) (want REVIEW with NEW_DEVICE_AFTER_CREDENTIAL_CHANGE in < 50 ms)
+demo: OK   2/10 idempotent_replay: same transaction_id scored twice: decision 01a1526d…a97b, then 01a1526d…a97b
+demo: OK   3/10 card_testing_burst: eight USD 1.50 tests in 10 min, then USD 2.00: DECLINE in 4.2 ms, score 1.00, CARD_TESTING_BURST,MODEL_SCORE_HIGH (model fraud-gbdt/3) (want CARD_TESTING_BURST)
+demo: OK   4/10 invalid_event_dlq: login event without its required fields (events.login partition 3 offset 15785) is in events.dlq
+demo: OK   5/10 case_persisted: decision 01a1526d…a97b is open case 82d34c4c…0bfb in the review queue
+demo: OK   6/10 summary_verified: ok after 0.0 s: pattern account_takeover, 3 of 3 evidence items verified, faithfulness 1.00, model fake-case-summary-v1; decision unchanged: true
+demo: OK   7/10 shadow_compared: 16901 comparisons in 24 h, shadow fraud-gbdt/3 against primary fraud-gbdt/3, agreement 100.0%
+demo: OK   8/10 model_unavailable_rules_only: model server stopped: 20 of 20 decided rules-only (MODEL_UNAVAILABLE, model none), slowest 28.2 ms (budget 45), USD 250 → REVIEW
+demo: OK   9/10 live_metrics_degraded: live metrics (last 10 s): 18 MODEL_UNAVAILABLE, degraded rate 64%
+demo: OK   10/10 model_recovered: model server back: decision 1 used model fraud-gbdt/3 after 0.0 s (REVIEW in 5.2 ms, score 0.56, MODEL_SCORE_ELEVATED (model fraud-gbdt/3))
+demo: OK   11/13 console_case: the analyst opens the demo case with its reason codes and AI summary
+demo: OK   12/13 evidence_highlights_fact: selecting an evidence item highlights its fact
+demo: OK   13/13 label_leaves_queue: the analyst labels the case fraud after the row preview
 demo: all 13 checkpoints OK (artifacts/demo/checkpoints.json)
 ```
 
@@ -161,12 +158,11 @@ make security     # gitleaks, gosec, govulncheck, bandit, pip-audit, pnpm audit,
 | `migrations/`, `deploy/` | goose SQL migrations; OpenTelemetry, Prometheus and Grafana configuration |
 | `tests/` | unit, integration, contract, end-to-end, harness and LLM tests |
 
-## How it was built
+## Development
 
-A coding agent built this repository from the written specification, milestone by milestone, test first, with
-subagent reviews at the end of each milestone and a security audit that took nine rounds. How the harness was
-used, and the real mistakes made along the way, are in [`docs/ai-development.md`](docs/ai-development.md).
-Every decision is recorded in [`docs/DECISIONS.md`](docs/DECISIONS.md).
+The project uses an AI-assisted workflow (Claude Code configuration in [`CLAUDE.md`](CLAUDE.md) and
+[`.claude/`](.claude/)); tests and evals gate every change. Decisions are recorded in
+[`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 ## Documentation
 
@@ -179,7 +175,6 @@ Every decision is recorded in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 | [`docs/security.md`](docs/security.md) | Threat model, controls, scan results, open findings |
 | [`docs/runbook.md`](docs/runbook.md) | Alerts, audit verification, credentials, key rotation |
 | [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md) | What does not work, or works only partly |
-| [`docs/verification.md`](docs/verification.md) | The latest verification run |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) | Build environment and network notes |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md), [`SECURITY.md`](SECURITY.md), [`CHANGELOG.md`](CHANGELOG.md) | Contributing, reporting vulnerabilities, changes |
 
@@ -192,4 +187,4 @@ the compose stack on a laptop. The full list is in
 
 ## License
 
-[MIT](LICENSE). Part of an AI engineering portfolio by [@ROBERTG99](https://github.com/ROBERTG99).
+[MIT](LICENSE).

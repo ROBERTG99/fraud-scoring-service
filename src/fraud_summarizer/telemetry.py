@@ -1,4 +1,4 @@
-"""Tracing for the summarizer (spec §14).
+"""Tracing for the summarizer.
 
 Spans are exported over OTLP/HTTP only when `OTEL_EXPORTER_OTLP_ENDPOINT` (or the traces-specific variable)
 is set, for example to the `observability` profile's collector; otherwise no provider is installed and the

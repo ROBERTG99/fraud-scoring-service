@@ -1,4 +1,4 @@
-"""Point-in-time correctness of the offline features (spec FR-3)."""
+"""Point-in-time correctness of the offline features."""
 
 from __future__ import annotations
 

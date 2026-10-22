@@ -1,4 +1,4 @@
-"""T-29 done-when: the consumer writes a summary for a REVIEW event (real Postgres and Redpanda, FakeLLM)."""
+"""The consumer writes a summary for a REVIEW event (real Postgres and Redpanda, FakeLLM)."""
 
 from __future__ import annotations
 

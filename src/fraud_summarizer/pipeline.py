@@ -1,4 +1,4 @@
-"""Case-summary pipeline (spec §4.6): a fixed sequence of steps, not an agent.
+"""Case-summary pipeline: a fixed sequence of steps, not an agent.
 
 load_facts → redact → summarize (llm) → validate_schema → check_faithfulness → persist
 
@@ -96,7 +96,7 @@ def fmt_number(x: float) -> str:
 
 def _text(value: Any) -> str:
     # Redact before the cut: truncating first could split a card or phone number so that its remaining
-    # digits no longer match a pattern (T-42). The redact step runs again on every fact (idempotent).
+    # digits no longer match a pattern. The redact step runs again on every fact (idempotent).
     s = redact_text(str(value))
     return s if len(s) <= MAX_TEXT else s[:MAX_TEXT]
 
@@ -220,7 +220,7 @@ class SummaryPipeline:
         case_id: str | None = None
 
         async def step(node: str, kind: str, fn: Callable[[], Awaitable[Any]], **meta: Any) -> Any:
-            # One span per step record: app.step.* always, gen_ai.* for the LLM step (spec §14).
+            # One span per step record: app.step.* always, gen_ai.* for the LLM step.
             with tracer().start_as_current_span(f"summarizer.{node}") as span:
                 span.set_attribute("app.run_id", run_id)
                 span.set_attribute("app.step.node", node)

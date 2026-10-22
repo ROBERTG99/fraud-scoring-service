@@ -1,4 +1,4 @@
-// Command retention applies the data-retention policy (spec §4.5, `make retention`): it deletes decisions
+// Command retention applies the data-retention policy: it deletes decisions
 // older than 400 days (their outbox, case, summary, label and shadow rows cascade), published outbox rows
 // older than 7 days, step records and processed messages older than 90 days, and account events older than
 // 400 days, in short batches. The audit log is never deleted (D-040). Run it daily; it is idempotent.

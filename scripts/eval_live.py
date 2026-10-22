@@ -1,4 +1,4 @@
-"""`make eval-live`: the summaries suite against a real model, within LIVE_EVAL_BUDGET_USD (spec §11).
+"""`make eval-live`: the summaries suite against a real model, within LIVE_EVAL_BUDGET_USD.
 
 1. Calibrate the live usefulness judge on the judge calibration test split; its scores count only when
    agreement is at least 0.8 (`evals/reports/calibration/judge_live.json`).
@@ -31,7 +31,7 @@ from fraud_summarizer.judge import judge  # noqa: E402
 
 DATASETS = ROOT / "evals" / "datasets"
 CALIBRATION_OUT = ROOT / "evals" / "reports" / "calibration" / "judge_live.json"
-THRESHOLDS = {  # spec §11: summaries and summaries-live rows
+THRESHOLDS = {  # thresholds of the summaries and summaries-live rows
     "schema_valid": (1.0, "higher"),
     "faithfulness": (0.95, "higher"),
     "pattern_accuracy": (0.85, "higher"),

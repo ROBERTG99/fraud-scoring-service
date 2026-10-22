@@ -1,4 +1,4 @@
-# Prometheus for the `observability` profile (spec §14), UI on 8591. Targets are compose service names.
+# Prometheus for the `observability` profile, UI on 8591. Targets are compose service names.
 global:
   scrape_interval: 5s
   evaluation_interval: 15s

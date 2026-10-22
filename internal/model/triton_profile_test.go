@@ -12,7 +12,7 @@ import (
 
 // TestTritonGoldenVector runs only with the optional `triton` compose profile (FRAUD_TEST_TRITON_URL).
 // The Triton image (nvcr.io) is unreachable in the build environment; the skip reason is recorded in
-// docs/KNOWN_LIMITATIONS.md as the spec (FR-6) requires. make verify never needs Triton.
+// docs/KNOWN_LIMITATIONS.md. make verify never needs Triton.
 func TestTritonGoldenVector(t *testing.T) {
 	url := os.Getenv("FRAUD_TEST_TRITON_URL")
 	if url == "" {

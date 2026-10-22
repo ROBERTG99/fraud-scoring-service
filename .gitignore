@@ -29,7 +29,7 @@ test-results/
 .DS_Store
 .idea/
 .vscode/
-# build outputs (spec §1.2)
+# build outputs
 .cache/
 artifacts/
 mlruns/

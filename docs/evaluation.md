@@ -37,7 +37,7 @@ flowchart LR
 | judge calibration | Agreement of the usefulness judge with labels known by construction | 80 summaries (dev 40 / test 40) | `python -m evals.graders.judge` | `evals/reports/calibration/judge.json` |
 | `latency` | `Score` latency under constant load | ghz against the host stack, ci profile 300 RPS for 60 s | `scripts/bench.sh` and `cmd/benchreport` | `evals/reports/latency.json` |
 
-Dataset sizes are those of spec §11 (`docs/specs/000-build-spec.md`) and `evals/datasets/README.md`.
+Dataset sizes are listed in `evals/datasets/README.md`.
 
 ## Data
 
@@ -75,7 +75,7 @@ split.
 
 ## The suites and their thresholds
 
-Thresholds come from spec §11 and are written into `evals/suites/*.yaml`; a few `model` thresholds were added
+Thresholds are written into `evals/suites/*.yaml`; a few `model` thresholds were added
 in `evals/suites/model.yaml` under D-037 and are marked below. "Gated" means `evalgate check` enforces the
 threshold and the regression rule; "reported" means the metric is in the report but cannot fail the gate.
 
@@ -89,17 +89,17 @@ first (D-033). Metric values are computed on the whole split; the report's cases
 
 | Metric | Meaning | Threshold | Source | Gate |
 |---|---|---|---|---|
-| `recall_at_1pct_fpr_combined` | Recall of rules plus model at the threshold chosen on `valid` for 1% FPR | ≥ 0.80 | spec §11 | gated |
+| `recall_at_1pct_fpr_combined` | Recall of rules plus model at the threshold chosen on `valid` for 1% FPR | ≥ 0.80 | `evals/suites/model.yaml` | gated |
 | `fpr_combined` | Test FPR at that threshold | ≤ 0.015 | `model.yaml` (D-037) | gated |
 | `recall_review_band` | Recall of rules OR score ≥ the rule set's review threshold | none | `model.yaml` (D-037) | regression only |
 | `fpr_review_band` | FPR of the same policy | ≤ 0.01 | `model.yaml` (D-037) | gated |
 | `recall_decline_band` | Recall at the decline threshold | none | `model.yaml` | reported |
 | `band_calibration_gap` | Largest gap between mean score and fraud rate over the review and decline bands | ≤ 0.05 | `model.yaml` (D-037) | gated |
-| `pr_auc` | Area under the precision-recall curve | ≥ 0.70 | spec §11 | gated |
-| `ece` | Expected calibration error | ≤ 0.02 | spec §11 | gated |
+| `pr_auc` | Area under the precision-recall curve | ≥ 0.70 | `evals/suites/model.yaml` | gated |
+| `ece` | Expected calibration error | ≤ 0.02 | `evals/suites/model.yaml` | gated |
 | `recall_at_1pct_fpr_combined_test_oracle` | Combined recall with the threshold fit on test | none | `model.yaml` | reported |
-| `recall_at_1pct_fpr_model` | Model-only recall at 1% FPR | none | spec §11 ("reported only") | reported |
-| `recall_at_1pct_fpr_rules` | Rules-only recall at 1% FPR | none | spec §11 ("reported only") | reported |
+| `recall_at_1pct_fpr_model` | Model-only recall at 1% FPR | none | none (reported only) | reported |
+| `recall_at_1pct_fpr_rules` | Rules-only recall at 1% FPR | none | none (reported only) | reported |
 
 The evaluator refuses data whose `gen_version` differs from `cmd/gen` (`GEN_VERSION` in
 `training/evaluate.py`).
@@ -117,7 +117,7 @@ Kafka or a model server.
 | `reason_code_set` | Reason codes are exactly the expected set, none missing and none extra | 1.0 |
 | `degraded_handling` | A degraded case carries the flag and its degraded reason code; a healthy case carries neither | 1.0 |
 
-Thresholds: spec §11 and `evals/suites/decisions.yaml`. Graders: `evals/graders/decisions.py`. This suite
+Thresholds: `evals/suites/decisions.yaml`. Graders: `evals/graders/decisions.py`. This suite
 is a conformance check: the expected actions restate the rule text, so 1.0 shows that the engine applies the
 YAML rules as written, not that the rules are good (`docs/KNOWN_LIMITATIONS.md`).
 
@@ -135,8 +135,8 @@ redact, summarize, validate the schema, check faithfulness) on each test case wi
 | `pii_to_provider` | 1 when any planted PII value reached a provider request; see [Redaction and PII](#redaction-and-pii) | 0 |
 | p95 latency per case (offline) | Budget `max_p95_ms` in the suite | < 200 ms |
 
-Thresholds: spec §11 and `evals/suites/summaries.yaml`. Graders: `evals/graders/summaries.py`. Two more
-metrics are live only (spec §11): judge usefulness ≥ 0.80 and cost per case ≤ USD 0.003
+Thresholds: `evals/suites/summaries.yaml`. Graders: `evals/graders/summaries.py`. Two more
+metrics are live only: judge usefulness ≥ 0.80 and cost per case ≤ USD 0.003
 (`THRESHOLDS` in `scripts/eval_live.py`).
 
 ### Judge calibration
@@ -145,8 +145,8 @@ metrics are live only (spec §11): judge usefulness ≥ 0.80 and cost per case �
 (`config/llm_routes.yaml`, prompt `prompts/judge_summary_usefulness.v1.md`) on the test split of
 `evals/datasets/judge_calibration` and writes agreement, Cohen's kappa, the confusion matrix and the
 disagreements in the `evalgate.calibration.v1` fields (D-036). It passes when agreement is at least 0.8
-(spec §11, `AGREEMENT_MIN`) and no judge call failed. Offline the judge is FakeLLM's rule-based judge; a live
-judge score counts only after a live calibration passes (`scripts/eval_live.py`). Spec §11 names
+(`AGREEMENT_MIN`) and no judge call failed. Offline the judge is FakeLLM's rule-based judge; a live
+judge score counts only after a live calibration passes (`scripts/eval_live.py`). The evalgate interface names
 `evalgate calibrate`; the vendored evalgate has no such command, so this module does the same job (D-036).
 
 ### `latency`
@@ -157,8 +157,8 @@ BentoML model server on `artifacts/model` and the scorer on the host, warms up f
 5,000 accounts, 9,000 devices). `cmd/benchreport` turns the ghz output into a report whose cases are
 one-second windows, and fails the run when:
 
-- p95 is over budget: 80 ms on the `ci` profile at 300 RPS (spec §11, NFR-2), or 50 ms with p99 90 ms on
-  the `laptop` profile at 2,000 RPS (NFR-1);
+- p95 is over budget: 80 ms on the `ci` profile at 300 RPS or 50 ms with p99 90 ms on
+  the `laptop` profile at 2,000 RPS;
 - the success rate is under 99.9%;
 - the achieved rate is under 95% of the target;
 - more than 5% of decisions in the window were degraded (a degraded answer is fast by construction, so it
@@ -172,10 +172,10 @@ These limits are the constants in `cmd/benchreport/main.go`. `make eval` re-chec
 - `make feature-parity` (`scripts/feature_parity.py`) computes the 13 features offline
   (`training/features.py`) for `tests/fixtures/parity/events.jsonl`, runs the Go online path
   (`TestOnlineOfflineParity`, an integration test against Redis) and exits 1 on any mismatch. Last recorded
-  result: 3502 transactions x 13 features, 0 mismatches (`PROGRESS.md` T-13).
+  result: 3502 transactions x 13 features, 0 mismatches.
 - `make bench-model` (`scripts/bench_model.py`) measures single-row latency of the model server against a
   p95 budget of 8 ms and writes `evals/reports/model_latency.json`. Last recorded result: p50 2.99 ms,
-  p95 4.63 ms, p99 6.65 ms over 2,000 requests (`PROGRESS.md` T-16); that report names model `fraud-gbdt/1`,
+  p95 4.63 ms, p99 6.65 ms over 2,000 requests; that report names model `fraud-gbdt/1`,
   an earlier model than the one the `model` suite evaluates.
 
 ## The gate
@@ -244,7 +244,7 @@ Every number in this section is copied from the file named next to it. All repor
 (x86-64) at f1dc295, written on 2026-10-20 (`created_at`; `git_sha` a99a7223ab is the pull request's merge
 ref of f1dc295 into main): `model`, `decisions` and `summaries` from the `evals / gate` job's `evals`
 artifact, `latency.json` from the `ci / bench` job's `bench` artifact, and the judge calibration from
-`make eval-judge`, whose line matches the CI report's word for word (`docs/verification.md`). The JSON reports
+`make eval-judge`, whose line matches the CI report's word for word. The JSON reports
 are git-ignored; `evals/REPORT.md` is the tracked record of the same run.
 
 ### Summary
@@ -347,7 +347,7 @@ Profile ci: 300 of 300 rps for 60 s; p50 6.5 ms, p95 12.8 ms, p99 22.5 ms (budge
 decisions in the window: 285 of 18,000. `evalgate check` against the baseline: **PASS** (`evals/REPORT.md`).
 
 The bench shares a 4-vCPU container with the whole stack, so the degraded share depends on host load, and the
-`laptop` profile target (NFR-1) is not met there (`docs/KNOWN_LIMITATIONS.md`, "Model server throughput on a
+`laptop` profile target is not met there (`docs/KNOWN_LIMITATIONS.md`, "Model server throughput on a
 shared host").
 
 ## What is offline and what is not
@@ -386,13 +386,13 @@ Every response is charged at the list price in `config/llm_routes.yaml` against 
 prints why and exits 1, writing nothing. `make verify` does not include it.
 
 **Live evals have not been run**: there was no provider key in this environment, and every number on this
-page is offline (`evals/REPORT.md`, spec §19 step 4).
+page is offline (`evals/REPORT.md`).
 
 ### Cost
 
 Offline runs cost USD 0.0000 (`evals/REPORT.md`, decisions and summaries). The live budget is cost per case
-≤ USD 0.003 (spec §11). The Anthropic adapter marks the system prompt with `cache_control`
-(`src/fraud_summarizer/llm/anthropic_adapter.py`), but `PROGRESS.md` records that the case-summary system
+≤ USD 0.003. The Anthropic adapter marks the system prompt with `cache_control`
+(`src/fraud_summarizer/llm/anthropic_adapter.py`), but the case-summary system
 prompt is shorter than the minimum cacheable prefix, so the cache is not used today.
 
 ### Limits of these results
@@ -476,7 +476,7 @@ test-split reports, write elsewhere, for example
 Tune on dev splits only; never adjust anything to pass the test split, and never lower a threshold to get
 green (`CLAUDE.md`).
 
-When a gate fails, the `eval-analyst` subagent (`.claude/agents/eval-analyst.md`) compares the reports with
+When a gate fails, the `eval-analyst` helper (`.claude/agents/eval-analyst.md`) compares the reports with
 the baselines and groups failing cases by cause. After `make eval`, the `eval-report` skill explains the
 deltas in `evals/REPORT.md`.
 

@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 
 import { signIn } from "./helpers";
 
-// The console half of `make demo` (spec §3.4, T-46). scripts/demo.sh first runs the scripted scenario
+// The console half of `make demo`. scripts/demo.sh first runs the scripted scenario
 // (`replay -scenario demo`, cmd/replay/scenario.go), which writes its checkpoints and the demo case to
 // DEMO_CHECKPOINTS; this spec asserts each of them, then walks the analyst journey on that case.
 

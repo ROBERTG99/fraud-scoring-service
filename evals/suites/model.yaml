@@ -1,4 +1,4 @@
-# Model suite (spec §11). Not an `evalgate run` suite: `python -m training.evaluate` (make eval-model) scores
+# Model suite. Not an `evalgate run` suite: `python -m training.evaluate` (make eval-model) scores
 # the temporal test split of the 2M-event eval data with the serving artifact and writes an
 # evalgate.report.v1 whose cases are 20 account shards, so `evalgate check` can pair them (D-033).
 schema: fraud.model_suite.v1

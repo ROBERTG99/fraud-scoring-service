@@ -26,7 +26,7 @@ import (
 	"github.com/ROBERTG99/fraud-scoring-service/schemas"
 )
 
-// MaxRules bounds a rule set (spec §4.4).
+// MaxRules bounds a rule set.
 const MaxRules = 64
 
 // Action mirrors fraud.v1.Action values.
@@ -221,7 +221,7 @@ const MaxExprNodes = 200
 // Only comparisons, boolean and arithmetic operators, conditionals, membership in literal lists and the
 // min, max and abs builtins are allowed (an allowlist over the syntax tree): no predicates (all, any, count,
 // filter, map...), closures, ranges, variables or calls, so every expression runs in time proportional to
-// its size, which MaxExprNodes bounds (security audit M6 H1: TestRule runs caller expressions in the
+// its size, which MaxExprNodes bounds (security audit: TestRule runs caller expressions in the
 // scorer). Rule outcomes depend only on the env: no now(), no randomness.
 func CompileExpr(when string) (*vm.Program, error) {
 	guard := &exprGuard{}
@@ -315,7 +315,7 @@ func Parse(raw []byte) (*RuleSet, error) {
 }
 
 // Evaluate returns the matching rules in rule-set order. A rule that errors at runtime does not match;
-// the error is counted (fraud_rule_errors_total) and logged once per rule set and rule.
+// The error is counted (fraud_rule_errors_total) and logged once per rule set and rule.
 func (rs *RuleSet) Evaluate(env *Env) []Match {
 	var out []Match
 	for i := range rs.Rules {

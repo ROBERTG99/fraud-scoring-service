@@ -30,7 +30,7 @@ type Client interface {
 	Predict(ctx context.Context, alias string, rows [][]float32) (Prediction, error)
 }
 
-// DefaultTimeout bounds a model call whose context carries no deadline (spec §4.7: model 20 ms).
+// DefaultTimeout bounds a model call whose context carries no deadline.
 const DefaultTimeout = 20 * time.Millisecond
 
 func withDefaultDeadline(ctx context.Context) (context.Context, context.CancelFunc) {

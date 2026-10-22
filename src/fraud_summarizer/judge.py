@@ -1,4 +1,4 @@
-"""Summary-usefulness judge (route `judge_usefulness`, live evals only; spec §11).
+"""Summary-usefulness judge (route `judge_usefulness`, live evals only).
 
 The judge never runs on the scoring or summary path: `make eval-live` uses it after it agrees with the
 labelled calibration set (`evals/datasets/judge_calibration`, agreement >= 0.8). Facts and the candidate

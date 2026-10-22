@@ -1,4 +1,4 @@
-/* Design tokens (spec §13, "control room", dark-first). Every colour used by the console comes from here;
+/* Design tokens ("control room", dark-first). Every colour used by the console comes from here;
    status colours are always paired with a text label. Contrast pairs are checked by tokens.test.ts. */
 @import "tailwindcss";
 @import "@fontsource/inter/400.css";
@@ -19,7 +19,7 @@
   --decline: #f43f5e;
   --review: #f59e0b;
   --approve: #10b981;
-  /* Status colours used as text: ≥ 4.5:1 on every surface (the spec colours above are for borders/fills). */
+  /* Status colours used as text: ≥ 4.5:1 on every surface (the palette colours above are for borders/fills). */
   --decline-text: #fa5c74;
   --review-text: #f59e0b;
   --approve-text: #10b981;

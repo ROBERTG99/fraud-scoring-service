@@ -1,11 +1,11 @@
-"""Faithfulness check without an LLM (spec §4.6).
+"""Faithfulness check without an LLM.
 
 An evidence item is verified when its `fact_key` exists in the case facts and the statement carries that
 fact: a numeric fact's number (and no other number), a non-numeric fact's value or one of its comma-separated
 items (a reason code, say), or, for free text written by third parties such as a merchant name, a quote of at
 least 4 characters. Statements and recommended checks that steer toward clearing the case ("approve", "not
 fraud", "verified merchant") are not verified: that is what injected text would ask for, and the analyst, not
-the summary, decides (security audit M6 M2, round 2 N4). Score = verified / total. Unverified items are
+the summary, decides (security audit, round 2). Score = verified / total. Unverified items are
 dropped; when none remain the summary is `unfaithful`.
 """
 
@@ -23,7 +23,7 @@ NUMBER = re.compile(r"(?<![A-Za-z_\d.])-?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?
 
 # Facts whose value is free text written by third parties, not a code, number or timestamp. Every other fact
 # is a code, enum or validated value, whose comma pieces may be cited one by one: a fact that could hold
-# third-party text must be listed here, or its pieces could carry clearing words (M6 review round 5).
+# third-party text must be listed here, or its pieces could carry clearing words (review round 5).
 FREE_TEXT_SUFFIXES = (".merchant_name",)
 MIN_QUOTE_CHARS = 4
 # Language that clears a case. A summary describes evidence and checks; it never recommends the outcome.
@@ -156,7 +156,7 @@ def check_item(fact_key: str, statement: str, facts: dict[str, str]) -> CheckedI
     # an IP prefix or version number may be cited. Clearing language anywhere else, a repeat of the value
     # included, drops the statement, and so do numbers beyond the fact. Free text is set aside whole, never by
     # its comma pieces: a merchant named "Approve" or "Shop, not fraud" must not let the statement say it
-    # again (M6 review round 4, security audit round 4 M1).
+    # again (review round 4).
     t = " ".join(text.split())
     spans = _first_spans(t, [raw] if free_text else items)
     rest = _blank(t, spans)

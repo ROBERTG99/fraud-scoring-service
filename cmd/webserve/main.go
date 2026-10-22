@@ -1,5 +1,5 @@
 // Command webserve serves the analyst console (web/dist) on :8500 and proxies its API calls:
-// /api/* → scorer HTTP gateway, /auth/* → dev-issuer, /summarizer/* → case-summarizer (spec §4.1).
+// /api/* → scorer HTTP gateway, /auth/* → dev-issuer, /summarizer/* → case-summarizer.
 package main
 
 import (
@@ -156,7 +156,7 @@ func main() {
 		// Console calls budget 2 s; the proxy gives an upstream a little more before answering 502.
 		UpstreamTimeout: 5 * time.Second,
 	}
-	if auth.DevMode() { // the dev-issuer's personas and tokens are proxied only on a local stack (audit M6 M4)
+	if auth.DevMode() { // the dev-issuer's personas and tokens are proxied only on a local stack (security audit)
 		cfg.Issuer = envOr("FRAUD_WEB_ISSUER_URL", "http://127.0.0.1:8515")
 	}
 	h, err := newHandler(cfg, log)

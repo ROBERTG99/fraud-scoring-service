@@ -9,7 +9,7 @@ import (
 )
 
 // DevMode reports FRAUD_ENV=dev: the local stacks (compose, seed_host.sh, tests) where the dev-issuer may
-// mint tokens and JWKS may be fetched over plain HTTP. Anything else is treated as a deployment (audit M6 M4).
+// mint tokens and JWKS may be fetched over plain HTTP. Anything else is treated as a deployment (security audit).
 func DevMode() bool { return os.Getenv("FRAUD_ENV") == "dev" }
 
 // CheckJWKSURL requires HTTPS for the JWKS endpoint outside dev mode: keys fetched over plain HTTP could be

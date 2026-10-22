@@ -12,7 +12,7 @@ import (
 )
 
 // TestGoldenVectorScore: the Go client against the real BentoML server returns the Python/ONNX scores
-// of the golden vectors within 1e-5 (spec FR-6).
+// of the golden vectors within 1e-5.
 func TestGoldenVectorScore(t *testing.T) {
 	g := loadGolden(t)
 	c := NewBentoML(testutil.ModelServerURL(t), nil)

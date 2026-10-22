@@ -1,4 +1,4 @@
-"""SageMaker launcher (FR-12, T-30): request shape, offline validation, moto submission, container args."""
+"""SageMaker launcher: request shape, offline validation, moto submission, container args."""
 
 from __future__ import annotations
 

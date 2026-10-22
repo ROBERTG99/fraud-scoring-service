@@ -117,7 +117,7 @@ func TestDecisionConstraints(t *testing.T) {
 	}
 }
 
-// TestServiceRolesAreLeastPrivilege: security audit M6 M1. Each service has its own role; no service role can
+// TestServiceRolesAreLeastPrivilege: security audit. Each service has its own role; no service role can
 // rewrite a decision or a label, the summarizer writes only its own tables, and only retention deletes.
 func TestServiceRolesAreLeastPrivilege(t *testing.T) {
 	dsn := migratedDB(t)
@@ -184,7 +184,7 @@ func TestServiceRolesAreLeastPrivilege(t *testing.T) {
 }
 
 // Retention deletes decisions and the outbox rows cascade: the foreign key needs an index, or every deleted
-// decision scans decision_outbox (M6 review).
+// decision scans decision_outbox (review).
 func TestOutboxDecisionIDIsIndexed(t *testing.T) {
 	pool := newPool(t, migratedDB(t))
 	n := count(t, pool, `SELECT count(*) FROM pg_indexes WHERE tablename = 'decision_outbox' AND indexdef LIKE '%(decision_id)%'`)

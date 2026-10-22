@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# `make verify-clean` (spec §19 step 1): clone the committed HEAD into a temporary folder and run
+# `make verify-clean`: clone the committed HEAD into a temporary folder and run
 # `make bootstrap && make verify` there with no .env file and no provider keys. Uncommitted changes are not
 # included. The clone is left in place for inspection; its path is printed at the end.
 set -euo pipefail

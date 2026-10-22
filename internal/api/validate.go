@@ -20,7 +20,7 @@ var CurrencyAllowlist = map[string]bool{
 }
 
 // MCCAllowlist matches schemas/events/transaction.json: the merchant categories of the synthetic catalog
-// (cmd/gen), the only ones the model and rules were built on (spec §15, D-051).
+// (cmd/gen), the only ones the model and rules were built on.
 var MCCAllowlist = map[string]bool{
 	"4111": true, "4511": true, "4816": true, "4829": true, "5311": true, "5399": true, "5411": true, "5541": true, "5651": true, "5732": true, "5812": true, "5814": true, "5815": true, "5816": true, "5912": true, "5944": true, "5999": true, "7011": true, "7995": true,
 }

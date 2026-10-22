@@ -18,8 +18,8 @@ import (
 	"github.com/ROBERTG99/fraud-scoring-service/internal/events"
 )
 
-// Spool is an append-only, fsync'd JSONL file of decisions that could not reach Postgres in time
-// (spec FR-8, §4.7). Replay is idempotent: decisions are inserted with ON CONFLICT DO NOTHING.
+// Spool is an append-only, fsync'd JSONL file of decisions that could not reach Postgres in time.
+// Replay is idempotent: decisions are inserted with ON CONFLICT DO NOTHING.
 type Spool struct {
 	dir   string
 	mu    sync.Mutex
@@ -151,7 +151,7 @@ func (s *Spool) Drain(commit func([]DecisionRecord) error) (int, error) {
 		s.f = nil
 	}
 	// Rotate the active file even when this process never opened it: a scorer killed while Postgres was down
-	// leaves its fsync'd decisions there, and the restarted process must replay them (T-48, D-075).
+	// leaves its fsync'd decisions there, and the restarted process must replay them (D-075).
 	active := filepath.Join(s.dir, activeSpool)
 	if _, err := os.Stat(active); err == nil {
 		rotated := filepath.Join(s.dir, fmt.Sprintf("spool.%d.replay", time.Now().UnixNano()))

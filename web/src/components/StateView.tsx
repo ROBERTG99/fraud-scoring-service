@@ -16,7 +16,7 @@ interface Props<T> {
   children: (data: T) => ReactNode;
 }
 
-/** Loading, empty, error-with-retry and success states for one query (spec §13). */
+/** Loading, empty, error-with-retry and success states for one query. */
 export function StateView<T>({ query, isEmpty, empty, label, children }: Props<T>) {
   if (query.isPending) {
     return (

@@ -1,4 +1,4 @@
-"""Compose stack contract (spec §16, T-43): ports, healthchecks, dependencies and profiles."""
+"""Compose stack contract: ports, healthchecks, dependencies and profiles."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# Host ports from spec §16 (container ports vary).
+# Published host ports (container ports vary).
 EXPECTED_PORTS = {
     "webserve": {8500},
     "scorer": {8510, 8511},

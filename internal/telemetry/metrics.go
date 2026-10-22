@@ -14,7 +14,7 @@ var factory = func() prometheus.Registerer {
 	return Registry
 }()
 
-// Metrics named in spec §14 and the §4.7 degradation signals.
+// Service metrics and the degradation signals.
 var (
 	ScoreLatency = register(prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name: "fraud_score_latency_seconds", Help: "Score end-to-end latency.",

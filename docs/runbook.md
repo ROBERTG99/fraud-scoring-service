@@ -6,8 +6,8 @@ What each alert means and what to check first. Alerts are defined in `deploy/pro
 (<http://localhost:8592>): every decision has a `fraud.score` span, and a REVIEW decision's trace continues
 into the case summarizer through the Kafka `traceparent` header.
 
-A degraded or slow scorer never blocks a decision: Score answers within 45 ms with the rules-only fallback
-(spec §4.7). The alerts say the system is working in a worse mode, not that it stopped deciding.
+A degraded or slow scorer never blocks a decision: Score answers within 45 ms with the rules-only fallback.
+The alerts say the system is working in a worse mode, not that it stopped deciding.
 
 ## ScoreLatencyHigh
 
@@ -98,7 +98,7 @@ is the role's own name. Exit code 2 and the role name in the log mean: set a rea
 Outside `FRAUD_ENV=dev` the model server loads a local (`FRAUD_MODEL_DIR`) or cached model only when
 `FRAUD_MODEL_SHA256_<ALIAS>` (for example `FRAUD_MODEL_SHA256_PRODUCTION`, upper case alias) holds its
 SHA-256 (D-063): a `model_meta.json` next to the file cannot vouch for it. Set one pin per alias the server
-serves, from the registry version you promote (`make register-model`). The cache fallback of spec §4.7 (MLflow
+serves, from the registry version you promote (`make register-model`). The cache fallback (MLflow
 down) also needs the pin; without it the server stays not-ready and the scorer decides rules-only, which is
 the safe failure. `scripts/bench_model.py` and the offline evaluation serve a just-trained model and run in
 dev mode or with `require_pin=False`.

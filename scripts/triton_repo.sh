@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 prod="${1:-artifacts/model/model.onnx}"
 shadow="${2:-$prod}"
-# Each file must match the onnx_sha256 training recorded next to it (audit M6 M6, D-047).
+# Each file must match the onnx_sha256 training recorded next to it (D-047).
 verify() {
   meta="$(dirname "$1")/model_meta.json"
   [ -f "$meta" ] || { echo "$1: no model_meta.json next to it, refusing an unverifiable model" >&2; exit 1; }

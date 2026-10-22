@@ -13,9 +13,9 @@ Accepted.
 The card platform needs one action per transaction (APPROVE, REVIEW or DECLINE) and the reasons behind it.
 Some policy is explicit and not learned: a blocked merchant category must decline whatever the model says,
 and a card-testing burst must be reviewed. Risk engineers change that policy without retraining a model. The
-system must keep deciding when the model or Redis is unavailable (FR-8), and every decision must be
+system must keep deciding when the model or Redis is unavailable, and every decision must be
 reproducible from its inputs, the rule-set version and the model version. The model produces a calibrated
-probability (ADR 0005). The spec (FR-7, §4.4) fixes a threshold table that combines both.
+probability (ADR 0005). A threshold table combines both.
 
 ## Decision
 
@@ -49,14 +49,13 @@ probability (ADR 0005). The spec (FR-7, §4.4) fixes a threshold table that comb
 Positive:
 
 - Policy holds regardless of the score: R003 with a model score of 0.10 reviews with `CARD_TESTING_BURST`
-  (`TestRuleR003WithLowScoreReviews`, FR-7); a final rule wins (`TestFinalRuleWins`); the action never falls as
+  (`TestRuleR003WithLowScoreReviews`); a final rule wins (`TestFinalRuleWins`); the action never falls as
   the score rises (`TestActionMonotonicInScore`, a property test).
 - Degraded decisions are defined, not improvised (`TestDegradedBandByAmount`, `TestRedisDownBiasesToReview`).
 - The combined policy beats either part alone on the eval data's test split: rules alone catch 0.6012 of fraud,
   rules plus model 0.9161 at the threshold chosen on valid (FPR 0.79%), and 0.8387 at the shipped review
   threshold (FPR 0.32%) (`make eval-model`, `evals/REPORT.md`).
-- Evaluation is cheap: 64 rules evaluate in 14.9 µs (`go test -bench BenchmarkEval64Rules ./internal/rules`,
-  `PROGRESS.md` T-19).
+- Evaluation is cheap: 64 rules evaluate in 14.9 µs (`go test -bench BenchmarkEval64Rules ./internal/rules`).
 - Thresholds and rules change as a new rule-set file, without touching the model.
 
 Negative:

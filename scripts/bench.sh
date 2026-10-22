@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# make bench [BENCH_PROFILE=ci|laptop]: Score latency under constant load (spec §11 `latency` suite).
+# make bench [BENCH_PROFILE=ci|laptop]: Score latency under constant load.
 # Starts the test infrastructure (compose.test.yaml), a fresh database, the model server on artifacts/model
 # and the scorer on the host, runs ghz for BENCH_DURATION (default 60s) at the profile's rate after a 10 s
 # warm-up, and writes evals/reports/latency.json with cmd/benchreport, which fails over budget:
-#   ci     300 rps, p95 < 80 ms (NFR-2, gated in CI)
-#   laptop 2000 rps, p95 < 50 ms, p99 < 90 ms (NFR-1)
+#   ci     300 rps, p95 < 80 ms (gated in CI)
+#   laptop 2000 rps, p95 < 50 ms, p99 < 90 ms
 # Requests: unique transaction ids, 5,000 accounts, 9,000 devices, five merchant categories, three channels
 # (scripts/bench/score.json). Services are stopped on exit; logs stay in artifacts/bench/.
 set -euo pipefail

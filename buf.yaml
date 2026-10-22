@@ -6,7 +6,7 @@ modules:
     lint:
       use:
         - STANDARD
-      # The §4.4 contract names Scorer, Decision, Case, Timeline, RuleSet, ShadowSummary and LiveMetrics
+      # The contract names Scorer, Decision, Case, Timeline, RuleSet, ShadowSummary and LiveMetrics
       # explicitly; see docs/DECISIONS.md D-004.
       except:
         - RPC_REQUEST_RESPONSE_UNIQUE

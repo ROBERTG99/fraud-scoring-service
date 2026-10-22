@@ -1,5 +1,5 @@
-# FR-12: the artifacts bucket is encrypted with the module's KMS key, versioned and never public.
-# mock_provider: no AWS credentials, nothing is created (spec §16).
+# The artifacts bucket is encrypted with the module's KMS key, versioned and never public.
+# mock_provider: no AWS credentials, nothing is created.
 mock_provider "aws" {
   mock_data "aws_caller_identity" {
     defaults = { account_id = "123456789012" }
