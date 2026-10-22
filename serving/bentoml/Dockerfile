@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # BentoML + onnxruntime model server (port 8514). Loads @production and @shadow from MLflow, falling back
 # to the last cached artifact.
-FROM python:3.12.15-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 AS build
+FROM python:3.14.7-slim@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d AS build
 ARG HTTPS_PROXY
 ARG HTTP_PROXY
 ARG NO_PROXY
@@ -16,7 +16,7 @@ RUN --mount=type=cache,target=/root/.cache/uv --mount=type=secret,id=extra_ca,re
     if [ -s /run/secrets/extra_ca ]; then export SSL_CERT_FILE=/run/secrets/extra_ca UV_NATIVE_TLS=false; fi; \
     uv sync --frozen --no-default-groups --group serving --no-install-project
 
-FROM python:3.12.15-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 AS runtime
+FROM python:3.14.7-slim@sha256:51dafde81dbdb6ebde285137a295cf18a47ca95234fe388a343719cb97305b3d AS runtime
 RUN useradd --system --uid 10001 --create-home app && mkdir -p /var/cache/fraud-model && chown 10001 /var/cache/fraud-model
 WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
