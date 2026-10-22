@@ -31,7 +31,7 @@ server (`serving/bentoml/`) and the case summarizer (`src/fraud_summarizer/`).
   45 ms Score context (`internal/api/scorer.go:124`, `:152`, `:167`, `:213`, `:250`).
 - The model is reached over HTTP through `internal/model.Client` (ADR 0004, ADR 0005), so the Go process
   never loads a Python runtime.
-- Go is pinned to 1.26.9 with `GOTOOLCHAIN=auto` (docs/DECISIONS.md D-042, which supersedes D-018's 1.24
+- Go is pinned to 1.26.10 with `GOTOOLCHAIN=auto` (docs/DECISIONS.md D-042, which supersedes D-018's 1.24
   pin). The binary is static and runs on `distroless/static-debian12:nonroot` (`Dockerfile.go`, D-055).
 
 ## Alternatives considered

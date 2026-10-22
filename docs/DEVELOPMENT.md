@@ -10,7 +10,7 @@ Recorded on 2026-10-16 at the start of the build.
 | OS | Ubuntu 24.04.5 LTS, Linux 6.18.44 x86_64 |
 | CPUs | 4 |
 | Memory | 15 GiB |
-| go | go1.24.7 linux/amd64 preinstalled; builds use go1.26.9 from go.mod's `toolchain` line (`GOTOOLCHAIN=auto`, D-042) |
+| go | go1.24.7 linux/amd64 preinstalled; builds use go1.26.10 from go.mod's `toolchain` line (`GOTOOLCHAIN=auto`, D-042) |
 | python3 | 3.13.16 |
 | uv | 0.11.32 |
 | node | v22.22.0 |

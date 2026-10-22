@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Test runner for `make test-docker` (spec §16): Go (with cgo for -race), Python via uv and Node with pnpm in
 # one image, running `make test-go test-py test-web` against the compose.test.yaml services.
-ARG GO_IMAGE=golang:1.26.9@sha256:37cfcca63222ec499bec5e8ad7aad52dbf7529db36d5812b8eae2f0621aa92d6
+ARG GO_IMAGE=golang:1.26.10@sha256:672c944cfd07599b5f1bb179869270cdc94c6254e41db4d431259693cb286b82
 ARG NODE_IMAGE=node:22.20.0-slim@sha256:b21fe589dfbe5cc39365d0544b9be3f1f33f55f3c86c87a76ff65a02f8f5848e
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.11.3@sha256:90bbb3c16635e9627f49eec6539f956d70746c409209041800a0280b93152823
 

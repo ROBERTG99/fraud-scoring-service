@@ -14,6 +14,8 @@ quoted below come from [`PROGRESS.md`](PROGRESS.md), decisions from [`docs/DECIS
 
 - evalgate is now the released `v0.1.0` (`git+https://github.com/ROBERTG99/evalgate@v0.1.0`, locked at
   0681335 in `uv.lock`); the vendored stand-in in `third_party/evalgate/` is removed (D-072).
+- Go 1.26.10, certifi 2026.10.19 and pillow 13.0.0 for newly published crypto/x509, certifi and pillow
+  advisories (D-081).
 
 ### M9: durability, reviews and final verification (T-48 to T-50)
 

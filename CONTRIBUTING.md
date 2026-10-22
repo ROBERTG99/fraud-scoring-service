@@ -15,7 +15,7 @@ The project is pre-release. Milestones M0 to M6 are done and M7 to M9 are not st
 ## Setup
 
 You need Go, Python 3.12 or 3.13 (`pyproject.toml`: `>=3.12,<3.14`) with [uv](https://docs.astral.sh/uv/),
-Node 22 with pnpm (`web/package.json` pins `pnpm@10.28.0`) and Docker. `go.mod` pins `toolchain go1.26.9`
+Node 22 with pnpm (`web/package.json` pins `pnpm@10.28.0`) and Docker. `go.mod` pins `toolchain go1.26.10`
 and the Makefile sets `GOTOOLCHAIN=auto`, so any recent Go fetches the right toolchain (D-042). The versions
 the build environment recorded are in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
