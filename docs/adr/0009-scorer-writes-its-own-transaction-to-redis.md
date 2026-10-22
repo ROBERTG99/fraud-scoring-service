@@ -16,7 +16,7 @@ ten minutes, and card testing arrives in bursts, often concurrent. The feature-u
 transaction only from `events.transaction`, which the scorer publishes after it responds (ADR 0003), so it lags
 by at least a Kafka round trip. If `Score` only read features, a burst would be scored against a history that
 does not yet contain its own earlier members. Waiting for the updater instead would put Kafka on the scoring
-path. Spec §4.4 settles it: "`score_tx.lua` reads features strictly before `as_of`, then adds the transaction,
+path. The rule is: "`score_tx.lua` reads features strictly before `as_of`, then adds the transaction,
 atomically; the updater's later `ZADD` of the same `event_id` is a no-op".
 
 ## Decision
@@ -50,12 +50,12 @@ atomically; the updater's later `ZADD` of the same `event_id` is a no-op".
 Positive:
 
 - One round trip per `Score`, atomic under concurrency (`TestReadAsOfThenAddIsAtomic`: one round trip per
-  call, 64 concurrent calls, `PROGRESS.md` T-11). Only earlier events count, including out-of-order arrivals
-  within 5 minutes (`TestOutOfOrderWithinFiveMinutes`, FR-3).
+  call, 64 concurrent calls). Only earlier events count, including out-of-order arrivals
+  within 5 minutes (`TestOutOfOrderWithinFiveMinutes`).
 - Kafka and the updater are off the scoring path; if `events.transaction` is dropped or late, the
   transaction's own features are already in Redis.
 - Online and offline features agree exactly: 3,502 transactions × 13 features, 0 mismatches
-  (`make feature-parity`, `PROGRESS.md` T-13).
+  (`make feature-parity`).
 
 Negative:
 
@@ -73,4 +73,4 @@ Negative:
   sightings stay approximate because `fr:{acc}:dev` and `fr:{acc}:mcc` keep only the latest sighting
   (`docs/KNOWN_LIMITATIONS.md`, "Features").
 - Every `Score` is a Redis write as well as a read; under load, Redis missing its 8 ms budget is what degraded
-  99.3% of decisions in the laptop bench profile (`PROGRESS.md` T-39, `docs/KNOWN_LIMITATIONS.md`).
+  99.3% of decisions in the laptop bench profile (`make bench BENCH_PROFILE=laptop`, `docs/KNOWN_LIMITATIONS.md`).

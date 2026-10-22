@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# terraform from PATH or .cache/bin (make bootstrap), for the offline checks only (spec §0 rule 8, D-077):
+# terraform from PATH or .cache/bin (make bootstrap), for the offline checks only (D-077):
 # an allow-list of subcommands, and no AWS credential source reaches terraform (validate and test use
 # mock_provider), so a profile in ~/.aws, SSO, web identity or instance metadata can never be used from here.
 set -euo pipefail

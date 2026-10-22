@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# make security (spec §17): every scanner, a pass/fail table, raw reports in artifacts/security/.
+# make security: every scanner, a pass/fail table, raw reports in artifacts/security/.
 # Fails closed: a scanner that finds something, or that cannot run (missing tool, unreachable database),
 # fails the target. Accepted findings live in the tools' own mechanisms with a reason next to them
 # (justified #nosec / nosec comments, pnpm auditConfig.ignoreGhsas, checkov:skip) and in docs/security.md.

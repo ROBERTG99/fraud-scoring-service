@@ -1,4 +1,4 @@
-// Command benchreport turns a ghz JSON result into an evalgate.report.v1 (`latency` suite, spec §11) and
+// Command benchreport turns a ghz JSON result into an evalgate.report.v1 (`latency` suite) and
 // fails when the profile's budget is missed: p95 (and p99 on the laptop profile) over budget, a success rate
 // under 99.9%, or an achieved rate under 95% of the target (then the run did not measure "at N RPS").
 //
@@ -24,14 +24,14 @@ import (
 	"time"
 )
 
-// Profile is a load level with its budget (spec §3.2 NFR-1, NFR-2).
+// Profile is a load level with its budget.
 type Profile struct {
 	RPS      float64
 	MaxP95Ms float64
 	MaxP99Ms float64 // 0: not budgeted
 }
 
-// Profiles: ci gates CI (NFR-2), laptop is the NFR-1 target on a developer machine.
+// Profiles: ci gates CI, laptop is the target on a developer machine.
 var Profiles = map[string]Profile{
 	"ci":     {RPS: 300, MaxP95Ms: 80},
 	"laptop": {RPS: 2000, MaxP95Ms: 50, MaxP99Ms: 90},

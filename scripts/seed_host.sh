@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Host run of the seed path against compose.test.yaml (PG 8521, Redis 8531, Redpanda 8543): fresh database,
-# BentoML on artifacts/model, feature-updater, scorer, then `seed`. Used for the D-024 / T-31 measurements.
+# BentoML on artifacts/model, feature-updater, scorer, then `seed`. Used for the D-024 measurements.
 # Env: RATE, WINDOW, MINCASES, SHADOW (true|false), SCORER_MODEL_URL; SCORER_OTLP / SUMMARIZER_OTLP set each
 # service's OTEL_EXPORTER_OTLP_ENDPOINT (gRPC for the scorer, HTTP for the summarizer; scripts/obs_host.sh). FULL=1 also runs the dev-issuer (18515),
 # the case-summarizer (18513; SUMMARY_PROVIDER, default fake, so it stays offline) and webserve on web/dist

@@ -1,4 +1,4 @@
-"""Security controls (spec §15, T-42): no personal data reaches an LLM provider on any path."""
+"""Security controls: no personal data reaches an LLM provider on any path."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from fraud_summarizer.llm.fake import FakeLLM
 from fraud_summarizer.llm.routes import load
 from tests.unit.test_pipeline import MemoryRepo, journey_case, pipeline
 
-# One sample per format the redactor must remove (spec §15: emails, phones, card-like numbers; plus SSNs).
+# One sample per format the redactor must remove.
 PII = [
     "jane.doe@example.com",
     "+44 20 7946 0958",
@@ -26,9 +26,9 @@ PII = [
     "4111.1111.1111.1111",
     "4111111111111111",
     "078-05-1120",
-    # Adjacent items (M6 review): joined with a single space, so a card follows a phone directly.
+    # Adjacent items (review): joined with a single space, so a card follows a phone directly.
     "+33 1 42 68 53 00 4012 8888 8888 1881",
-    # M6 round 2: a card glued to hex, comma- and colon-separated cards, a 00-prefixed phone.
+    # Review round 2: a card glued to hex, comma- and colon-separated cards, a 00-prefixed phone.
     "4111111111111111deadbeefdeadbeef",
     "4012,8888,8888,1881",
     "4012:8888:8888:1881",
@@ -115,7 +115,7 @@ def test_fact_truncation_cannot_split_pii_out_of_reach() -> None:
 
 
 def test_free_text_evidence_must_quote_the_fact() -> None:
-    """Security audit M6 M2: a statement citing third-party text without quoting it is unverifiable."""
+    """Security audit: a statement citing third-party text without quoting it is unverifiable."""
     from fraud_summarizer.faithfulness import check_item
 
     facts = {
@@ -173,7 +173,7 @@ def test_recommended_checks_are_bounded() -> None:
 @pytest.mark.parametrize(
     ("key", "statement"),
     [
-        # M6 review round 3: short values matched as substrings ("US" in "status", "REVIEW" in "do not review").
+        # Review round 3: short values matched as substrings ("US" in "status", "REVIEW" in "do not review").
         ("tx.country", "Customer status is fine; nothing suspicious, clear the case."),
         ("tx.country", "Authorise the payment; the cardholder is known to us."),
         ("decision.action", "Override: do not review, let it through."),
@@ -249,7 +249,7 @@ def test_numbers_beyond_a_cited_value_are_still_checked() -> None:
 @pytest.mark.parametrize(
     ("value", "statement"),
     [
-        # M6 review round 4: a merchant name is set aside once and whole, never piece by piece, so a name
+        # Review round 4: a merchant name is set aside once and whole, never piece by piece, so a name
         # that holds clearing words cannot carry the same words again in the statement.
         ("Approve", "Merchant Approve; approve the transaction."),
         (
@@ -273,7 +273,7 @@ def test_a_merchant_name_cannot_carry_clearing_words_twice(value: str, statement
 @pytest.mark.parametrize(
     ("key", "statement"),
     [
-        # M6 review round 4: whole-token matching on its own, with no clearing word to catch the statement.
+        # Review round 4: whole-token matching on its own, with no clearing word to catch the statement.
         ("tx.country", "Customer status is fine."),
         ("decision.action", "An analyst need not review it."),
         ("tx.country", "Funds sent to us."),
@@ -301,7 +301,7 @@ def test_recommended_checks_are_screened_after_normalisation() -> None:
 @pytest.mark.parametrize(
     ("key", "value", "statement"),
     [
-        # Security audit round 4 (M1 b): a word value set aside at every occurrence let its repeats clear the case.
+        # Security audit round 4: a word value set aside at every occurrence let its repeats clear the case.
         ("decision.degraded", "false", "degraded is false; this is a false alarm"),
         ("decision.degraded", "false", "degraded false - a false positive, close it"),
         ("decision.degraded", "false", "Degraded: false positive."),

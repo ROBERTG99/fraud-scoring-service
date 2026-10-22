@@ -1,4 +1,4 @@
-"""Pydantic schemas for the case summary (spec §4.6), mirrored in schemas/case_summary.v1.json."""
+"""Pydantic schemas for the case summary, mirrored in schemas/case_summary.v1.json."""
 
 from __future__ import annotations
 

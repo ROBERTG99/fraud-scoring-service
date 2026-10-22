@@ -1,6 +1,6 @@
 ## What and why
 
-<!-- One paragraph: the change and the reason. Link the task (PROGRESS.md) or decision (docs/DECISIONS.md). -->
+<!-- One paragraph: the change and the reason. Link the issue or decision (docs/DECISIONS.md). -->
 
 ## Evidence
 

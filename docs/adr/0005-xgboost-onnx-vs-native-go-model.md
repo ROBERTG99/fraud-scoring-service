@@ -14,8 +14,8 @@ The decision model is a gradient-boosted tree classifier over the 13 features of
 followed by isotonic calibration, because the combination table (ADR 0008) compares a calibrated probability
 with fixed thresholds. It is trained in Python (`training/train.py`) and must give the same calibrated score in
 every place that uses it: the training check, the BentoML model server, the optional Triton server, and the
-offline model eval. The scorer is written in Go (ADR 0002). The spec (FR-5, §5) asks for XGBoost with a
-HistGradientBoosting fallback, isotonic calibration on the valid split, ONNX export, and rejects a native Go
+offline model eval. The scorer is written in Go (ADR 0002). The design calls for XGBoost with a
+HistGradientBoosting fallback, isotonic calibration on the valid split and ONNX export, and rejects a native Go
 model.
 
 ## Decision
@@ -41,15 +41,14 @@ model.
 - **onnxruntime in the Go process through cgo.** Keeps one artifact and removes the hop, but the scorer would
   no longer be a static binary on a distroless base (`Dockerfile.go`), and a native library crash would take
   the scorer down with it.
-- **A linear model computed in Go.** Trivial to embed, but not the tabular GBDT the spec asks for.
+- **A linear model computed in Go.** Trivial to embed, but not the tabular GBDT this service needs.
 
 ## Consequences
 
 Positive:
 
-- Native and ONNX scores agree within 7.14e-06 on demo data (`python -m training.train`, `PROGRESS.md` T-14);
-  5 golden vectors agree within 1e-5 through the Go client for both aliases (`TestGoldenVectorScore`,
-  `PROGRESS.md` T-17).
+- Native and ONNX scores agree within 7.14e-06 on demo data (`python -m training.train`);
+  5 golden vectors agree within 1e-5 through the Go client for both aliases (`TestGoldenVectorScore`).
 - The same file is what the eval measures: `make eval-model` scores the serving artifact, giving PR-AUC 0.8740
   and ECE 0.0007 on the 169,604-transaction test split (`evals/REPORT.md`, D-033).
 - A new model ships by registering a version and moving an alias (`make register-model ALIAS=production`); the
@@ -63,7 +62,7 @@ Negative:
   host (`docs/KNOWN_LIMITATIONS.md`, "Model server throughput on a shared host").
 - Float32 inference forced the calibration slope cap: raw isotonic breakpoints 1e-8 apart gave 3.6e-3 output
   differences on demo data (D-008). The cap slightly smooths very steep steps of the map.
-- Parity is checked on demo data only; the M5 ML review saw a few eval-data rows just over 1e-5, though no
+- Parity is checked on demo data only; a model review saw a few eval-data rows just over 1e-5, though no
   decision changes at the thresholds (`docs/KNOWN_LIMITATIONS.md`, "Data and model").
 - The export depends on converters (`onnxmltools` for XGBoost, `skl2onnx` for the fallback). The
   HistGradientBoosting path is excluded from coverage (`# pragma: no cover`); every version in the local

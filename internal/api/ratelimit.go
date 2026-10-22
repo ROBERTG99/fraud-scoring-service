@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// RateLimiter is a per-console-user token bucket (spec §4.4: 20 req/s per user). The service principal
+// RateLimiter is a per-console-user token bucket. The service principal
 // (Score) is not limited here; Score is protected by the writer queue and ResourceExhausted instead.
 type RateLimiter struct {
 	rate  float64

@@ -1,11 +1,11 @@
-"""Kafka consumer: REVIEW decisions → case summaries (spec FR-11, §4.3).
+"""Kafka consumer: REVIEW decisions → case summaries.
 
 Delivery is at least once. A decision is skipped when `processed_messages` already holds its
 `decision_id`; it is recorded only after the summary is persisted, so a crash mid-call re-summarizes
 instead of losing the case (docs/DECISIONS.md D-022). The summary insert is `ON CONFLICT DO NOTHING`, so a
 rare duplicate after a rebalance cannot overwrite the first summary.
 
-Retries are bounded where they cost money or stall a partition (audit M6 M7, D-048): each paid summary
+Retries are bounded where they cost money or stall a partition (security audit, D-048): each paid summary
 attempt is recorded in Postgres before the provider call, and a decision that used MAX_PAID_ATTEMPTS goes to
 the DLQ; a message whose handling fails MAX_RETRIES times for a reason other than an unreachable dependency
 goes to the DLQ too. Transient failures (Postgres or the network down) retry with backoff, without a cap.

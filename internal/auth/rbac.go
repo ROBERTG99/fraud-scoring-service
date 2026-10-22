@@ -1,4 +1,4 @@
-// Package auth verifies dev-issuer JWTs (EdDSA, JWKS) and enforces role-based access (spec §4.4).
+// Package auth verifies dev-issuer JWTs (EdDSA, JWKS) and enforces role-based access.
 package auth
 
 import (

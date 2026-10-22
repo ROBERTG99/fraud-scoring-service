@@ -1,4 +1,4 @@
-// The scripted demo scenario (spec §3.4, T-46): `replay -scenario demo -phase <phase>` drives the user
+// The scripted demo scenario: `replay -scenario demo -phase <phase>` drives the user
 // journeys against a running stack with fresh, run-unique accounts and records one checkpoint per step in a
 // JSON state file. scripts/demo.sh runs the phases in order and stops the model server between the
 // journey and the degraded phase; tests/e2e/demo.spec.ts then asserts the checkpoints and walks the console.
@@ -62,13 +62,13 @@ const (
 	reasonCardTesting = "CARD_TESTING_BURST"
 	reasonModelDown   = "MODEL_UNAVAILABLE"
 
-	atoAmountMinor     = 94000 // USD 940 (spec §3.4)
+	atoAmountMinor     = 94000 // USD 940
 	cardTestMinor      = 150   // eight USD 1.50 tests
 	cardTestFinalMinor = 200   // then USD 2.00: R003 needs >= 8 in 10 min and <= 300
 	smallMinor         = 2500
 	degradedReview     = 25000 // above the rules-only REVIEW floor (rules: degraded.model_unavailable)
 
-	atoLatencyTargetMs = 50 // spec §3.4: REVIEW "in < 50 ms"
+	atoLatencyTargetMs = 50 // REVIEW "in < 50 ms"
 	scoreBudgetMs      = 45 // Score budget (CLAUDE.md timeouts)
 	degradedCalls      = 20
 )
@@ -77,7 +77,6 @@ const (
 type checkpoint struct {
 	ID     string `json:"id"`
 	Phase  string `json:"phase"`
-	FR     string `json:"fr"`
 	OK     bool   `json:"ok"`
 	Detail string `json:"detail"`
 }
@@ -190,8 +189,8 @@ type demo struct {
 	seq   int
 }
 
-func (d *demo) check(id, fr string, ok bool, format string, args ...any) checkpoint {
-	return checkpoint{ID: id, Phase: d.phase, FR: fr, OK: ok, Detail: fmt.Sprintf(format, args...)}
+func (d *demo) check(id string, ok bool, format string, args ...any) checkpoint {
+	return checkpoint{ID: id, Phase: d.phase, OK: ok, Detail: fmt.Sprintf(format, args...)}
 }
 
 // account returns a run-unique account ID for one role of the scenario.
@@ -234,7 +233,7 @@ func (d *demo) score(ctx context.Context, tx *fraudv1.Transaction) (*fraudv1.Dec
 }
 
 // apply writes account events to the feature store, as the feature-updater would, then publishes them so
-// the updater's Postgres sink records them for the timeline and the case facts.
+// The updater's Postgres sink records them for the timeline and the case facts.
 func (d *demo) apply(ctx context.Context, evs []events.Event) error {
 	recs := make([]*kgo.Record, 0, len(evs))
 	for i := range evs {
@@ -277,8 +276,8 @@ func (d *demo) journey(ctx context.Context) []checkpoint {
 }
 
 // takeoverTime places the takeover purchase between 13:00 and 15:00 UTC, where the shipped model scores
-// the scripted account in the REVIEW band (docs/DECISIONS.md D-071): now when it is that time, otherwise
-// the latest 14:30 UTC, at most 22.5 h back (Score accepts event times from the last 24 h).
+// The scripted account in the REVIEW band (docs/DECISIONS.md D-071): now when it is that time, otherwise
+// The latest 14:30 UTC, at most 22.5 h back (Score accepts event times from the last 24 h).
 func takeoverTime(now time.Time) time.Time {
 	now = now.UTC()
 	if h := now.Hour(); h == 13 || h == 14 {
@@ -295,7 +294,7 @@ func takeoverTime(now time.Time) time.Time {
 // device changes its email from a new device, which buys for USD 940 online two minutes later: REVIEW by
 // rule R001 within 50 ms.
 func (d *demo) atoReview(ctx context.Context) (*fraudv1.Transaction, *fraudv1.Decision, checkpoint) {
-	const id, fr = "ato_review", "FR-1, FR-3, FR-7"
+	const id = "ato_review"
 	acc, home, attacker := d.account("ato"), d.device("home"), d.device("new")
 	d.st.AccountID = acc
 	at := takeoverTime(d.now)
@@ -313,36 +312,36 @@ func (d *demo) atoReview(ctx context.Context) (*fraudv1.Transaction, *fraudv1.De
 		events.Event{Kind: events.KindDevice, EventID: d.id(), AccountID: acc, TSMillis: at.Add(-2 * time.Minute).UnixMilli(),
 			DeviceID: attacker, Change: events.ChangeEmailChanged})
 	if err := d.apply(ctx, evs); err != nil {
-		return nil, nil, d.check(id, fr, false, "account events: %v", err)
+		return nil, nil, d.check(id, false, "account events: %v", err)
 	}
 	tx := d.tx(acc, attacker, atoAmountMinor, "5732", at)
 	dec, err := d.score(ctx, tx)
 	if err != nil {
-		return tx, nil, d.check(id, fr, false, "Score: %v", err)
+		return tx, nil, d.check(id, false, "Score: %v", err)
 	}
 	d.st.DecisionID = dec.DecisionId
 	ok := dec.Action == fraudv1.Action_ACTION_REVIEW && slices.Contains(dec.ReasonCodes, reasonATO) &&
 		!dec.Degraded && dec.LatencyMs < atoLatencyTargetMs
-	return tx, dec, d.check(id, fr, ok, "USD 940 online, new device, email changed 2 min earlier: %s (want REVIEW with %s in < %d ms)",
+	return tx, dec, d.check(id, ok, "USD 940 online, new device, email changed 2 min earlier: %s (want REVIEW with %s in < %d ms)",
 		describe(dec), reasonATO, atoLatencyTargetMs)
 }
 
 func (d *demo) idempotent(ctx context.Context, tx *fraudv1.Transaction, first *fraudv1.Decision) checkpoint {
-	const id, fr = "idempotent_replay", "FR-1"
+	const id = "idempotent_replay"
 	if first == nil {
-		return d.check(id, fr, false, "no first decision to replay")
+		return d.check(id, false, "no first decision to replay")
 	}
 	again, err := d.score(ctx, tx)
 	if err != nil {
-		return d.check(id, fr, false, "replayed Score: %v", err)
+		return d.check(id, false, "replayed Score: %v", err)
 	}
-	return d.check(id, fr, again.DecisionId == first.DecisionId, "same transaction_id scored twice: decision %s, then %s",
+	return d.check(id, again.DecisionId == first.DecisionId, "same transaction_id scored twice: decision %s, then %s",
 		first.DecisionId, again.DecisionId)
 }
 
 // cardTesting sends eight USD 1.50 transactions in ten minutes, then a USD 2.00 one (rule R003).
 func (d *demo) cardTesting(ctx context.Context) checkpoint {
-	const id, fr = "card_testing_burst", "FR-7"
+	const id = "card_testing_burst"
 	acc, dev := d.account("ct"), d.device("ct")
 	var last *fraudv1.Decision
 	for i := 8; i >= 0; i-- {
@@ -352,44 +351,44 @@ func (d *demo) cardTesting(ctx context.Context) checkpoint {
 		}
 		dec, err := d.score(ctx, d.tx(acc, dev, amount, "5999", d.now.Add(-time.Duration(i)*time.Minute)))
 		if err != nil {
-			return d.check(id, fr, false, "Score: %v", err)
+			return d.check(id, false, "Score: %v", err)
 		}
 		last = dec
 	}
 	ok := last.Action != fraudv1.Action_ACTION_APPROVE && slices.Contains(last.ReasonCodes, reasonCardTesting)
-	return d.check(id, fr, ok, "eight USD 1.50 tests in 10 min, then USD 2.00: %s (want %s)", describe(last), reasonCardTesting)
+	return d.check(id, ok, "eight USD 1.50 tests in 10 min, then USD 2.00: %s (want %s)", describe(last), reasonCardTesting)
 }
 
 // invalidEvent publishes a login event without its required fields; the feature-updater must dead-letter it.
 func (d *demo) invalidEvent(ctx context.Context) checkpoint {
-	const id, fr = "invalid_event_dlq", "FR-2"
+	const id = "invalid_event_dlq"
 	rec := &kgo.Record{Topic: stream.TopicLogin, Key: []byte(d.account("ato")),
 		Value: fmt.Appendf(nil, `{"schema":%q,"event_id":"demo-invalid-%s","account_id":%q}`, events.SchemaLogin, d.env.RunID, d.account("ato"))}
 	pctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	res := d.env.Producer.ProduceSync(pctx, rec)
 	cancel()
 	if err := res.FirstErr(); err != nil {
-		return d.check(id, fr, false, "produce: %v", err)
+		return d.check(id, false, "produce: %v", err)
 	}
 	sent := res[0].Record
 	fctx, cancel := context.WithTimeout(ctx, d.env.Wait)
 	defer cancel()
 	if err := d.env.DLQ.Find(fctx, sent); err != nil {
-		return d.check(id, fr, false, "%s partition %d offset %d: %v", sent.Topic, sent.Partition, sent.Offset, err)
+		return d.check(id, false, "%s partition %d offset %d: %v", sent.Topic, sent.Partition, sent.Offset, err)
 	}
-	return d.check(id, fr, true, "login event without its required fields (%s partition %d offset %d) is in %s",
+	return d.check(id, true, "login event without its required fields (%s partition %d offset %d) is in %s",
 		sent.Topic, sent.Partition, sent.Offset, stream.TopicDLQ)
 }
 
 // casePersisted finds the REVIEW decision in the analyst's open queue (step 4 starts there).
 func (d *demo) casePersisted(ctx context.Context, dec *fraudv1.Decision) (*fraudv1.Case, checkpoint) {
-	const id, fr = "case_persisted", "FR-10, FR-13"
+	const id = "case_persisted"
 	if dec == nil || dec.Action != fraudv1.Action_ACTION_REVIEW {
-		return nil, d.check(id, fr, false, "no REVIEW decision to look up")
+		return nil, d.check(id, false, "no REVIEW decision to look up")
 	}
 	actx, err := d.as(ctx, "analyst-1")
 	if err != nil {
-		return nil, d.check(id, fr, false, "%v", err)
+		return nil, d.check(id, false, "%v", err)
 	}
 	wctx, cancel := context.WithTimeout(ctx, d.env.Wait)
 	defer cancel()
@@ -397,13 +396,13 @@ func (d *demo) casePersisted(ctx context.Context, dec *fraudv1.Decision) (*fraud
 		c, err := d.findCase(actx, dec.DecisionId)
 		if c != nil {
 			d.st.CaseID = c.CaseId
-			return c, d.check(id, fr, true, "decision %s is open case %s in the review queue", dec.DecisionId, c.CaseId)
+			return c, d.check(id, true, "decision %s is open case %s in the review queue", dec.DecisionId, c.CaseId)
 		}
 		if serr := d.sleep(wctx); serr != nil {
 			if err == nil {
 				err = errors.New("not in the open queue")
 			}
-			return nil, d.check(id, fr, false, "decision %s: %v", dec.DecisionId, err)
+			return nil, d.check(id, false, "decision %s: %v", dec.DecisionId, err)
 		}
 	}
 }
@@ -433,13 +432,13 @@ func (d *demo) findCase(ctx context.Context, decisionID string) (*fraudv1.Case, 
 // summaryVerified is step 3: the summarizer's account-takeover summary with three verified evidence items,
 // written without touching the decision.
 func (d *demo) summaryVerified(ctx context.Context, found *fraudv1.Case, dec *fraudv1.Decision) checkpoint {
-	const id, fr = "summary_verified", "FR-11"
+	const id = "summary_verified"
 	if found == nil {
-		return d.check(id, fr, false, "no case to summarize")
+		return d.check(id, false, "no case to summarize")
 	}
 	actx, err := d.as(ctx, "analyst-1")
 	if err != nil {
-		return d.check(id, fr, false, "%v", err)
+		return d.check(id, false, "%v", err)
 	}
 	start := time.Now()
 	wctx, cancel := context.WithTimeout(ctx, d.env.Wait)
@@ -454,9 +453,9 @@ func (d *demo) summaryVerified(ctx context.Context, found *fraudv1.Case, dec *fr
 		}
 		if serr := d.sleep(wctx); serr != nil {
 			if err != nil {
-				return d.check(id, fr, false, "GetCase: %v", err)
+				return d.check(id, false, "GetCase: %v", err)
 			}
-			return d.check(id, fr, false, "summary still %s after %s", c.SummaryStatus, d.env.Wait)
+			return d.check(id, false, "summary still %s after %s", c.SummaryStatus, d.env.Wait)
 		}
 	}
 	s := c.GetSummary()
@@ -470,31 +469,31 @@ func (d *demo) summaryVerified(ctx context.Context, found *fraudv1.Case, dec *fr
 	unchanged := got.GetDecisionId() == dec.DecisionId && got.GetAction() == dec.Action && got.GetScore() == dec.Score &&
 		slices.Equal(got.GetReasonCodes(), dec.ReasonCodes) && got.GetModelVersion() == dec.ModelVersion
 	ok := c.SummaryStatus == "ok" && s.GetPattern() == "account_takeover" && len(s.GetEvidence()) == 3 && verified == 3 && unchanged
-	return d.check(id, fr, ok, "%s after %.1f s: pattern %s, %d of %d evidence items verified, faithfulness %.2f, model %s; decision unchanged: %t",
+	return d.check(id, ok, "%s after %.1f s: pattern %s, %d of %d evidence items verified, faithfulness %.2f, model %s; decision unchanged: %t",
 		c.SummaryStatus, time.Since(start).Seconds(), s.GetPattern(), verified, len(s.GetEvidence()), s.GetFaithfulness(), s.GetModel(), unchanged)
 }
 
 // shadowCompared is the risk engineer's view: shadow-model comparisons recorded beside the decisions.
 func (d *demo) shadowCompared(ctx context.Context) checkpoint {
-	const id, fr = "shadow_compared", "FR-9"
+	const id = "shadow_compared"
 	rctx, err := d.as(ctx, "risk-1")
 	if err != nil {
-		return d.check(id, fr, false, "%v", err)
+		return d.check(id, false, "%v", err)
 	}
 	sctx, cancel := context.WithTimeout(rctx, 5*time.Second)
 	defer cancel()
 	s, err := d.env.Cases.GetShadowSummary(sctx, &fraudv1.GetShadowSummaryRequest{WindowHours: 24})
 	if err != nil {
-		return d.check(id, fr, false, "GetShadowSummary: %v", err)
+		return d.check(id, false, "GetShadowSummary: %v", err)
 	}
-	return d.check(id, fr, s.Total > 0, "%d comparisons in 24 h, shadow %s against primary %s, agreement %.1f%%",
+	return d.check(id, s.Total > 0, "%d comparisons in 24 h, shadow %s against primary %s, agreement %.1f%%",
 		s.Total, s.ShadowVersion, s.PrimaryVersion, 100*s.AgreementRate)
 }
 
 // degraded runs while the model server is stopped: every decision still arrives, rules-only, within the
 // Score budget, and the live metrics show MODEL_UNAVAILABLE.
 func (d *demo) degraded(ctx context.Context) []checkpoint {
-	const id, fr = "model_unavailable_rules_only", "FR-8"
+	const id = "model_unavailable_rules_only"
 	acc, dev := d.account("dg"), d.device("dg")
 	rulesOnly, maxMs := 0, 0.0
 	var others []string // calls not decided rules-only, for the checkpoint's detail
@@ -528,22 +527,22 @@ func (d *demo) degraded(ctx context.Context) []checkpoint {
 	if big != nil {
 		bigAction = strings.TrimPrefix(big.Action.String(), "ACTION_")
 	}
-	out := []checkpoint{d.check(id, fr, ok, "model server stopped: %d of %d decided rules-only (%s, model none), slowest %.1f ms (budget %d), USD 250 → %s%s",
+	out := []checkpoint{d.check(id, ok, "model server stopped: %d of %d decided rules-only (%s, model none), slowest %.1f ms (budget %d), USD 250 → %s%s",
 		rulesOnly, degradedCalls, reasonModelDown, maxMs, scoreBudgetMs, bigAction, failure+notRulesOnly(others))}
 	return append(out, d.liveMetrics(ctx))
 }
 
 func (d *demo) liveMetrics(ctx context.Context) checkpoint {
-	const id, fr = "live_metrics_degraded", "FR-8, FR-13"
+	const id = "live_metrics_degraded"
 	actx, err := d.as(ctx, "analyst-1")
 	if err != nil {
-		return d.check(id, fr, false, "%v", err)
+		return d.check(id, false, "%v", err)
 	}
 	sctx, cancel := context.WithTimeout(actx, 5*time.Second)
 	defer cancel()
 	s, err := d.env.Cases.StreamLiveMetrics(sctx, &fraudv1.StreamLiveMetricsRequest{})
 	if err != nil {
-		return d.check(id, fr, false, "StreamLiveMetrics: %v", err)
+		return d.check(id, false, "StreamLiveMetrics: %v", err)
 	}
 	// A snapshot leaves out the still-filling second; the next one (2 s later) has the degraded calls.
 	var m *fraudv1.LiveMetrics
@@ -551,19 +550,19 @@ func (d *demo) liveMetrics(ctx context.Context) checkpoint {
 		next, err := s.Recv()
 		if err != nil {
 			if m == nil {
-				return d.check(id, fr, false, "live metrics: %v", err)
+				return d.check(id, false, "live metrics: %v", err)
 			}
 			break
 		}
 		m = next
 	}
-	return d.check(id, fr, m.ModelUnavailable > 0, "live metrics (last 10 s): %d %s, degraded rate %.0f%%",
+	return d.check(id, m.ModelUnavailable > 0, "live metrics (last 10 s): %d %s, degraded rate %.0f%%",
 		m.ModelUnavailable, reasonModelDown, 100*m.DegradedRate)
 }
 
 // recovered polls until the model answers again after the restart.
 func (d *demo) recovered(ctx context.Context) checkpoint {
-	const id, fr = "model_recovered", "FR-8"
+	const id = "model_recovered"
 	acc, dev := d.account("rc"), d.device("rc")
 	start := time.Now()
 	wctx, cancel := context.WithTimeout(ctx, d.env.Wait)
@@ -571,7 +570,7 @@ func (d *demo) recovered(ctx context.Context) checkpoint {
 	for calls := 1; ; calls++ {
 		dec, err := d.score(ctx, d.tx(acc, dev, smallMinor, "5411", d.now.Add(time.Duration(calls)*time.Millisecond)))
 		if err == nil && !dec.Degraded && dec.ModelVersion != "none" {
-			return d.check(id, fr, true, "model server back: decision %d used model %s after %.1f s (%s)", calls, dec.ModelVersion,
+			return d.check(id, true, "model server back: decision %d used model %s after %.1f s (%s)", calls, dec.ModelVersion,
 				time.Since(start).Seconds(), describe(dec))
 		}
 		if serr := d.sleep(wctx); serr != nil {
@@ -579,7 +578,7 @@ func (d *demo) recovered(ctx context.Context) checkpoint {
 			if err != nil {
 				detail = err.Error()
 			}
-			return d.check(id, fr, false, "after %d decisions in %s: %s", calls, d.env.Wait, detail)
+			return d.check(id, false, "after %d decisions in %s: %s", calls, d.env.Wait, detail)
 		}
 	}
 }
@@ -694,7 +693,7 @@ func runDemo(ctx context.Context, o options, log *slog.Logger) (bool, error) {
 		if !c.OK {
 			mark, ok = "FAIL", false
 		}
-		fmt.Printf("demo: %s %d/%d %s (%s): %s\n", mark, slices.Index(demoCheckpoints, c.ID)+1, len(demoCheckpoints), c.ID, c.FR, c.Detail)
+		fmt.Printf("demo: %s %d/%d %s: %s\n", mark, slices.Index(demoCheckpoints, c.ID)+1, len(demoCheckpoints), c.ID, c.Detail)
 	}
 	return ok, nil
 }

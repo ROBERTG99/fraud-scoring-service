@@ -1,4 +1,4 @@
-"""Summary-usefulness judge (spec §11 judge calibration): prompt fencing, FakeLLM judge, calibration stats."""
+"""Summary-usefulness judge (judge calibration): prompt fencing, FakeLLM judge, calibration stats."""
 
 from __future__ import annotations
 

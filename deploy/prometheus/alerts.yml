@@ -1,4 +1,4 @@
-# SLO alerts (spec §14). Unit-tested by deploy/prometheus/alerts_test.yml (`make obs-check`).
+# SLO alerts. Unit-tested by deploy/prometheus/alerts_test.yml (`make obs-check`).
 groups:
   - name: fraud-slo
     rules:

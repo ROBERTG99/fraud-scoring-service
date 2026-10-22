@@ -1,6 +1,6 @@
 ---
 name: security-auditor
-description: Read-only security audit (STRIDE, OWASP Top 10 and OWASP LLM Top 10) of the scorer, console APIs and summarizer. Use for T-42 and final hardening.
+description: Read-only security audit (STRIDE, OWASP Top 10 and OWASP LLM Top 10) of the scorer, console APIs and summarizer. Use for changes to auth, input handling or the summarizer, and before release.
 tools: Read, Grep, Glob, Bash
 model: inherit
 ---

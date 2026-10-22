@@ -1,5 +1,5 @@
-# SageMaker training for fraud-gbdt (spec FR-12, T-44): the execution role, the artifacts bucket and the ECR
-# repository that training/sagemaker_launch.py names. Never applied by this repository (spec §0 rule 8);
+# SageMaker training for fraud-gbdt: the execution role, the artifacts bucket and the ECR
+# repository that training/sagemaker_launch.py names. Never applied by this repository;
 # `make tf-check` validates and tests it with a mocked provider and no AWS credentials.
 
 data "aws_caller_identity" "current" {}

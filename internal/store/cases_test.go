@@ -287,7 +287,7 @@ func appendN(t *testing.T, pool *pgxpool.Pool, key []byte, n int) {
 	}
 }
 
-// Audit M6 M9: database access alone cannot extend the chain. A row appended with a recomputed unkeyed
+// Security audit: database access alone cannot extend the chain. A row appended with a recomputed unkeyed
 // hash, or with the wrong key, fails verification; so does an unkeyed row after keyed ones (a downgrade).
 func TestAuditChainIsKeyed(t *testing.T) {
 	pool := newPool(t, migratedDB(t))
@@ -349,7 +349,7 @@ func TestLegacyEntriesVerifyBeforeKeyedOnes(t *testing.T) {
 	}
 }
 
-// M6 round-2 review: the owner disables the trigger, deletes every row and writes the chain back, forged rows
+// Review round 2: the owner disables the trigger, deletes every row and writes the chain back, forged rows
 // included, as unkeyed alg 1 entries with recomputed hashes. With no legacy bound (the default) it fails.
 func TestAuditRewriteAsUnkeyedIsRejected(t *testing.T) {
 	pool := newPool(t, migratedDB(t))

@@ -1,4 +1,4 @@
-"""Licence check for `make security` (spec §8: permissive dependencies only).
+"""Licence check for `make security`.
 
 Covers what ships or runs: the Go modules compiled into `./cmd/...` and `./internal/...`, every Python
 distribution in `.venv` (runtime, training, serving and dev groups), and the console's production npm

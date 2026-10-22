@@ -1,4 +1,4 @@
--- Regenerate requests (security audit M6 L6, D-054). The summarizer counts a user's paid regenerations here,
+-- Regenerate requests (security audit, D-054). The summarizer counts a user's paid regenerations here,
 -- so the 20-per-hour limit holds across processes and restarts, and the idempotency key of a request lives
 -- with it (the same key on another case is a different request). Pruned after 90 days (cmd/retention).
 

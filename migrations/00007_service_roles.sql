@@ -1,4 +1,4 @@
--- One role per service, least privilege (security audit M6 M1, D-043). Before this, every service used
+-- One role per service, least privilege (security audit, D-043). Before this, every service used
 -- fraud_app, which could UPDATE and DELETE decisions and analyst labels, so "the LLM never writes decisions"
 -- was a code convention, not a privilege boundary. Development passwords only, as in 00001; deployments set
 -- credentials from the environment. Roles are cluster-wide, so Down leaves them in place.

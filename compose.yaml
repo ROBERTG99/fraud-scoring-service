@@ -1,7 +1,7 @@
 name: fraud
 
-# The local stack (spec §16): `make up` (docker compose up -d --build --wait), `make seed`, then the console on
-# http://localhost:8500. Synthetic data only; containers are offline at runtime (Appendix A).
+# The local stack: `make up` (docker compose up -d --build --wait), `make seed`, then the console on
+# http://localhost:8500. Synthetic data only; containers are offline at runtime.
 # Every port is published on 127.0.0.1 only (D-049).
 
 # Service containers run with a read-only root, no capabilities and no privilege gain (D-055).
@@ -13,7 +13,7 @@ x-hardened: &hardened
 
 x-build: &build
   context: .
-  network: ${COMPOSE_BUILD_NETWORK:-default} # host in the cloud sandbox (Appendix A; .env.example)
+  network: ${COMPOSE_BUILD_NETWORK:-default} # host in the cloud sandbox (.env.example)
   args:
     HTTPS_PROXY: "${HTTPS_PROXY:-}"
 
@@ -148,7 +148,7 @@ services:
     volumes: ["model-cache:/var/cache/fraud-model"]
     ports: ["127.0.0.1:8514:8514"]
     # Liveness, not readiness: the registry is empty until `make seed` trains, and the scorer runs rules-only
-    # until /readyz turns 200 (spec §4.7, D-073). The model server retries the missing aliases every 5 s.
+    # until /readyz turns 200 (D-073). The model server retries the missing aliases every 5 s.
     healthcheck:
       test:
         - CMD
@@ -235,7 +235,7 @@ services:
     build: { <<: *build, dockerfile: Dockerfile.go, target: webserve }
     image: fraud/webserve:dev
     environment:
-      FRAUD_ENV: dev # local stack: the dev-issuer's personas and tokens are proxied (audit M6 M4)
+      FRAUD_ENV: dev # local stack: the dev-issuer's personas and tokens are proxied
       FRAUD_WEB_ADDR: ":8500"
       FRAUD_WEB_API_URL: http://scorer:8511
       FRAUD_WEB_ISSUER_URL: http://dev-issuer:8515
@@ -275,7 +275,7 @@ services:
       dev-issuer: { condition: service_healthy }
     restart: unless-stopped
 
-  # ---- profile triton (spec FR-6): Triton on the same ONNX models, never required by `make verify`
+  # ---- profile triton: Triton on the same ONNX models, never required by `make verify`
   # (docs/KNOWN_LIMITATIONS.md). `make triton-up` after `scripts/triton_repo.sh`; then
   # FRAUD_MODEL_BACKEND=triton docker compose up -d scorer.
   triton:
@@ -291,7 +291,7 @@ services:
       retries: 40
     restart: unless-stopped
 
-  # ---- profile observability (spec §14): collector 8580/8581, Grafana 8590, Prometheus 8591, Jaeger 8592.
+  # ---- profile observability: collector 8580/8581, Grafana 8590, Prometheus 8591, Jaeger 8592.
   # Services export with OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 (scorer, gRPC) or
   # http://otel-collector:4318 (summarizer, HTTP).
   otel-collector:
@@ -352,7 +352,7 @@ services:
       retries: 30
     restart: unless-stopped
 
-  # ---- profile datadog (spec §14): the collector exporting to Datadog instead (needs DD_API_KEY).
+  # ---- profile datadog: the collector exporting to Datadog instead (needs DD_API_KEY).
   otel-collector-datadog:
     image: otel/opentelemetry-collector-contrib:0.120.0
     profiles: [datadog]

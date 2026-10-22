@@ -60,7 +60,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
-      # p95 < 80 ms at 300 RPS (spec NFR-1); generates the demo data and trains first.
+      # p95 < 80 ms at 300 RPS; generates the demo data and trains first.
       - run: make bench BENCH_PROFILE=ci
       - if: always()
         uses: actions/upload-artifact@v4

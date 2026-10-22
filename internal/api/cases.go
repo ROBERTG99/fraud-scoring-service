@@ -19,7 +19,7 @@ import (
 	"github.com/ROBERTG99/fraud-scoring-service/internal/store"
 )
 
-// ConsoleTimeout bounds every console call (spec §4.7).
+// ConsoleTimeout bounds every console call.
 const ConsoleTimeout = 2 * time.Second
 
 // LiveInterval is the StreamLiveMetrics push period.

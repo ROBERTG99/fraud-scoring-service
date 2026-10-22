@@ -8,5 +8,5 @@
     "MD041": false, // files may start with a front comment
     "MD060": false // table pipe spacing (new in markdownlint 0.39): tables keep the compact |---| style
   },
-  "ignores": ["**/node_modules/**", "web/dist/**", "third_party/**", ".venv/**", "docs/specs/**", "BUILD.md"]
+  "ignores": ["**/node_modules/**", "web/dist/**", "third_party/**", ".venv/**"]
 }

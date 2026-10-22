@@ -23,7 +23,7 @@ CONSOLE_ROLES = frozenset({"analyst", "risk_engineer", "ml_engineer"})
 
 
 def check_jwks_url(url: str) -> None:
-    """Require HTTPS for the JWKS endpoint unless FRAUD_ENV=dev, as internal/auth.CheckJWKSURL (audit M6 M4).
+    """Require HTTPS for the JWKS endpoint unless FRAUD_ENV=dev, as internal/auth.CheckJWKSURL (security audit).
 
     Keys fetched over plain HTTP could be replaced in transit, and with them every console token.
     """
@@ -237,7 +237,7 @@ JWKS_MAX_BYTES = 64 << 10  # as internal/auth
 
 
 class RemoteKeys:
-    """Fetches and caches a JWKS URL, as internal/auth.RemoteKeys (audit M6 L3).
+    """Fetches and caches a JWKS URL, as internal/auth.RemoteKeys (security audit).
 
     One fetch runs at a time and the lock is not held during it: callers with a usable cached key are served
     at once, the others await that fetch. Attempts are at most one per 10 s, also after a failure, and cached

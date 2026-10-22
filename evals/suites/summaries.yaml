@@ -1,4 +1,4 @@
-# Summaries suite (spec §11): 120 REVIEW cases through the real summary pipeline; FakeLLM offline.
+# Summaries suite: 120 REVIEW cases through the real summary pipeline; FakeLLM offline.
 schema: evalgate.suite.v1
 name: summaries
 description: Schema validity, faithfulness, pattern accuracy, PII reaching a provider and offline latency.

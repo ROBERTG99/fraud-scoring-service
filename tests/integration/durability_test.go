@@ -97,8 +97,8 @@ func durabilityTx(i int) *fraudv1.Transaction {
 	}
 }
 
-// TestDurabilityKill (NFR-7, FR-8, T-48): the scorer serves about 1,000 Score calls per second; halfway through,
-// Postgres is cut (decisions answered from then on are spooled, FR-8) and then the scorer is killed with SIGKILL.
+// TestDurabilityKill: the scorer serves about 1,000 Score calls per second; halfway through,
+// Postgres is cut (decisions answered from then on are spooled) and then the scorer is killed with SIGKILL.
 // After Postgres is back and the scorer restarts on the same spool directory, every decision a caller received is
 // in Postgres with the decision_id the caller saw.
 func TestDurabilityKill(t *testing.T) {
@@ -226,7 +226,7 @@ func testDurabilityKill(t *testing.T, loseSpool bool) (lost int) {
 	n := len(acked)
 	mu.Unlock()
 	t.Logf("before the kill: %d attempts, %d decisions received, %d failed %v", attempts.Load(), n, failures.Load(), codes)
-	// About 1,000 calls per second were offered (NFR-7); under -race with every package running at once fewer
+	// About 1,000 calls per second were offered; under -race with every package running at once fewer
 	// complete, so the guard asks for the offered load and a few hundred decisions, not 1,000 received.
 	if attempts.Load() < 1500 || n < 200 {
 		t.Fatalf("%d calls offered and %d decisions received before the kill; the load did not reach the scorer", attempts.Load(), n)

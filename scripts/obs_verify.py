@@ -1,4 +1,4 @@
-"""Check that the observability profile shows data (T-41): every dashboard query, Grafana, cross-service traces.
+"""Check that the observability profile shows data: every dashboard query, Grafana, cross-service traces.
 
 Run by scripts/obs_host.sh after traffic. For each query of deploy/grafana/fraud.json it reports whether
 Prometheus returns samples. Event-only series (a labelled counter that appears on its first event, such as

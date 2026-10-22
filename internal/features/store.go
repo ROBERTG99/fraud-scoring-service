@@ -64,7 +64,7 @@ func NewStore(rdb redis.Scripter, prefix string, spec *Spec) *Store {
 }
 
 // RedisCredentials returns the Redis ACL user and password from FRAUD_REDIS_USERNAME and FRAUD_REDIS_PASSWORD
-// (empty: no AUTH, the local test stack). Deployments give each service its own ACL user (audit M6 M3).
+// (empty: no AUTH, the local test stack). Deployments give each service its own ACL user (security audit).
 func RedisCredentials() (username, password string) {
 	return os.Getenv("FRAUD_REDIS_USERNAME"), os.Getenv("FRAUD_REDIS_PASSWORD")
 }

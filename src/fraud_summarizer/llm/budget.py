@@ -1,4 +1,4 @@
-"""Daily LLM cost cap (audit M6 M7, D-048).
+"""Daily LLM cost cap (security audit, D-048).
 
 Every provider response is charged at list price (`RouteConfig.cost_usd`). Once the UTC day's spend reaches
 the limit the gateway makes no further provider call that day; the pipeline writes the templated summary

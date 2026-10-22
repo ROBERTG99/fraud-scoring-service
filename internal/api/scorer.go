@@ -29,14 +29,14 @@ import (
 	"github.com/ROBERTG99/fraud-scoring-service/internal/telemetry"
 )
 
-// Timeouts from spec §4.7.
+// Scoring-path timeouts.
 const (
 	ScoreTimeout    = 45 * time.Millisecond
 	RedisTimeout    = 8 * time.Millisecond
 	ModelTimeout    = 20 * time.Millisecond
 	PostgresTimeout = 30 * time.Millisecond
 	// SpoolReserve is the part of the Score budget kept for the writer's fallback: when the commit misses its
-	// deadline the decision is fsync'd to the spool, which must still finish inside ScoreTimeout (T-50, D-078).
+	// deadline the decision is fsync'd to the spool, which must still finish inside ScoreTimeout (D-078).
 	SpoolReserve = 12 * time.Millisecond
 )
 
@@ -59,7 +59,7 @@ type FeatureStore interface {
 // Idempotency caches decisions by transaction_id (Redis fr:idem:score:{tx_id}). Get returns (nil, nil)
 // on a miss.
 // Both stores keep the SHA-256 of the request with the decision (RequestHash), so a replay with the same
-// transaction_id but different contents is refused instead of answered (audit M6 M3). A nil hash marks an
+// transaction_id but different contents is refused instead of answered (security audit). A nil hash marks an
 // entry written before hashes existed; it replays as before.
 type Idempotency interface {
 	Get(ctx context.Context, transactionID string) (*fraudv1.Decision, []byte, error)
@@ -286,7 +286,7 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 	return out, nil
 }
 
-// checkEventTime rejects an event_ts outside [now - MaxEventAge, now + MaxEventSkew] (audit M6 H2).
+// checkEventTime rejects an event_ts outside [now - MaxEventAge, now + MaxEventSkew] (security audit).
 func (s *ScorerServer) checkEventTime(ts, now time.Time) error {
 	maxAge := s.d.MaxEventAge
 	if maxAge == 0 {

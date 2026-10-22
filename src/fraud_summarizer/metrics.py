@@ -1,4 +1,4 @@
-"""Prometheus metrics for the summarizer (spec §4.7, §14)."""
+"""Prometheus metrics for the summarizer."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ SUMMARY_STATUS = Counter(
     "fraud_summary_status_total", "Case summaries written, by status (ok, fallback, unfaithful).", ["status"]
 )
 LLM_COST = Counter(
-    "fraud_llm_cost_usd", "LLM spend in USD at list price, by route and model (spec §14).", ["route", "model"]
+    "fraud_llm_cost_usd", "LLM spend in USD at list price, by route and model.", ["route", "model"]
 )
 LLM_CALLS = Counter(
     "fraud_llm_calls",

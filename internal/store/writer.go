@@ -23,7 +23,7 @@ import (
 // RESOURCE_EXHAUSTED.
 var ErrOverloaded = errors.New("decision writer overloaded")
 
-// WriterConfig tunes the group-commit writer (defaults from spec §4.7).
+// WriterConfig tunes the group-commit writer.
 type WriterConfig struct {
 	SpoolDir       string
 	QueueSize      int           // 10,000
@@ -135,7 +135,7 @@ func (w *GroupWriter) Stats() WriterStats {
 func (w *GroupWriter) SpoolDepth() int { return w.spool.Depth() }
 
 // Commit enqueues rec and waits until its batch commits. It returns the stored decision and the hash of
-// the request that produced it: rec's own, or the earlier decision for the same transaction_id (nil hash for
+// The request that produced it: rec's own, or the earlier decision for the same transaction_id (nil hash for
 // a row written before migration 00008). On Postgres failure or when ctx expires the decision is spooled and
 // returned (the caller responds; replay persists it later).
 func (w *GroupWriter) Commit(ctx context.Context, rec DecisionRecord) (*fraudv1.Decision, []byte, error) {

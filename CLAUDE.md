@@ -32,13 +32,14 @@ the scoring path. All data is synthetic (`cmd/gen`, seed 7).
 `make lint` / `make typecheck` / `make security` · `make verify` (the single gate) · `make verify-clean` ·
 `make logs` · `make eval-live` · `make record-fixtures` · `make triton-up` · `make retention` · `make dlq-peek` ·
 `make proto` · `make gen-data SIZE=demo|eval` · `make train` · `make register-model ALIAS=production|shadow` ·
-`make feature-parity` · `make tf-check` · `make sagemaker-dry-run` · `make audit-verify` · `make clean`.
+`make feature-parity` · `make tf-check` · `make sagemaker-dry-run` · `make audit-verify` · `make eval-model` /
+`make eval-summary` · `make bench-model` · `make docs` · `make clean`.
 
 ## Conventions
 
-- **Test first.** Write the failing test, implement, run the area checks, record evidence in `PROGRESS.md`,
-  commit with a Conventional Commit (`feat:`, `fix:`, `test:`, `docs:`, `chore:`, `refactor:`). Never leave
-  the branch red between tasks.
+- **Test first.** Write the failing test, implement, run the area checks, note user-visible changes in
+  `CHANGELOG.md`, commit with a Conventional Commit (`feat:`, `fix:`, `test:`, `docs:`, `chore:`, `refactor:`).
+  Never leave the branch red between changes.
 - Go: every I/O call has a deadline (`context.WithTimeout`); `go test -race` must stay clean; imports grouped
   with `goimports -local github.com/ROBERTG99/fraud-scoring-service`.
 - Python 3.12+, `uv run`, ruff, `mypy --strict` on `src/` and `training/`, Pydantic v2 for every schema.
@@ -49,9 +50,9 @@ the scoring path. All data is synthetic (`cmd/gen`, seed 7).
 - Every number in README/docs comes from a command or report that is cited next to it.
 - Ambiguity: decide, record in `docs/DECISIONS.md`; architectural choices also get an ADR in `docs/adr/`.
 
-## Commit attribution (spec §1.1)
+## Commit attribution
 
-Commits and pull requests go out under the maintainer's name only. Never add `Co-Authored-By`,
+Commits and pull requests go out under the author's own name only. Never add `Co-Authored-By`,
 `Claude-Session` or "Generated with Claude Code" trailers. Never modify `git config user.*` or the
 `GIT_AUTHOR_*` / `GIT_COMMITTER_*` variables. See `.claude/rules/git-commits.md`.
 
@@ -70,7 +71,7 @@ Commits and pull requests go out under the maintainer's name only. Never add `Co
 
 ## Harness
 
-- Subagents in `.claude/agents/`: `reviewer` (verdict "ship" / "fix first"), `security-auditor`,
+- Review agents in `.claude/agents/`: `reviewer` (verdict "ship" / "fix first"), `security-auditor`,
   `test-designer`, `eval-analyst`, `ux-reviewer`, `docs-editor`, `latency-reviewer`, `ml-reviewer`.
 - Skills in `.claude/skills/`: `tdd`, `quality-gate`, `eval-report`, `new-adr`, `add-migration`,
   `add-endpoint`, `add-llm-route`, `add-eval-case`, `demo-capture`, `release`, `add-rule`,
@@ -81,10 +82,9 @@ Commits and pull requests go out under the maintainer's name only. Never add `Co
 
 ## Key documents
 
-- Specification: `docs/specs/000-build-spec.md` · Progress: `PROGRESS.md` · Decisions: `docs/DECISIONS.md`
+- Decisions: `docs/DECISIONS.md` · Changes: `CHANGELOG.md` · Contributing: `CONTRIBUTING.md`
 - ADRs: `docs/adr/` · Architecture: `docs/architecture.md` · Design FAQ: `docs/design-faq.md`
 - Evaluation: `docs/evaluation.md`, `evals/REPORT.md` · Security: `docs/security.md` · Runbook: `docs/runbook.md`
-- Known limitations: `docs/KNOWN_LIMITATIONS.md` · Verification: `docs/verification.md`
+- Known limitations: `docs/KNOWN_LIMITATIONS.md` · Development setup: `docs/DEVELOPMENT.md`
 
-After a context reset: re-read the spec, `PROGRESS.md`, `docs/DECISIONS.md` and `git log --oneline -30`,
-then resume from the first unchecked task.
+After a context reset: re-read `docs/DECISIONS.md`, `CHANGELOG.md` and `git log --oneline -30`.

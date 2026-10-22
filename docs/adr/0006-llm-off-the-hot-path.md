@@ -10,11 +10,11 @@ Accepted.
 
 ## Context
 
-Analysts used to rebuild each review case from raw event logs (spec §2). A language model can summarize a
+Analysts used to rebuild each review case from raw event logs. A language model can summarize a
 case's facts into a pattern, cited evidence and checks to run. But a provider call takes seconds (the route's
 timeout is 8 s), costs money, can fail or refuse, returns non-deterministic text, and reads input that an
-attacker controls in part: merchant names reach the facts. `Score` has a 45 ms deadline (ADR 0002). CLAUDE.md
-and the spec put it as a hard rule: the LLM may never change, delay or block a decision, and nothing other
+attacker controls in part: merchant names reach the facts. `Score` has a 45 ms deadline (ADR 0002). `CLAUDE.md`
+puts it as a hard rule: the LLM may never change, delay or block a decision, and nothing other
 than the model server, Redis and Postgres may be called on the scoring path.
 
 ## Decision

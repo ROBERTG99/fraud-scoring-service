@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Fields are length-prefixed: moving a separator between two fields changes the MAC (audit M6 M9). The
+// Fields are length-prefixed: moving a separator between two fields changes the MAC (security audit). The
 // unkeyed sha256 of '|'-joined fields could not tell these apart.
 func TestAuditMACSeparatesFields(t *testing.T) {
 	key := []byte(strings.Repeat("k", MinAuditKeyBytes))

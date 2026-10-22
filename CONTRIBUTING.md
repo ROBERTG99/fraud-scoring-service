@@ -2,22 +2,17 @@
 
 Thank you for helping. This page covers setup, the test-first workflow, the checks to run, the code
 conventions, how to make the common kinds of change, and what never to do. The rules come from
-[`CLAUDE.md`](CLAUDE.md), the build specification ([`docs/specs/000-build-spec.md`](docs/specs/000-build-spec.md))
-and the path-scoped rules in [`.claude/rules/`](.claude/rules/); where this page and those files disagree,
-those files win.
+[`CLAUDE.md`](CLAUDE.md) and the path-scoped rules in [`.claude/rules/`](.claude/rules/); where this page and
+those files disagree, those files win.
 
-The project is pre-release. Milestones M0 to M6 are done and M7 to M9 are not started
-([`PROGRESS.md`](PROGRESS.md)). The targets whose scripts or compose services arrive in those milestones
-(`make up`, `make seed`, `make triton-up`, `make audit-verify`, `make retention`,
-`make dlq-peek`, `make test-docker`, `make tf-check`, `make verify-clean`) do not run yet; the
-[README](README.md) quick start runs the services on the host instead, and `make demo` runs against them.
+The project is pre-release.
 
 ## Setup
 
 You need Go, Python 3.12 or 3.13 (`pyproject.toml`: `>=3.12,<3.14`) with [uv](https://docs.astral.sh/uv/),
-Node 22 with pnpm (`web/package.json` pins `pnpm@10.28.0`) and Docker. `go.mod` pins `toolchain go1.26.9`
+Node 22 with pnpm (`web/package.json` pins `pnpm@10.28.0`) and Docker. `go.mod` pins `toolchain go1.26.10`
 and the Makefile sets `GOTOOLCHAIN=auto`, so any recent Go fetches the right toolchain (D-042). The versions
-the build environment recorded are in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
+the project's environment records are in [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
 ```bash
 make bootstrap
@@ -43,9 +38,7 @@ Every change follows the loop in [`.claude/skills/tdd/SKILL.md`](.claude/skills/
 2. Make the smallest change that passes it.
 3. Run the area checks: `go test -race ./<pkg>/...`, `uv run pytest <path>` or `pnpm -C web test`.
 4. Run `make check-fast`.
-5. Record evidence in `PROGRESS.md` when the change closes a task or a review finding: the command and a
-   one-line result.
-6. Commit with a Conventional Commit message.
+5. Commit with a Conventional Commit message.
 
 A bug fix comes with a regression test that fails without the fix. Never leave the branch red between
 commits.
@@ -69,13 +62,8 @@ at least 70% overall (`make test-go`, `make test-py`). The
 [`quality-gate`](.claude/skills/quality-gate/SKILL.md) skill runs the gates in order and stops at the first
 failure.
 
-`make verify` does not pass yet: `make lint` stops at `lint-tf` until the Terraform module exists (T-44),
-`make test-docker` and `make tf-check` wait on M7, and `make security` fails closed where govulncheck cannot
-reach `vuln.go.dev` (`PROGRESS.md`, Session handoff and T-42). Until then run
-`make lint-go lint-py lint-web lint-proto lint-md` for lint.
-
 When you pipe a make target, use `set -o pipefail`, and do not chain the test run after a lint step with `&&`:
-a failing formatter then silently skips the tests (`PROGRESS.md`, Resume checklist).
+a failing formatter then silently skips the tests.
 
 ## Commits
 

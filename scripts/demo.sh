@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The scripted demo (spec §3.4, T-46), offline, against a running stack. Three phases of
+# The scripted demo, offline, against a running stack. Three phases of
 # `replay -scenario demo` (cmd/replay/scenario.go) write their checkpoints to artifacts/demo/checkpoints.json:
 #   1. journey   - USD 940 from a new device 2 min after an email change → REVIEW, idempotent replay, card
 #                  testing burst, invalid event → events.dlq, case in the queue, verified AI summary, shadow
@@ -11,7 +11,7 @@
 # Stack: the host stack of `FULL=1 scripts/seed_host.sh` (default; its ports, Redis prefix and service token
 # are read from $SEED_HOST_DIR). "Stopping" the model server there pauses the server and its workers
 # (SIGSTOP) and resumes them (SIGCONT), so the scorer sees it unreachable without a restart (docs/DECISIONS.md D-071).
-# On the compose stack (`make up && make seed`, T-43) the model server is paused and unpaused instead.
+# On the compose stack (`make up && make seed`) the model server is paused and unpaused instead.
 # Every endpoint can be overridden with the DEMO_* variables below, and DEMO_MODEL_STOP / DEMO_MODEL_START
 # replace the stop and start commands.
 set -euo pipefail
@@ -105,7 +105,7 @@ const before = Number(process.argv[2]), total = before + cps.length;
 cps.forEach((s, i) => {
   const ok = s.ok && s.tests.every((t) => t.results.every((x) => x.status === "passed"));
   const [id, ...rest] = s.title.split(": ");
-  console.log(`demo: ${ok ? "OK  " : "FAIL"} ${before + i + 1}/${total} ${id} (FR-13, console): ${rest.join(": ")}`);
+  console.log(`demo: ${ok ? "OK  " : "FAIL"} ${before + i + 1}/${total} ${id} (console): ${rest.join(": ")}`);
 });
 const pre = specs.find((s) => !/^[a-z_]+:/.test(s.title));
 if (pre && !pre.ok) console.log(`demo: FAIL ${pre.title} (see artifacts/demo/console.log)`);

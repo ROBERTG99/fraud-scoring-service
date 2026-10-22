@@ -28,7 +28,7 @@ type ComparisonSink interface {
 	InsertComparison(ctx context.Context, c Comparison) error
 }
 
-// ShadowConfig sizes the runner (spec §4.7: 16 workers, queue 2,000).
+// ShadowConfig sizes the runner.
 type ShadowConfig struct {
 	Workers int
 	Queue   int

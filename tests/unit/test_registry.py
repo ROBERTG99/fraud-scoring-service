@@ -1,4 +1,4 @@
-"""MLflow registry (spec FR-5, T-15) against a local file store."""
+"""MLflow registry against a local file store."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def test_set_alias_production(tracking: str, trained: tuple[Path, dict[str, obje
     assert (dest / "model.onnx").read_bytes() == (out / "model.onnx").read_bytes()
     downloaded = json.loads((dest / "model_meta.json").read_text(encoding="utf-8"))
     assert downloaded["model_version"] == meta["model_version"]
-    # The registry tag the model server verifies against (audit M6 M6).
+    # The registry tag the model server verifies against (security audit).
     assert downloaded["registry"]["onnx_sha256"] == meta["onnx_sha256"]
     rt = ModelRuntime(model_dir=None, cache_dir=str(out.parent / "cache"), use_mlflow=True)
     assert rt.load("shadow").source == "mlflow"

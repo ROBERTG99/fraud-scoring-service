@@ -1,4 +1,4 @@
-"""The Makefile declares every target listed in the specification's §16 tables."""
+"""The Makefile declares every target documented in CLAUDE.md's "Make targets" section."""
 
 from __future__ import annotations
 
@@ -8,24 +8,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def _spec_text() -> str:
-    for rel in ("BUILD.md", "docs/specs/000-build-spec.md"):
-        path = ROOT / rel
-        if path.is_file():
-            return path.read_text(encoding="utf-8")
-    raise AssertionError("specification not found")
-
-
-def spec_targets() -> set[str]:
-    section = _spec_text().split("## 16.")[1].split("## 17.")[0]
+def documented_targets() -> set[str]:
+    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    section = text.split("## Make targets")[1].split("\n## ")[0]
     targets: set[str] = set()
-    for line in section.splitlines():
-        if not line.startswith("| `make"):
-            continue
-        cell = re.split(r"(?<!\\)\|", line)[1]
-        for chunk in re.findall(r"`make ([^`]+)`", cell):
-            first = chunk.split()[0]
-            targets.update(t for t in first.replace("\\", "").split("|") if t)
+    for chunk in re.findall(r"`make ([^`]+)`", section):
+        for word in chunk.split():
+            if "=" in word:
+                continue
+            targets.update(t for t in word.split("/") if t)
     return targets
 
 
@@ -37,8 +28,8 @@ def makefile_targets() -> set[str]:
     return found
 
 
-def test_all_block_h_targets_declared() -> None:
-    expected = spec_targets()
+def test_documented_targets_declared() -> None:
+    expected = documented_targets()
     assert {"bootstrap", "verify", "proto", "tf-check", "dlq-peek", "register-model"} <= expected
     missing = sorted(expected - makefile_targets())
     assert not missing, f"Makefile is missing targets: {missing}"

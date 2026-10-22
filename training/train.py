@@ -1,4 +1,4 @@
-"""Train, calibrate and export the fraud GBDT (spec FR-5).
+"""Train, calibrate and export the fraud GBDT.
 
     uv run python -m training.train --data artifacts/data/demo --out artifacts/model
 
@@ -179,7 +179,7 @@ def split_metrics(y: npt.NDArray[np.int8], p: F64) -> dict[str, float]:
 
 
 def golden_vector() -> list[float]:
-    """The journey transaction (§3.4): USD 940 online, new device, email changed 2 minutes ago."""
+    """The journey transaction: USD 940 online, new device, email changed 2 minutes ago."""
     return [0, 1, 3, 4200, 94000, 2, 1, 43200, 2, 1, 2, 14, 9.4]
 
 

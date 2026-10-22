@@ -1,6 +1,6 @@
 ---
 name: quality-gate
-description: Run the quality gates in order and report pass/fail per gate. Use before a milestone commit or release.
+description: Run the quality gates in order and report pass/fail per gate. Use before opening a pull request or cutting a release.
 ---
 # Quality gate
 

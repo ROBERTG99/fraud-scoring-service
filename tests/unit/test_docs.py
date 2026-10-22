@@ -1,4 +1,4 @@
-"""The documentation set (spec §18, T-47): every document exists, and every number in the README's results
+"""The documentation set: every document exists, and every number in the README's results
 comes with the command or report that produced it."""
 
 from __future__ import annotations
@@ -11,13 +11,11 @@ ROOT = Path(__file__).resolve().parents[2]
 DOCUMENTS = [
     "README.md",
     "docs/architecture.md",
-    "docs/ai-development.md",
     "docs/evaluation.md",
     "docs/security.md",
     "docs/runbook.md",
     "docs/DEVELOPMENT.md",
     "docs/KNOWN_LIMITATIONS.md",
-    "docs/verification.md",
     "docs/design-faq.md",
     "evals/REPORT.md",
     "CONTRIBUTING.md",
@@ -25,7 +23,7 @@ DOCUMENTS = [
     "CHANGELOG.md",
     "LICENSE",
 ]
-# Spec §18's eight ADRs; ADR 0001 predates the list, so they are 0002 to 0009 here (D-070).
+# The eight design ADRs; ADR 0001 records the feature spec v2 change (D-070).
 ADRS = ["0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009"]
 # A results line names its source: a Markdown link, or a `make ...` / `scripts/...` / report path in backticks.
 SOURCE = re.compile(r"\]\(|`(?:make |scripts/|evals/|uv run |go test )[^`]*`")
@@ -74,13 +72,8 @@ def test_readme_numbers_link_to_reports() -> None:
     assert "under construction" not in readme.lower()
 
 
-def test_verification_has_authorship_check() -> None:
-    """Spec §19 steps 5-6: verification.md records both authorship commands and what they printed."""
-    text = (ROOT / "docs" / "verification.md").read_text(encoding="utf-8")
-    assert "git log --format='%an <%ae> | %cn <%ce>' | sort -u" in text
-    assert "git log --format=%B | grep -E 'Co-Authored-By|Claude-Session|Generated with Claude Code'" in text
-    section = text[text.index("## Authorship") :]
-    identities = re.findall(r"^ROBERTG99 <[^>]+> \| \S+ <[^>]+>$", section, re.M)
-    assert identities, "the identities printed by the first command"
-    assert "printed nothing" in section
-    assert re.search(r"^\| Commit \| [0-9a-f]{7,40}", text, re.M)
+def test_contributing_states_the_attribution_rule() -> None:
+    """CONTRIBUTING.md names every attribution trailer that commits and pull requests must not carry."""
+    text = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    for trailer in ("Co-Authored-By", "Claude-Session", "Generated with Claude Code"):
+        assert trailer in text, trailer

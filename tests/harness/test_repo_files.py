@@ -1,4 +1,4 @@
-"""Repository-level checks for files the build specification requires."""
+"""Repository-level checks for the project files every contributor relies on."""
 
 from __future__ import annotations
 
@@ -8,13 +8,12 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_bootstrap_files_exist() -> None:
-    for rel in ("PROGRESS.md", "docs/DECISIONS.md", "docs/DEVELOPMENT.md"):
+    for rel in ("CHANGELOG.md", "docs/DECISIONS.md", "docs/DEVELOPMENT.md"):
         path = ROOT / rel
         assert path.is_file(), f"missing {rel}"
         assert path.read_text(encoding="utf-8").strip(), f"{rel} is empty"
-    progress = (ROOT / "PROGRESS.md").read_text(encoding="utf-8")
-    assert progress.index("## Needs the maintainer") < progress.index("## Tasks")
-    assert "Global Definition of Done" in progress
+    decisions = (ROOT / "docs/DECISIONS.md").read_text(encoding="utf-8")
+    assert "| # | Date | Decision | Alternatives | Reason |" in decisions
 
 
 def test_attribution_settings_present() -> None:

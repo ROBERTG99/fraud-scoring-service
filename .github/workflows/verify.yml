@@ -1,6 +1,6 @@
 name: verify
 
-# Spec §19 step 1 on a fresh checkout: `make bootstrap && make verify`, the single gate, with no API keys.
+# Fresh-checkout check: `make bootstrap && make verify`, the single gate, with no API keys.
 # The other workflows run its parts on every pull request; this runs the whole target in one job.
 on:
   workflow_dispatch:

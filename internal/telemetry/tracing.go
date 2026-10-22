@@ -21,18 +21,18 @@ import (
 const TracerName = "github.com/ROBERTG99/fraud-scoring-service"
 
 // propagator is W3C trace context only. Baggage is caller-controlled data nothing here reads, so it is
-// neither accepted nor forwarded (audit M6 L9).
+// neither accepted nor forwarded (security audit).
 var propagator = propagation.TraceContext{}
 
 // Sampler records every Score span, even under a caller's unsampled traceparent: the caller may join its
-// trace but cannot hide its own requests from tracing (audit M6 L9).
+// trace but cannot hide its own requests from tracing (security audit).
 func Sampler() sdktrace.Sampler {
 	return sdktrace.ParentBased(sdktrace.AlwaysSample(), sdktrace.WithRemoteParentNotSampled(sdktrace.AlwaysSample()))
 }
 
-// InitTracing installs the global tracer provider and W3C propagator (spec §14). Spans are exported over
+// InitTracing installs the global tracer provider and W3C propagator. Spans are exported over
 // OTLP/gRPC only when OTEL_EXPORTER_OTLP_ENDPOINT (or the traces-specific variable) is set, for example to
-// the `observability` profile's collector; otherwise tracing is a no-op and costs nothing on the hot path.
+// The `observability` profile's collector; otherwise tracing is a no-op and costs nothing on the hot path.
 func InitTracing(ctx context.Context, service string) (func(context.Context) error, error) {
 	otel.SetTextMapPropagator(propagator)
 	if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" && os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") == "" {

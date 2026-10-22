@@ -17,7 +17,7 @@ const STATUS_TEXT: Record<string, string> = {
   unfaithful: "The model's summary failed the faithfulness check and was withheld.",
 };
 
-/** The asynchronous LLM summary, clearly separated from the decision (spec §13 screen 3). */
+/** The asynchronous LLM summary, clearly separated from the decision. */
 export function AiSummary({ c, session, highlighted, onEvidence, onRegenerated }: Props) {
   const regenerate = useRegenerateSummary();
   const s = c.summary;

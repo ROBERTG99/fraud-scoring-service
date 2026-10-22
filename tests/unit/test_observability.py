@@ -1,4 +1,4 @@
-"""Observability profile (spec §14, T-41): dashboard, alerts and compose wiring stay in step with the code."""
+"""Observability profile: dashboard, alerts and compose wiring stay in step with the code."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ def test_dashboard_and_alerts_use_only_registered_metrics() -> None:
     dashboard = json.loads(DASHBOARD.read_text())
     used = {m for e in exprs(dashboard) + exprs(yaml.safe_load(ALERTS.read_text())) for m in metric_names(e)}
     assert used and used <= known, f"unknown metrics: {sorted(used - known)}"
-    # Spec §14 metrics all appear on the dashboard.
+    # Service metrics all appear on the dashboard.
     for m in (
         "fraud_score_latency_seconds_bucket",
         "fraud_decisions_total",
@@ -112,14 +112,14 @@ def test_committed_dashboard_is_generated() -> None:
 
 
 def test_compose_publishes_on_loopback_only() -> None:
-    """Audit M6 M8/L1: the local stack is reachable from this machine only."""
+    """Security audit: the local stack is reachable from this machine only."""
     for name, svc in yaml.safe_load((ROOT / "compose.yaml").read_text())["services"].items():
         for port in svc.get("ports", []):
             assert str(port).startswith("127.0.0.1:"), f"{name} publishes {port} on every interface"
 
 
 def test_grafana_has_no_default_credentials_and_prometheus_no_lifecycle_api() -> None:
-    """Audit M6 M8: no admin/admin, no basic auth or login form; anonymous users are read-only viewers."""
+    """Security audit: no admin/admin, no basic auth or login form; anonymous users are read-only viewers."""
     services = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
     env = services["grafana"]["environment"]
     assert env["GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION"] == "true"
@@ -132,10 +132,10 @@ def test_grafana_has_no_default_credentials_and_prometheus_no_lifecycle_api() ->
 
 
 def test_service_containers_are_hardened() -> None:
-    """Audit M6 L8: read-only root, no capabilities, no privilege gain; bases pinned by digest."""
+    """Security audit: read-only root, no capabilities, no privilege gain; bases pinned by digest."""
     services = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
     built = {n: s for n, s in services.items() if "build" in s}
-    # Every image this repository builds runs hardened, jobs included (T-43).
+    # Every image this repository builds runs hardened, jobs included.
     assert {"scorer", "case-summarizer", "model-server", "webserve", "seed", "migrate", "mlflow"} <= set(
         built
     )

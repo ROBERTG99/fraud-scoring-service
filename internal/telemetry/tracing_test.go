@@ -62,7 +62,7 @@ func TestTraceparentRoundTrip(t *testing.T) {
 	}
 }
 
-// A caller cannot switch off the scorer's spans by sending an unsampled traceparent (audit M6 L9).
+// A caller cannot switch off the scorer's spans by sending an unsampled traceparent (security audit).
 func TestRemoteUnsampledParentIsStillSampled(t *testing.T) {
 	rec := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSampler(Sampler()), sdktrace.WithSpanProcessor(rec))

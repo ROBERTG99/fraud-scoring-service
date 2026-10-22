@@ -1,4 +1,4 @@
-"""Build (and optionally submit) the SageMaker `CreateTrainingJob` request for the fraud model (FR-12).
+"""Build (and optionally submit) the SageMaker `CreateTrainingJob` request for the fraud model.
 
     python -m training.sagemaker_launch --dry-run      # print the request; no credentials needed
     python -m training.sagemaker_launch --submit       # submit (never run by make targets or CI)

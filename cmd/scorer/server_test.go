@@ -204,7 +204,7 @@ func TestScoreReturnsRulesOnlyDecision(t *testing.T) {
 	if resp := do(t, http.MethodGet, st.base+"/healthz", "", nil); resp.StatusCode != http.StatusOK {
 		t.Fatalf("healthz %d", resp.StatusCode)
 	}
-	// Metrics are on the admin listener only, not on the public Score port (audit M6 L2).
+	// Metrics are on the admin listener only, not on the public Score port (security audit).
 	if resp := do(t, http.MethodGet, st.base+"/metrics", "", nil); resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("public /metrics %d, want 401 (no such route without a token)", resp.StatusCode)
 	}
@@ -371,7 +371,7 @@ func TestScoreContinuesTheCallersTrace(t *testing.T) {
 	}
 }
 
-// TestBodyOver64KBRejected: spec §4.4/§15 cap request bodies at 64 KB on both surfaces.
+// TestBodyOver64KBRejected: cap request bodies at 64 KB on both surfaces.
 func TestBodyOver64KBRejected(t *testing.T) {
 	st := startStack(t)
 	pad := func(total int) []byte { // a JSON body of exactly total bytes
@@ -408,7 +408,7 @@ func TestBodyOver64KBRejected(t *testing.T) {
 	}
 }
 
-// Metadata is bounded like HTTP headers: 8 MB of it used to reach the auth check (audit M6 M5).
+// Metadata is bounded like HTTP headers: 8 MB of it used to reach the auth check (security audit).
 func TestGRPCMetadataOverHeaderLimitRejected(t *testing.T) {
 	st := startStack(t)
 	conn, err := grpc.NewClient(st.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -446,7 +446,7 @@ func TestReadyzDetailOnlyOnAdmin(t *testing.T) {
 	}
 }
 
-// gRPC health checks need no token (audit M6 L10): load balancers probe without credentials.
+// gRPC health checks need no token (security audit): load balancers probe without credentials.
 func TestGRPCHealthNeedsNoToken(t *testing.T) {
 	st := startStack(t)
 	conn, err := grpc.NewClient(st.grpcAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))

@@ -1,4 +1,4 @@
--- Keyed audit chain (security audit M6 M9, D-050). New entries are HMAC-SHA256 over length-prefixed fields
+-- Keyed audit chain (security audit, D-050). New entries are HMAC-SHA256 over length-prefixed fields
 -- (alg 2) under a key held outside the database (FRAUD_AUDIT_KEY), so database access alone cannot append an
 -- entry that verifies. Earlier entries keep alg 1 (unkeyed sha256) and verify only before the first alg 2
 -- entry. The append-only triggers of 00003 stop every role that does not own the table; the owner (the

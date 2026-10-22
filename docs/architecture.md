@@ -1,33 +1,19 @@
 # Architecture
 
-This page describes the fraud scoring service as the code stands at the end of milestone M6. The intended
-design is in `docs/specs/000-build-spec.md` §4; where the code differs from the spec, this page follows the
-code and names the decision row (`docs/DECISIONS.md`) that explains the difference. Architecture decisions
-have records in `docs/adr/` (index: `docs/adr/README.md`). Every number below names the command or report
-it came from.
+This page describes the fraud scoring service as the code stands. Where the code differs from the original
+design, it follows the code and names the decision row (`docs/DECISIONS.md`) that explains the difference.
+Architecture decisions have records in `docs/adr/` (index: `docs/adr/README.md`). Every number below names the
+command or report it came from.
 
-## Status: what is built and what is not
+## Status: what is built
 
-Built and tested (M0 to M6, `PROGRESS.md` T-01 to T-42): the Go scorer with `CaseService`, the Redis Lua
-feature store, the feature-updater, the BentoML model server and the KServe v2 client for Triton, the rules
-engine and combination table, the Postgres group-commit writer with spool and outbox relay, the Python case
-summarizer, the React analyst console, training with MLflow registration and a SageMaker dry-run launcher,
-the offline eval suites, tracing, metrics and the observability compose profile.
-
-Not built yet (M7 to M9, `PROGRESS.md` status `todo`):
-
-- **T-43, images and the compose stack.** `compose.yaml` holds only the `scorer` and `case-summarizer`
-  services and the `observability` and `datadog` profiles. Postgres, Redis, Redpanda, the model server, the
-  feature-updater, MLflow, the dev-issuer, webserve, the `seed` job and the `triton` profile are not in it,
-  and `Dockerfile.go` has a `scorer` target only. `make up`, `make seed`, `make triton-up`,
-  `make audit-verify`, `make retention`, `make dlq-peek` and `make test-docker` address that stack and do not work until T-43 lands. Every
-  measurement on this page comes from the host stack instead: `compose.test.yaml` (Postgres, Redis,
-  Redpanda) plus processes started by `scripts/seed_host.sh`, `scripts/bench.sh` or `scripts/obs_host.sh`.
-- **T-44, Terraform.** There is no `infra/terraform/`; `make tf-check` and `make lint-tf` fail.
-- **T-45, CI.** There is no `.github/workflows/`.
-- **T-48, durability and chaos.** `TestDurabilityKill` (NFR-7, "0 lost decisions when the scorer is killed
-  under 1,000 RPS") does not exist, so the spool's crash behaviour is untested under load.
-- T-47 (this documentation set), T-49 (final reviews) and T-50 (final verification) are also open.
+The Go scorer with `CaseService`, the Redis Lua feature store, the feature-updater, the BentoML model server and
+the KServe v2 client for Triton, the rules engine and combination table, the Postgres group-commit writer with
+spool and outbox relay, the Python case summarizer, the React analyst console, training with MLflow
+registration and a SageMaker dry-run launcher, the offline eval suites, tracing, metrics, the compose stack
+(`compose.yaml`, with the `seed`, `jobs`, `live`, `triton`, `observability` and `datadog` profiles), the
+Terraform module under `infra/terraform/`, the CI workflows under `.github/workflows/`, and the durability test
+`TestDurabilityKill` (`tests/integration/durability_test.go`).
 
 ## Components and trust boundaries
 
@@ -223,13 +209,13 @@ sequenceDiagram
 
 Measured on the host stack: `make bench` (ci profile, 300 rps for 60 s) gives p50 6.5 ms, p95 12.8 ms and
 p99 22.5 ms, with 285 of 18,000 decisions degraded (`evals/REPORT.md`, latency). The laptop profile
-(2,000 rps) fails in the 4-vCPU build container: 586 rps achieved, p95 603.8 ms (`PROGRESS.md` T-39,
+(2,000 rps) fails in the 4-vCPU build container: 586 rps achieved, p95 603.8 ms (`make bench BENCH_PROFILE=laptop`,
 `docs/KNOWN_LIMITATIONS.md`). With tracing off, `BenchmarkScore` makes 79 allocations per call
 (`go test -run xxx -bench BenchmarkScore -benchmem -count 3 ./internal/api`, D-056).
 
 ### Combination table
 
-`decide.Combine` (`internal/decide/combine.go:56-134`) implements spec §4.4:
+`decide.Combine` (`internal/decide/combine.go:56-134`) implements the combination table:
 
 - severity is APPROVE < REVIEW < DECLINE;
 - a matched `final` rule decides (the most severe one if several match);
@@ -299,8 +285,8 @@ The spool lives on the scorer's local disk (the compose volume `scorer-spool`), 
 only as long as that disk is. A replay with other contents that arrives while Redis has no value and Postgres
 is down is spooled as a new decision and answered with it; the spool replay later keeps the first decision
 (`docs/security.md`, STRIDE for the scorer). A shadow comparison for a decision still in the spool fails the
-`shadow_comparisons` foreign key and is counted as failed. NFR-7 (kill under load, nothing lost) is T-48 and
-not tested.
+`shadow_comparisons` foreign key and is counted as failed. `TestDurabilityKill` kills the scorer under load
+and checks that no decision is lost.
 
 ## Data flow
 
@@ -333,7 +319,7 @@ values validated against `schemas/events/` in Go (`internal/stream/validate.go`)
 | `events.login`, `events.device` | `internal/replay` | feature-updater |
 | `events.transaction` | scorer (`cmd/scorer/publisher.go`), warm-up phase of `internal/replay` | feature-updater |
 | `decisions` | outbox relay (`internal/store/outbox.go`) | case-summarizer |
-| `events.dlq` | feature-updater, case-summarizer | `rpk topic consume events.dlq` (`make dlq-peek` waits on T-43) |
+| `events.dlq` | feature-updater, case-summarizer | `rpk topic consume events.dlq` (`make dlq-peek`) |
 
 ### Events to features
 
@@ -343,7 +329,7 @@ The feature-updater (`cmd/feature-updater/updater.go:82-140`) runs one goroutine
 `apply_event.lua` calls within 2 s, hands them to the `account_events` writer, and only then commits the
 offsets. `apply_event.lua` is idempotent: ZSET members are unique, sightings use `ZADD GT` (last seen) and
 `ZADD LT` (first seen, ADR 0001). The updater's `ZADD` of a transaction the scorer already added is a no-op
-(ADR 0009). Measured: `BenchmarkUpdater` applies 57,359 events/s (`PROGRESS.md` T-12). `account_events` rows
+(ADR 0009). Measured: `BenchmarkUpdater` applies 57,359 events/s. `account_events` rows
 are written in batches and dropped, with a counter, when the queue is full or an insert fails
 (`docs/KNOWN_LIMITATIONS.md`, "Features").
 
@@ -352,7 +338,7 @@ itself on the worker that scores that account, so no transaction sees a later ev
 D-025, `TestReplayDoesNotLeakLaterEventsIntoFeatures`).
 
 Online and offline features agree: `make feature-parity` compares the Go path with `training/features.py` on
-3,502 transactions × 13 features with 0 mismatches (`PROGRESS.md` T-13).
+3,502 transactions × 13 features with 0 mismatches (`make feature-parity`).
 
 ### Decisions to summaries
 
@@ -405,7 +391,7 @@ the scorer binary and applied by `scorer migrate` with the owner role.
 | `account_events` | feature-updater | best-effort timeline for the console and the summarizer (D-005) |
 | `model_versions` | nothing yet | the table and grants exist (`migrations/00002_decisions.sql:85`), but no code writes it; the registry of record is MLflow |
 
-Retention (`cmd/retention`, `internal/store/retention.go`; `make retention` waits on T-43) deletes by age in batches:
+Retention (`cmd/retention`, `internal/store/retention.go`, `make retention`) deletes by age in batches:
 decisions and everything that cascades from them after 400 days, published outbox rows after 7 days, step
 records and processed messages after 90 days, account events after 400 days. It never deletes from
 `audit_log` (D-040, `TestRetentionDeletesOnlyExpiredRows`).
@@ -456,7 +442,7 @@ every anchor (`internal/store/audit.go:194`, `cmd/scorer/audit.go`, D-057). Outs
 to start without the key and `audit-verify` refuses to run without anchors. Tests: `TestAuditChainIsKeyed`,
 `TestAuditAnchorsDetectTruncation`, `TestLabelWritesAuditRow`. What the chain does not protect against (a
 compromised scorer, which holds the key; a table owner or superuser who disables the triggers; entries after
-the last anchor) is in `docs/KNOWN_LIMITATIONS.md`, "Audit log trust boundary". `make audit-verify` runs the command inside the compose scorer, which needs the T-43 stack.
+the last anchor) is in `docs/KNOWN_LIMITATIONS.md`, "Audit log trust boundary". `make audit-verify` runs the command inside the compose scorer, which needs the compose stack.
 
 ## Observability
 
@@ -478,8 +464,7 @@ the last anchor) is in `docs/KNOWN_LIMITATIONS.md`, "Audit log trust boundary". 
   so the summarizer's `summarizer.decision` span and one `summarizer.<node>` span per step join the Score
   trace even when published later. Span attributes carry decision ids, action, score and versions, never
   account, device or merchant ids. On the host stack, 29 of 29 sampled summarized decisions traced from
-  `fraud.v1.Scorer/Score` through `summarizer.persist` (`scripts/obs_host.sh`, `scripts/obs_verify.py`,
-  `PROGRESS.md` T-41).
+  `fraud.v1.Scorer/Score` through `summarizer.persist` (`scripts/obs_host.sh`, `scripts/obs_verify.py`).
 - **Logs.** JSON with `trace_id` and `span_id` (`internal/telemetry/logging.go`,
   `src/fraud_summarizer/telemetry.py`).
 - **Dashboards.** `deploy/grafana/fraud.json` is generated by `scripts/gen_dashboard.py` and tested against the
@@ -504,7 +489,7 @@ flowchart LR
 
 1. **Data.** `cmd/gen` writes 24 days of synthetic events: 4 warm-up days, then a 70/15/15 temporal split by
    day into train, valid and test (`cmd/gen/generator.go:75`, `:749-764`). Demo size is 200,000 events
-   (`PROGRESS.md` T-08); eval size 2,000,000 (`PROGRESS.md` T-37).
+   (`make gen-data SIZE=demo`); eval size 2,000,000 (`make gen-data SIZE=eval`).
 2. **Features.** `training/features.py` computes the 13 features of `features/spec.yaml` as of each
    transaction, using only earlier events, the same definitions as `score_tx.lua` (parity above).
 3. **Model.** An XGBoost classifier (`XGBClassifier`, 300 trees, depth 6, `tree_method: hist`,
@@ -514,7 +499,7 @@ flowchart LR
 4. **Export.** The trees and the calibration map become one ONNX graph (`training/export_onnx.py:87-106`), so
    every runtime returns the calibrated probability. Training refuses an export that differs from the native
    model by more than 1e-5 (`training/train.py:213-220`); on demo data the maximum difference is 7.14e-06
-   (`PROGRESS.md` T-14). `model_meta.json` records the feature spec, the ONNX SHA-256, metrics and a golden
+   (`python -m training.train`). `model_meta.json` records the feature spec, the ONNX SHA-256, metrics and a golden
    vector.
 5. **Registry.** `registry.log_and_register` logs the run and registers a `fraud-gbdt` version tagged with
    headline test metrics, the backend and `onnx_sha256` (`training/registry.py:55-86`); locally MLflow uses a
@@ -524,14 +509,14 @@ flowchart LR
    digest, a model with no recorded digest, and, outside dev mode, a local or cached model without a pinned
    `FRAUD_MODEL_SHA256_<ALIAS>` (D-047, D-059, D-063); it refuses a model built for another feature spec (ADR
    0001). The service is ready only when `production` is loaded (`runtime.py:190-191`). Measured single-row
-   latency: p95 4.63 ms over 2,000 requests (`make bench-model`, `PROGRESS.md` T-16).
+   latency: p95 4.63 ms over 2,000 requests (`make bench-model`).
 7. **Evaluation.** `make eval-model` scores the 169,604-transaction test split of the eval data through the
    serving artifact and the Go rule engine: recall 0.9161 at FPR 0.79% at the threshold chosen on valid, and
    0.8387 at FPR 0.32% at the shipped review threshold 0.30; PR-AUC 0.8740, ECE 0.0007 (`evals/REPORT.md`,
    D-033, D-037).
 8. **Cloud training.** `make sagemaker-dry-run` prints a `CreateTrainingJob` request validated against
-   botocore's service model, with no credentials (`training/sagemaker_launch.py`, `PROGRESS.md` T-30). The
-   Terraform module that would create its role, bucket and repository is T-44 and not built. No make target
+   botocore's service model, with no credentials (`training/sagemaker_launch.py`). The
+   Terraform module for its role, bucket and repository is `infra/terraform/modules/`. No make target
    submits a job (`--submit` exists but is never run by a target) or applies Terraform.
 
 All metrics are on synthetic data whose patterns were designed to be learnable from these features; they say

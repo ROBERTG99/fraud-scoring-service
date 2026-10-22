@@ -1,4 +1,4 @@
-"""evals/REPORT.md generation (T-40)."""
+"""evals/REPORT.md generation."""
 
 from __future__ import annotations
 

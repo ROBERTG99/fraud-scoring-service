@@ -2,7 +2,7 @@ module github.com/ROBERTG99/fraud-scoring-service
 
 go 1.26.0
 
-toolchain go1.26.9
+toolchain go1.26.10
 
 require (
 	github.com/expr-lang/expr v1.17.8

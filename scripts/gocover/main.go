@@ -1,4 +1,4 @@
-// Command gocover enforces line-coverage floors on a Go cover profile (spec §10).
+// Command gocover enforces line-coverage floors on a Go cover profile.
 package main
 
 import (

@@ -1,4 +1,4 @@
-"""MLflow tracking and model registry for `fraud-gbdt` (spec FR-5).
+"""MLflow tracking and model registry for `fraud-gbdt`.
 
     uv run python -m training.registry --model-dir artifacts/model --alias production
 
@@ -117,7 +117,7 @@ def download_alias(alias: str, dest: Path) -> Path:
             shutil.copyfile(src, dest / name)
     meta = json.loads((dest / "model_meta.json").read_text(encoding="utf-8"))
     # The digest tagged at registration lives in the registry, not the artifact store: the model server checks
-    # the downloaded file against it (audit M6 M6).
+    # the downloaded file against it.
     meta["registry"] = {
         "name": MODEL_NAME,
         "version": str(mv.version),

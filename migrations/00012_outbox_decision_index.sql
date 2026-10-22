@@ -1,4 +1,4 @@
--- Index the outbox's foreign key (M6 review, D-056): retention deletes decisions in batches and their outbox
+-- Index the outbox's foreign key (review, D-056): retention deletes decisions in batches and their outbox
 -- rows cascade, which scanned decision_outbox once per deleted decision. Built CONCURRENTLY, outside a
 -- transaction, so the scorer's inserts are not blocked while it builds.
 

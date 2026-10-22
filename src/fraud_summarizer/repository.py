@@ -1,4 +1,4 @@
-"""Postgres access for the summarizer: case facts in, summaries and step records out (spec §4.5).
+"""Postgres access for the summarizer: case facts in, summaries and step records out.
 
 The summarizer only writes `case_summaries`, `step_records`, `processed_messages`, `summary_attempts` and
 `summary_regenerations`; it never writes `decisions`.

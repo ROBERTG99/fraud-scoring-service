@@ -1,4 +1,4 @@
--- Indexes for the retention job (spec §4.5, internal/store/retention.go): each batch deletes the oldest rows
+-- Indexes for the retention job: each batch deletes the oldest rows
 -- by these timestamps, which otherwise need a full scan per batch.
 
 -- +goose Up

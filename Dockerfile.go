@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # One image target per Go binary: docker build -f Dockerfile.go --target scorer .
 # Targets: scorer, feature-updater, dev-issuer, webserve (with the built console), retention.
-ARG GO_IMAGE=golang:1.26.9@sha256:37cfcca63222ec499bec5e8ad7aad52dbf7529db36d5812b8eae2f0621aa92d6
+ARG GO_IMAGE=golang:1.26.10@sha256:672c944cfd07599b5f1bb179869270cdc94c6254e41db4d431259693cb286b82
 ARG NODE_IMAGE=node:22.20.0-slim@sha256:b21fe589dfbe5cc39365d0544b9be3f1f33f55f3c86c87a76ff65a02f8f5848e
 ARG RUNTIME_IMAGE=gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 

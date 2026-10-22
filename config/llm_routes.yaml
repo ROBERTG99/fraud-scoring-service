@@ -1,4 +1,4 @@
-# LLM routes (spec §4.6, Appendix B). Model IDs live here and in the environment, never in code.
+# LLM routes. Model IDs live here and in the environment, never in code.
 # provider/model values are read from the named environment variables, falling back to the defaults.
 schema: fraud.llm_routes.v1
 routes:

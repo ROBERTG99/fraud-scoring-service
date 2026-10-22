@@ -1,9 +1,9 @@
 # Security
 
-Threat model and controls for the fraud scoring service (spec §15, T-42). All data is synthetic; the system
+Threat model and controls for the fraud scoring service (STRIDE, OWASP Top 10 and OWASP LLM Top 10). All data is synthetic; the system
 is single-tenant and runs locally or in one VPC. `make security` runs every scanner (`scripts/security.sh`,
 which fails closed when a scanner cannot run); the latest results, the accepted findings and what is still
-open are at the end of this page. The M6 security audit's findings (nine rounds) and where each was fixed are
+open are at the end of this page. The security audit's findings and where each was fixed are
 listed in `docs/DECISIONS.md` (D-041 to D-069).
 
 `FRAUD_ENV=dev` marks a local stack (`compose.yaml`, `scripts/seed_host.sh`, the tests). Anything else is
@@ -70,7 +70,7 @@ local stack the personas share one subject per role, so per-user limits are per 
 
 ## Scan results
 
-`make security` on 2026-10-19 at the T-49 fixes (raw reports in `artifacts/security/`); the `docker` workflow runs
+`make security` on 2026-10-19 (raw reports in `artifacts/security/`); the `docker` workflow runs
 the same script on every pull request:
 
 | Scanner | Result | Notes |
@@ -146,13 +146,13 @@ the same script on every pull request:
     replicas must share it (`docs/runbook.md`, Key rotation).
 13. **A replay after a lost idempotency value adds one feature event** before Postgres refuses it
     (`docs/KNOWN_LIMITATIONS.md`, D-064).
-14. **MLflow has no authentication** (T-43). Any local process (127.0.0.1:8560) or stack container can register
+14. **MLflow has no authentication** Any local process (127.0.0.1:8560) or stack container can register
     a model version with a matching `onnx_sha256` tag and move `@production`; the model server verifies the
     artifact against the registry's own tag, so the digest check (D-047) only binds a deployment that pins
     `FRAUD_MODEL_SHA256_<ALIAS>`, which the local stack does not. `--allowed-hosts` stops DNS rebinding only.
 15. **Only MLflow checks the `Host` header.** A page the developer visits could rebind its DNS name to
     127.0.0.1:8500, mint a dev-issuer token through webserve's `/auth/` proxy and call `/api/` from the same
-    origin. The dev issuer is proxied only with `FRAUD_ENV=dev` (audit M6 M4); a `Host` allow-list for dev mode
+    origin. The dev issuer is proxied only with `FRAUD_ENV=dev` (a security audit finding); a `Host` allow-list for dev mode
     would close this.
 16. **Provider keys in the `live` profile are environment variables**, visible to `docker inspect` on the
     host; Compose `secrets:` would keep them out of the container metadata.

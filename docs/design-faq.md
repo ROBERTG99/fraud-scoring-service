@@ -1,23 +1,20 @@
 # Design FAQ
 
-Answers to the fifteen questions of spec §18, in the spec's order, with `path:line` references into this
-repository and decision numbers from `docs/DECISIONS.md`. Status at the time of writing: milestones M0 to M6
-are done (`PROGRESS.md`, session handoff); M7 to M9 are not. The compose stack (T-43), Terraform (T-44), CI
-(T-45) and the durability and chaos tests (T-48) are still `todo` (`PROGRESS.md:185-190`).
-The documentation set (T-47), this page included, is being written ahead of M7 (D-070). ADR 0001 holds the
-feature-spec v2 decision, so the eight ADRs of spec §18 are numbered 0002 to 0009 (D-070). All data is
-synthetic (`cmd/gen`, seed 7), and every number below names the command or report it comes from.
+Answers to fifteen design questions, with `path:line` references into this repository and decision numbers from
+`docs/DECISIONS.md`. The eight ADRs are `docs/adr/0002` to `0009`; ADR 0001 holds the feature-spec v2 decision
+(D-070). All data is synthetic (`cmd/gen`, seed 7), and every number below names the command or report it comes
+from.
 
 ## 1. Why Go for scoring?
 
-The spec picks Go for the scorer and the feature-updater for "low tail latency", with Python as the rejected
-alternative (`docs/specs/000-build-spec.md:452`). In this code that means every dependency call carries its
+The scorer and the feature-updater are Go for "low tail latency", with Python as the rejected
+alternative (ADR 0002). In this code that means every dependency call carries its
 own in-process deadline (`internal/api/scorer.go:33-38`), and the background work that shares the process runs
 on goroutines owned by the server: the group-commit writer, the shadow pool and the model batcher
 (`cmd/scorer/main.go:181-221`). The measured pieces are small: one Score with in-memory dependencies costs 79
 allocations with tracing off (D-056, `go test -run xxx -bench BenchmarkScore -benchmem ./internal/api`), a
-64-rule evaluation takes 14.9 µs (`go test -bench BenchmarkEval64Rules ./internal/rules`, `PROGRESS.md:161`),
-and the feature-updater applies 57,359 events/s (`BenchmarkUpdater`, `PROGRESS.md:154`). No Python scorer was
+64-rule evaluation takes 14.9 µs (`go test -bench BenchmarkEval64Rules ./internal/rules`),
+and the feature-updater applies 57,359 events/s (`BenchmarkUpdater`). No Python scorer was
 built, so no Go-versus-Python comparison was measured. The Python component on the path, the BentoML model
 server, is the throughput limit on a shared 4-CPU host (`docs/KNOWN_LIMITATIONS.md:59-66`).
 
@@ -29,7 +26,7 @@ must fall within [now − 24 h, now + 5 min] so that a caller cannot rewrite an 
 (`internal/features/score_tx.lua:6-13`), takes credential changes strictly before `as_of` (lines 36-48), and
 only then adds the transaction (lines 50-67). Both steps run in one script call, so nothing can interleave
 between the read and the add (lines 1-2). `TestReadAsOfThenAddIsAtomic` (`internal/features/redis_test.go:44`)
-checks this with 64 concurrent writers and one round trip per score (`PROGRESS.md:153`), and
+checks this with 64 concurrent writers and one round trip per score, and
 `TestOutOfOrderWithinFiveMinutes` (`internal/features/redis_test.go:113`) checks late arrivals. One known gap:
 device and MCC sets keep only the latest sighting (`ZADD GT`, `score_tx.lua:54`, `:64`), so an event that
 arrives before an earlier transaction is scored can make a device or MCC look unseen
@@ -43,9 +40,9 @@ loads it (`training/features.py:21`, `:36-39`), and both refuse any version othe
 a model trained for another spec (`serving/bentoml/runtime.py:93-106`). The scorer refuses a rule set
 written for another spec, at start and on hot reload (`cmd/scorer/main.go:136-140`). `make feature-parity`
 compares the Go online path with `training/features.py` on 3,502 transactions × 13 features and finds 0
-mismatches (`tests/integration/parity_test.go:55`, `PROGRESS.md:155`). The calibration map is part of the
+mismatches (`tests/integration/parity_test.go:55`). The calibration map is part of the
 ONNX graph (`training/export_onnx.py:1-5`, D-008), and training fails if ONNX and the native model differ by
-more than 1e-5 (`training/train.py:215-220`; 7.14e-06 on demo data, `PROGRESS.md:156`). Gaps: ONNX parity is
+more than 1e-5 (`training/train.py:215-220`; 7.14e-06 on demo data, `python -m training.train`). Gaps: ONNX parity is
 checked on demo data only, and device features can differ after a 90-day gap
 (`docs/KNOWN_LIMITATIONS.md:44-46`, `:89-96`).
 
@@ -75,7 +72,8 @@ If the queue stays full for 5 ms the caller gets `RESOURCE_EXHAUSTED` (`internal
 not measured on its own. The end-to-end figures include it: p50 6.5 ms, p95 12.8 ms, p99 22.5 ms at 300 RPS
 (`make bench`, `evals/REPORT.md:68`). The `postgres.commit` span (`internal/api/scorer.go:214`) can show the
 share in traces. What it buys is tested by `TestCommitBeforeRespond` (`internal/store/writer_test.go:77`).
-The NFR-7 proof, `TestDurabilityKill` (0 lost decisions when the scorer is killed under load), waits for T-48.
+`TestDurabilityKill` (`tests/integration/durability_test.go`) kills the scorer under load and checks that no
+decision is lost.
 
 ## 6. How are duplicate `Score` calls handled?
 
@@ -89,7 +87,7 @@ NOTHING` in Postgres (`internal/store/writer.go:265-279`): the loser returns the
 back to Redis (`internal/api/scorer.go:229-248`, D-057, D-064). Tests: `TestScoreReplayReturnsSameDecisionID`,
 `TestConcurrentDuplicatesShareOneDecision` and `TestReplayWithDifferentContentsIsRejected`
 (`internal/api/scorer_test.go:240`, `:281`, `:411`). Downstream, the outbox relay delivers at least once, and
-consumers deduplicate on `decision_id` (`internal/store/outbox_test.go:23`, `PROGRESS.md:168`). Remaining gap:
+consumers deduplicate on `decision_id` (`internal/store/outbox_test.go:23`). Remaining gap:
 a replay after a lost Redis value adds one feature event before Postgres refuses it
 (`docs/KNOWN_LIMITATIONS.md:160-167`).
 
@@ -101,7 +99,7 @@ The shadow job is submitted only after the decision is committed and the idempot
 (`internal/model/shadow.go:31-36`, `:75-86`). Workers use their own 100 ms context, not the request's,
 recover from panics, and write only `shadow_comparisons` (`internal/model/shadow.go:109-136`).
 `TestShadowFailureDoesNotChangeDecisions` checks that 1,000 decisions are identical with an always-failing
-shadow (`internal/api/shadow_test.go:37`, `PROGRESS.md:169`). The isolation is not total. Primary and shadow
+shadow (`internal/api/shadow_test.go:37`). The isolation is not total. Primary and shadow
 calls go through the same batcher (one queue per alias) to the same model server
 (`cmd/scorer/main.go:181-186`, `:216-218`), so shadow load competes for model-server CPU. Before batching,
 that pushed 40% of decisions to rules-only at 250 tx/s (D-024, `docs/KNOWN_LIMITATIONS.md:61-66`).
@@ -207,31 +205,28 @@ in the 4-vCPU container where the load generator and every service share CPUs
   account without cross-slot scripts.
 - **Model server.** This is the first limit (`docs/KNOWN_LIMITATIONS.md:59-66`). The batcher already
   coalesces up to 64 rows per call (`internal/model/batcher.go:11-16`, `:21-25`). A single row takes p95 4.63 ms
-  (`make bench-model`, `PROGRESS.md:158`). More workers and replicas, or Triton with dynamic batching (not run
+  (`make bench-model`). More workers and replicas, or Triton with dynamic batching (not run
   here, question 14), would be needed, and shadow scoring doubles the load (question 7).
 - **Postgres.** One primary takes every decision, outbox and case row. Group commit amortises the commits
   (`internal/store/writer.go:40-45`). At this rate the next steps would be time-partitioned `decisions` and
   likely sharding by account. Outbox relays can run in parallel because they claim rows with
   `FOR UPDATE SKIP LOCKED` (`internal/store/outbox.go:53`).
-- **Feature-updater.** It applies 57,359 events/s in one process (`BenchmarkUpdater`, `PROGRESS.md:154`), and
+- **Feature-updater.** It applies 57,359 events/s in one process (`BenchmarkUpdater`), and
   Kafka partitions keyed by account split the work across instances.
 
-Each step needs its own load test on separate hosts. None has been done, and the CI bench (T-45) does not
-exist yet.
+Each step needs its own load test on separate hosts. None has been done; the CI bench (`make bench`) runs at 300 RPS on one host.
 
 ## 14. Why BentoML before Triton?
 
-The spec makes BentoML the default for its simple packaging and keeps Triton optional for KServe v2
-(`docs/specs/000-build-spec.md:117`, `:457`). Both sit behind one Go interface (`internal/model/client.go:27-31`)
+BentoML is the default for its simple packaging, and Triton is optional for KServe v2 (ADR 0004). Both sit behind one Go interface (`internal/model/client.go:27-31`)
 and are chosen by `FRAUD_MODEL_BACKEND` (`cmd/scorer/main.go:103-112`). Both serve the same ONNX graph, which
 already contains the calibration (D-008, `training/export_onnx.py:1-5`). BentoML runs the same Python runtime
 the model eval uses (`training/evaluate.py:3-5`), so the evaluated probabilities are the served ones (D-033).
 It also verifies the model's SHA-256 before loading (D-047, D-059). The Triton path checks no digest
 (`docs/security.md:138-139`). Measured: BentoML answers a single row at p95 4.63 ms against an 8 ms budget
-(`make bench-model`, `PROGRESS.md:158`). Triton was never run, because the network policy blocked its image;
+(`make bench-model`). Triton was never run, because the network policy blocked its image;
 `TestTritonGoldenVector` skips and only the recorded KServe v2 request shape is tested
-(`docs/KNOWN_LIMITATIONS.md:52-57`, `PROGRESS.md:160`). The decision record is ADR 0004, the spec's ADR 0003
-renumbered by D-070.
+(`docs/KNOWN_LIMITATIONS.md:52-57`). The decision record is ADR 0004.
 
 ## 15. How far do synthetic results transfer?
 
@@ -240,7 +235,7 @@ features, so metrics on this data say nothing about production fraud (`cmd/gen/P
 `docs/KNOWN_LIMITATIONS.md:25-26`). Some signals are generator artefacts. Fraud is easier to catch at night
 because incidents start uniformly over the day (`docs/KNOWN_LIMITATIONS.md:33-37`), and look-alike amounts
 carry no noise (`docs/KNOWN_LIMITATIONS.md:98-103`). Even between two draws of the same generator the
-headline moves: test PR-AUC is 0.9201 on the demo data (`PROGRESS.md:156`) and 0.8740 on the 2M-event eval
+headline moves: test PR-AUC is 0.9201 on the demo data (`python -m training.train`) and 0.8740 on the 2M-event eval
 data (`make eval-model`, `evals/REPORT.md:21`). The decisions suite is a conformance check of the rule
 engine, not evidence that the rules are good (`docs/KNOWN_LIMITATIONS.md:47-48`). Offline summary metrics
 measure FakeLLM, not a real model (`docs/KNOWN_LIMITATIONS.md:107-111`). What does transfer is the mechanics,

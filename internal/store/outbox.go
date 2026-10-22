@@ -23,7 +23,7 @@ type Producer interface {
 	ProduceSync(ctx context.Context, rs ...*kgo.Record) kgo.ProduceResults
 }
 
-// Relay publishes unsent decision_outbox rows to Kafka at least once (spec FR-10). Rows are locked with
+// Relay publishes unsent decision_outbox rows to Kafka at least once. Rows are locked with
 // FOR UPDATE SKIP LOCKED, produced, then marked sent in the same transaction; a crash between producing
 // and committing re-sends them, and consumers deduplicate by decision_id (processed_messages).
 type Relay struct {
@@ -74,7 +74,7 @@ func (r *Relay) RunOnce(ctx context.Context) (int, error) {
 		ids = append(ids, id)
 		rec := &kgo.Record{Topic: TopicDecisions, Key: []byte(msg.AccountID), Value: payload}
 		if traceparent != "" {
-			// W3C trace context over Kafka: the case summarizer continues the Score trace (spec §14).
+			// W3C trace context over Kafka: the case summarizer continues the Score trace.
 			rec.Headers = []kgo.RecordHeader{{Key: "traceparent", Value: []byte(traceparent)}}
 		}
 		recs = append(recs, rec)

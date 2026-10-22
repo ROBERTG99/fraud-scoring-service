@@ -1,5 +1,5 @@
 # Active rule set. Rules run against the typed feature env (internal/rules/env.go); at most 64 rules.
-# Combination with the model band: internal/decide/combine.go (spec §4.4).
+# Combination with the model band: internal/decide/combine.go.
 schema: fraud.rules.v1
 version: "2026.10.1"
 feature_spec: v1

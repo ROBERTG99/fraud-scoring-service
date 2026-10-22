@@ -1,4 +1,4 @@
-"""Train/serve feature parity (spec FR-3, T-13).
+"""Train/serve feature parity.
 
 1. Compute offline features (training/features.py) for tests/fixtures/parity/events.jsonl.
 2. Run the Go online path (Redis Lua, in event order) via TestOnlineOfflineParity, which compares every

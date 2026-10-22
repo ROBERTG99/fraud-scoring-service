@@ -1,4 +1,4 @@
-"""scripts/security.sh fails closed (M6 review B2, audit L5): a scanner that cannot run is not a pass.
+"""scripts/security.sh fails closed (security audit L5): a scanner that cannot run is not a pass.
 
 The script runs from a copy in a temporary tree with stub tools first on PATH, so no real scanner runs.
 """

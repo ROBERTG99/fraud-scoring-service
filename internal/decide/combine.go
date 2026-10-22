@@ -1,4 +1,4 @@
-// Package decide combines rule matches with the model band into the final action (spec §4.4).
+// Package decide combines rule matches with the model band into the final action.
 package decide
 
 import (

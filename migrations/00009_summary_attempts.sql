@@ -1,4 +1,4 @@
--- Paid summary attempts per message (security audit M6 M7, D-048). The case summarizer records an attempt
+-- Paid summary attempts per message (security audit, D-048). The case summarizer records an attempt
 -- before each provider call and stops paying for a decision after three, so a failure after the call (persist,
 -- save_steps) cannot buy summaries forever. Pruned with processed_messages (90 days, cmd/retention).
 

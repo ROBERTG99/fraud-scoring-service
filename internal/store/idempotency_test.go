@@ -36,7 +36,7 @@ func TestRedisIdempotencyFirstWriteWins(t *testing.T) {
 	if err != nil || got.DecisionId != "d1" || got.ReasonCodes[0] != "R" || !bytes.Equal(gotHash, hash) {
 		t.Fatalf("got %v %x %v", got, gotHash, err)
 	}
-	// A value without the request hash is never served (M6 review): whoever reaches Redis could plant a bare
+	// A value without the request hash is never served (review): whoever reaches Redis could plant a bare
 	// APPROVE for a future transaction id. It reads as a miss, so Score decides, and Postgres's ON CONFLICT
 	// still returns a decision that really was stored.
 	planted, _ := proto.Marshal(&fraudv1.Decision{DecisionId: "d3", TransactionId: "tx3", Action: fraudv1.Action_ACTION_APPROVE})
@@ -95,7 +95,7 @@ func TestRedisIdempotencyRejectsForgedValues(t *testing.T) {
 			t.Fatalf("%s value left in place", name)
 		}
 	}
-	// The MAC binds the transaction_id and the request hash (M6 review round 4): a genuine value copied to
+	// The MAC binds the transaction_id and the request hash (review round 4): a genuine value copied to
 	// another transaction's key, or with its request hash changed, is not served and is removed.
 	if err := idem.Put(ctx, &fraudv1.Decision{DecisionId: "d1", TransactionId: "tx1", Action: fraudv1.Action_ACTION_REVIEW}, hash); err != nil {
 		t.Fatal(err)

@@ -4,7 +4,7 @@ paths:
   - "prompts/**"
   - "config/llm_routes.yaml"
 ---
-# LLM code rules (spec Appendix B)
+# LLM code rules
 
 - Provider SDKs (`anthropic`, `openai`) are imported only in `src/fraud_summarizer/llm/`.
 - Model IDs come from `config/llm_routes.yaml` / environment, never from logic. No date suffixes.

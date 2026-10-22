@@ -537,7 +537,7 @@ func TestDemoFlagsSelectTheScenario(t *testing.T) {
 }
 
 // When a call is not decided rules-only, the checkpoint says which call and what came back, so a CI failure
-// can be told apart from a demo bug (T-50: CI saw 19 of 20 with no clue which one).
+// can be told apart from a demo bug (CI once saw 19 of 20 with no clue which one).
 func TestDemoDegradedPhaseNamesTheCallThatWasNotRulesOnly(t *testing.T) {
 	f := newDemoFixture()
 	f.scorer.degraded = func(call int) bool { return call != 7 }

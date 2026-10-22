@@ -8,13 +8,13 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Retention is the data-retention policy (spec §4.5).
+// Retention is the data-retention policy.
 type Retention struct {
 	Decisions         time.Duration // decisions; their outbox, case, summary, label and shadow rows cascade
 	OutboxSent        time.Duration // published outbox rows (unsent rows stay until published)
 	StepRecords       time.Duration
 	ProcessedMessages time.Duration
-	AccountEvents     time.Duration // not in the spec's list: kept as long as the decisions they explain (D-040)
+	AccountEvents     time.Duration // not in the retention list: kept as long as the decisions they explain (D-040)
 }
 
 // DefaultRetention: 400 days for decisions and everything attached, 7 days for sent outbox rows, 90 days

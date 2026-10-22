@@ -1,4 +1,4 @@
-"""Licence check (spec §8, §17): permissive dependencies only; recorded exceptions are explicit."""
+"""Licence check: permissive dependencies only; recorded exceptions are explicit."""
 
 from __future__ import annotations
 

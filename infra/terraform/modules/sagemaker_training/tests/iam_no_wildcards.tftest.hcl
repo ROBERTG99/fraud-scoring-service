@@ -1,4 +1,4 @@
-# FR-12: the SageMaker execution role has no wildcard action and no "*" resource, and only SageMaker jobs of
+# The SageMaker execution role has no wildcard action and no "*" resource, and only SageMaker jobs of
 # this account can assume it. mock_provider: no AWS credentials.
 mock_provider "aws" {
   mock_data "aws_caller_identity" {

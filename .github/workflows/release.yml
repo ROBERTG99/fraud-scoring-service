@@ -1,7 +1,7 @@
 name: release
 
 # Actions are pinned by commit SHA here: this workflow can push images and sign provenance (D-077).
-# Tags are cut by the maintainer (`make release` / the release skill); this repository never pushes tags.
+# Tags are cut manually (`make release`); this repository never pushes tags.
 on:
   push:
     tags: ["v*"]

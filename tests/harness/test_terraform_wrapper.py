@@ -1,4 +1,4 @@
-"""scripts/terraform.sh runs only the offline checks, without any AWS credential source (T-49, D-077)."""
+"""scripts/terraform.sh runs only the offline checks, without any AWS credential source (D-077)."""
 
 from __future__ import annotations
 

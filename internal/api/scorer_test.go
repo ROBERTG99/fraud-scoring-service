@@ -219,7 +219,7 @@ func TestScoreJourneyDecision(t *testing.T) {
 	if d.Action != fraudv1.Action_ACTION_REVIEW || d.ModelVersion != "fraud-gbdt/1" || d.RulesVersion != "2026.10.2" || d.Degraded {
 		t.Fatalf("decision %+v", d)
 	}
-	// Spec §3.4 journey: R001 matches and the model scores 0.62.
+	// Demo journey: R001 matches and the model scores 0.62.
 	want := []string{"NEW_DEVICE_AFTER_CREDENTIAL_CHANGE", "MODEL_SCORE_ELEVATED"}
 	if len(d.ReasonCodes) != len(want) {
 		t.Fatalf("reasons %v want %v", d.ReasonCodes, want)
@@ -367,7 +367,7 @@ func TestValidationRules(t *testing.T) {
 	}
 }
 
-// TestEventTimeIsBounded: security audit M6 H2. event_ts drives the feature windows: a far-future value
+// TestEventTimeIsBounded: security audit. event_ts drives the feature windows: a far-future value
 // trimmed an account's history to zero, and a backdated one moved a device's first-seen time earlier.
 func TestEventTimeIsBounded(t *testing.T) {
 	h := newHarness(t)
@@ -406,7 +406,7 @@ func TestEventTimeIsBounded(t *testing.T) {
 	}
 }
 
-// TestReplayWithDifferentContentsIsRejected: security audit M6 M3. A replay is matched on transaction_id;
+// TestReplayWithDifferentContentsIsRejected: security audit. A replay is matched on transaction_id;
 // without comparing contents, a reused id (or a planted idempotency entry) returned an unrelated decision.
 func TestReplayWithDifferentContentsIsRejected(t *testing.T) {
 	h := newHarness(t)
@@ -444,11 +444,11 @@ func TestReplayWithDifferentContentsIsRejected(t *testing.T) {
 }
 
 // When a concurrent duplicate won, Commit's ON CONFLICT returns the stored request hash with the stored
-// decision, so the check needs no second read that could fail or time out (M6 round 2: the path failed open,
+// decision, so the check needs no second read that could fail or time out (review round 2: the path failed open,
 // then a 30 ms re-read timed out under load).
 // A decision found by the commit (its Redis entry expired, failed its MAC after a key rotation, or was never
 // written) goes back into Redis, so the next replay is answered there and adds nothing to the feature store
-// (security audit round 4, L2 and L3).
+// (security audit round 4).
 func TestAConflictRestoresTheIdempotencyEntry(t *testing.T) {
 	h := newHarness(t)
 	tx := journeyTx("0192f000-0000-7000-8000-0000000000c3")

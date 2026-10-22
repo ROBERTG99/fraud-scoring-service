@@ -1,4 +1,4 @@
-// Package replay feeds a generated dataset through the running system (spec FR-4, T-31).
+// Package replay feeds a generated dataset through the running system.
 //
 // Point-in-time features need history, so a replay runs in two phases:
 //  1. warm: every event before the window goes to Kafka (events.login, events.device, events.transaction)
@@ -154,7 +154,7 @@ type Config struct {
 	// WaitCaughtUp blocks until the feature-updater has applied everything produced (nil = no wait).
 	WaitCaughtUp func(ctx context.Context) error
 	// Applier writes live login and device events to the feature store (features.Store). Required when
-	// the live window contains them.
+	// The live window contains them.
 	Applier Applier
 	Log     *slog.Logger
 }

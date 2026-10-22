@@ -38,7 +38,7 @@ const maxBody = api.MaxBodyBytes
 type serverConfig struct {
 	GRPCAddr string
 	HTTPAddr string
-	// AdminAddr serves /metrics and a detailed /readyz, kept off the public HTTP port (audit M6 L2).
+	// AdminAddr serves /metrics and a detailed /readyz, kept off the public HTTP port (security audit).
 	AdminAddr string
 	Auth      api.AuthConfig
 	Limiter   *api.RateLimiter
@@ -78,7 +78,7 @@ func newServers(ctx context.Context, cfg serverConfig) (*servers, error) {
 	}
 	gs := grpc.NewServer(
 		grpc.MaxRecvMsgSize(maxBody),
-		// Transport limits (audit M6 M5): metadata is bounded like HTTP headers, a connection carries a bounded
+		// Transport limits (security audit): metadata is bounded like HTTP headers, a connection carries a bounded
 		// number of streams, must finish its handshake in 5 s, and may not ping more than every 10 s.
 		grpc.MaxHeaderListSize(api.MaxHeaderBytes),
 		grpc.MaxConcurrentStreams(api.MaxConcurrentStreams),

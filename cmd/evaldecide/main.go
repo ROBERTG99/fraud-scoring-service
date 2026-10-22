@@ -1,4 +1,4 @@
-// Command evaldecide is the target of the `decisions` eval suite (spec §11): it reads evalgate dataset rows
+// Command evaldecide is the target of the `decisions` eval suite: it reads evalgate dataset rows
 // (JSONL on stdin) and decides each one through the real ScorerServer, active rule set and combination
 // table, with the feature store and the model stubbed by the case: `features` (13 values, or null for Redis
 // down) and `model` ({"score": s} or {"unavailable": true}). One JSON line per input line on stdout, flushed

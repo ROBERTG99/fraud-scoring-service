@@ -1,4 +1,4 @@
-# Profile `datadog` (spec §14): the same OTLP intake, traces to Datadog. Needs DD_API_KEY (and DD_SITE)
+# Profile `datadog`: the same OTLP intake, traces to Datadog. Needs DD_API_KEY (and DD_SITE)
 # in the environment; nothing here is used by the default or `observability` profiles.
 receivers:
   otlp:

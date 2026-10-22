@@ -8,7 +8,7 @@ import (
 	fraudv1 "github.com/ROBERTG99/fraud-scoring-service/gen/go/fraud/v1"
 )
 
-// T-48: a scorer killed while Postgres was down leaves its fsync'd decisions in spool.jsonl. The restarted
+// A scorer killed while Postgres was down leaves its fsync'd decisions in spool.jsonl. The restarted
 // process never opened that file, and its Drain must still replay it (TestDurabilityKill lost them before).
 func TestDrainReplaysTheSpoolOfAProcessThatDied(t *testing.T) {
 	dir := t.TempDir()

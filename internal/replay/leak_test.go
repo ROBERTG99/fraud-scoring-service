@@ -148,7 +148,7 @@ func TestReplayDoesNotLeakLaterEventsIntoFeatures(t *testing.T) {
 
 // The order the first replay used (all live account events first) shows the leak this test guards: the
 // later sighting of F moves its last-seen time past the transaction (ZADD GT), so F drops out of
-// distinct_devices_24h. new_device (spec v2, first sighting, ZADD LT) is immune to the order.
+// distinct_devices_24h. new_device (feature spec v2, first sighting, ZADD LT) is immune to the order.
 func TestLoadingTheWindowFirstLeaks(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

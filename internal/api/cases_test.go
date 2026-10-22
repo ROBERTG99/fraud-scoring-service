@@ -200,7 +200,7 @@ func TestTestRuleEvaluatesWithoutActivating(t *testing.T) {
 	if _, err := s.TestRule(ctx, &fraudv1.TestRuleRequest{When: ""}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("empty: %v", err)
 	}
-	// Security audit M6 H1: nested predicates over ranges are rejected at compile time, not evaluated.
+	// Security audit: nested predicates over ranges are rejected at compile time, not evaluated.
 	resp, err = s.TestRule(ctx, &fraudv1.TestRuleRequest{When: "all(1..990, {all(1..990, {# > 0 && # < 2000 && # * # > 0})})"})
 	if err != nil || resp.Valid || !strings.Contains(resp.Error, "not allowed") {
 		t.Fatalf("unbounded expression must be rejected: %v %v", resp, err)

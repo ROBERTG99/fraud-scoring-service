@@ -9,7 +9,7 @@ import (
 	fraudv1 "github.com/ROBERTG99/fraud-scoring-service/gen/go/fraud/v1"
 )
 
-// TestDecisionFieldsStable pins the §4.4 wire contract: renumbering or retyping a field breaks clients.
+// TestDecisionFieldsStable pins the wire contract: renumbering or retyping a field breaks clients.
 func TestDecisionFieldsStable(t *testing.T) {
 	want := map[string]struct {
 		num  protoreflect.FieldNumber

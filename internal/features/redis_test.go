@@ -201,12 +201,12 @@ func checkOnlyEarlier(rt *rapid.T, v Vector, tx events.Event, arrived []events.E
 	if v[IdxTxCount10m] != float64(c10) || v[IdxTxCount1h] != float64(c1h) || v[IdxTxCount24h] != float64(c24) || v[IdxAmountSum1h] != float64(sum1h) {
 		rt.Fatalf("tx windows %v want c10=%d c1h=%d c24=%d sum1h=%d", v, c10, c1h, c24, sum1h)
 	}
-	// Device and MCC state keep only the latest sighting (ZADD GT, spec §4.4), so they may under-count
+	// Device and MCC state keep only the latest sighting (ZADD GT), so they may under-count
 	// when a later event arrived first, but never count a later event (docs/KNOWN_LIMITATIONS.md).
 	if v[IdxDistinctDevices24h] > float64(len(devSeen)) {
 		rt.Fatalf("distinct devices %v > %d earlier devices", v[IdxDistinctDevices24h], len(devSeen))
 	}
-	// new_device (spec v2) reads the first sighting (ZADD LT), which later arrivals can never lower, so it
+	// new_device (feature spec v2) reads the first sighting (ZADD LT), which later arrivals can never lower, so it
 	// is exact under any arrival order: 0 iff an arrived sighting of the device precedes T - 24 h.
 	wantNew := 1.0
 	if first, ok := devFirst[tx.DeviceID]; ok && first < T-Ms24h {

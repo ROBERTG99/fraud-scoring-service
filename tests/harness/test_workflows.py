@@ -1,4 +1,4 @@
-"""CI/CD and repository integrations (spec §7, §17, T-45)."""
+"""CI/CD and repository integrations."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ def test_docker_terraform_e2e_and_release() -> None:
     ]
     assert images and all(i.split("/", 1)[0] == "ghcr.io" for i in images), images
     assert "sbom" in rel.lower()
-    # Nothing here deploys anywhere or applies Terraform (spec §0 rule 8).
+    # Nothing here deploys anywhere or applies Terraform (CLAUDE.md, "Never do").
     for name in REQUIRED:
         text = (WF / name).read_text(encoding="utf-8")
         assert "terraform apply" not in text and "terraform destroy" not in text, name
@@ -97,7 +97,7 @@ def test_repository_integrations() -> None:
     assert (ROOT / ".pre-commit-config.yaml").is_file()
     dc = json.loads((ROOT / ".devcontainer" / "devcontainer.json").read_text(encoding="utf-8"))
     assert dc.get("postCreateCommand") == "make bootstrap"
-    # No Claude attribution in templates (spec §1.1).
+    # No Claude attribution in templates (.claude/rules/git-commits.md).
     for p in (ROOT / ".github").rglob("*.md"):
         text = p.read_text(encoding="utf-8")
         assert "Co-Authored-By" not in text and "Generated with Claude Code" not in text, p

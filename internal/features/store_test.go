@@ -31,7 +31,7 @@ func TestComputeEdgeCases(t *testing.T) {
 	if v[IdxNewDevice] != 1 || v[IdxMCCNovel30d] != 1 || v[IdxMinutesSincePwd] != MinutesCap || v[IdxMinutesSinceEmail] != MinutesCap {
 		t.Fatalf("future sightings must not count: %v", v)
 	}
-	// A device first seen less than 24 h ago is still new (spec v2); seen before that, it is known.
+	// A device first seen less than 24 h ago is still new (feature spec v2); seen before that, it is known.
 	if v := s.Compute(Raw{DeviceFirst: tx.TSMillis - Ms24h + 1, MCCSeen: -1, PwdChanged: -1, EmailChanged: -1}, tx); v[IdxNewDevice] != 1 {
 		t.Fatalf("first seen 24 h - 1 ms ago must still be new: %v", v)
 	}

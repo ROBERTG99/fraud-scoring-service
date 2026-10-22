@@ -1,4 +1,4 @@
-"""Summarizer consumer (spec FR-11, T-29): dedupe, fallback, skip and DLQ handling without Kafka."""
+"""Summarizer consumer: dedupe, fallback, skip and DLQ handling without Kafka."""
 
 from __future__ import annotations
 
@@ -232,7 +232,7 @@ class PersistFails(MemoryRepo):
 
 
 async def test_paid_attempts_per_decision_are_capped() -> None:
-    """Audit M6 M7: a failure after the paid call must not buy another summary forever. The attempt is
+    """Security audit: a failure after the paid call must not buy another summary forever. The attempt is
     recorded before the call, so the cap also holds across restarts (the store is Postgres)."""
     provider = CountingProvider(FakeLLM())
     h, processed = handler(provider, PersistFails({DECISION_ID: journey_case()}))

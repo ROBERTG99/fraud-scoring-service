@@ -1,4 +1,4 @@
-"""Model eval report (T-37): operating points, shards and the evalgate.report.v1 it writes."""
+"""Model eval report: operating points, shards and the evalgate.report.v1 it writes."""
 
 from __future__ import annotations
 

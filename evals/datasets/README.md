@@ -12,4 +12,4 @@ Rows use the upstream evalgate case shape `{id, split, input, expected, tags, me
 | `summaries` | 48 / 72 | a REVIEW case as the summarizer loads it (decision, features, events) | pattern of the generating scenario (`cmd/gen/PATTERNS.md`): takeover 30, card testing 20, mule 20, friendly fraud 20, unclear (legitimate look-alikes) 30; `meta.pii` lists synthetic PII planted in merchant names |
 | `judge_calibration` | 40 / 40 | case facts and a summary | useful (written from the facts) or not (wrong pattern, wrong number, absent fact, generic checks); 20 / 20 per split |
 
-The spec's `judge_calibration.v1.jsonl` is `judge_calibration/cases.v1.jsonl`.
+The earlier name `judge_calibration.v1.jsonl` is `judge_calibration/cases.v1.jsonl`.

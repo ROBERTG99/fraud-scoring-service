@@ -1,4 +1,4 @@
-"""Eval datasets (T-36): counts, disjoint splits, labels by construction, reproducibility (seed 7)."""
+"""Eval datasets: counts, disjoint splits, labels by construction, reproducibility (seed 7)."""
 
 from __future__ import annotations
 

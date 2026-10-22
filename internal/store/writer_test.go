@@ -143,7 +143,7 @@ func TestCommitBeforeRespond(t *testing.T) {
 
 func TestGroupCommitBatchesConcurrentWrites(t *testing.T) {
 	pool := newPool(t, migratedDB(t))
-	// Every commit must reach the table: a slow CI runner under -race spooled some 200 ms batches (T-49).
+	// Every commit must reach the table: a slow CI runner under -race spooled some 200 ms batches.
 	w, err := NewGroupWriter(pool, relayWriterConfig(t), quiet)
 	if err != nil {
 		t.Fatal(err)
@@ -185,7 +185,7 @@ func TestSpoolReplayAfterPostgresRecovers(t *testing.T) {
 	}
 	defer w.Close()
 
-	// The bound is on the writer, not the disk: a loaded CI runner's fsync took 38 ms (T-50), and an fsync
+	// The bound is on the writer, not the disk: a loaded CI runner's fsync took 38 ms, and an fsync
 	// slower than the Score budget's spool reserve is a documented limitation (D-078, D-080).
 	var fsync atomic.Int64
 	w.spool.syncFile = func(f *os.File) error {
