@@ -35,7 +35,20 @@ const (
 	RedisTimeout    = 8 * time.Millisecond
 	ModelTimeout    = 20 * time.Millisecond
 	PostgresTimeout = 30 * time.Millisecond
+	// SpoolReserve is the part of the Score budget kept for the writer's fallback: when the commit misses its
+	// deadline the decision is fsync'd to the spool, which must still finish inside ScoreTimeout (T-50, D-078).
+	SpoolReserve = 12 * time.Millisecond
 )
+
+// commitTimeout is the commit's deadline: PostgresTimeout, cut so that the spool fallback fits in what is left
+// of the Score budget.
+func commitTimeout(ctx context.Context, now time.Time) time.Duration {
+	d := PostgresTimeout
+	if deadline, ok := ctx.Deadline(); ok {
+		d = min(d, deadline.Sub(now)-SpoolReserve)
+	}
+	return max(d, 0)
+}
 
 // FeatureStore reads point-in-time features and adds the transaction atomically.
 type FeatureStore interface {
@@ -210,7 +223,7 @@ func (s *ScorerServer) Score(ctx context.Context, req *fraudv1.ScoreRequest) (*f
 	decisionAttributes(span, decision)
 	rec.TraceParent = telemetry.Traceparent(ctx) // carried by the outbox to the decisions topic header
 
-	pctx, pcancel := context.WithTimeout(ctx, PostgresTimeout)
+	pctx, pcancel := context.WithTimeout(ctx, commitTimeout(ctx, time.Now()))
 	pctx, pspan := s.d.Tracer.Start(pctx, "postgres.commit")
 	stored, storedHash, err := s.d.Decisions.Commit(pctx, rec)
 	endSpan(pspan, err)

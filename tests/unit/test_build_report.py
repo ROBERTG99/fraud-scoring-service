@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -183,3 +184,13 @@ def test_latency_not_run_is_stated_in_the_gate_line(tmp_path: Path) -> None:
     _all_required(reports, baseline)
     gate = next(line for line in br.render(reports, baseline).splitlines() if line.startswith("Gate:"))
     assert gate.startswith("Gate: **PASS**") and "latency not run" in gate
+
+
+def test_dataset_hash_comes_from_the_suite_when_the_report_lacks_it(tmp_path: Path) -> None:
+    # evalgate v0.1.0 does not write extensions.dataset_sha256; the report hashes the suite's dataset itself.
+    reports = tmp_path / "r"
+    write(reports, "decisions", report("decisions", {"action_exact": (1.0, 1.0, "higher")}))
+    dataset = br.ROOT / "evals" / "datasets" / "decisions" / "cases.v1.jsonl"
+    expected = hashlib.sha256(dataset.read_bytes()).hexdigest()[:12]
+    text = br.render(reports, tmp_path / "none")
+    assert f"dataset sha256 {expected};" in text

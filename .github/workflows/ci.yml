@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # buf breaking compares against main
+      - uses: ./.github/actions/setup
+      - run: make lint
+      - run: actionlint
+
+  typecheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      - run: make typecheck
+
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      - run: make check-fast
+      - run: make test-web
+
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      # Unit, integration and contract suites on compose.test.yaml with the coverage gates (85% core, 70% overall).
+      - run: make test
+      - name: Feature parity (Go online vs Python offline)
+        run: make feature-parity
+      - if: always()
+        run: make test-deps-down
+
+  bench:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      # p95 < 80 ms at 300 RPS (spec NFR-1); generates the demo data and trains first.
+      - run: make bench BENCH_PROFILE=ci
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench
+          path: |
+            evals/reports/latency.json
+            artifacts/bench/*.log
+          if-no-files-found: ignore

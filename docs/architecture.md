@@ -221,8 +221,8 @@ sequenceDiagram
   end
 ```
 
-Measured on the host stack: `make bench` (ci profile, 300 rps for 60 s) gives p50 11.3 ms, p95 19.6 ms and
-p99 30.5 ms, with 169 of 17,999 decisions degraded (`evals/REPORT.md`, latency). The laptop profile
+Measured on the host stack: `make bench` (ci profile, 300 rps for 60 s) gives p50 6.5 ms, p95 12.8 ms and
+p99 22.5 ms, with 285 of 18,000 decisions degraded (`evals/REPORT.md`, latency). The laptop profile
 (2,000 rps) fails in the 4-vCPU build container: 586 rps achieved, p95 603.8 ms (`PROGRESS.md` T-39,
 `docs/KNOWN_LIMITATIONS.md`). With tracing off, `BenchmarkScore` makes 79 allocations per call
 (`go test -run xxx -bench BenchmarkScore -benchmem -count 3 ./internal/api`, D-056).
@@ -383,7 +383,7 @@ Online and offline features agree: `make feature-parity` compares the Go path wi
    non-transient failures send the message to the DLQ (`consumer.py:208-264`, D-048).
 
 Offline (`make eval-summary`, FakeLLM, 72 test cases): schema validity 1.0, faithfulness 1.0, pattern accuracy
-0.9028, PII to provider 0, p95 50.5 ms (`evals/REPORT.md`). Live evals have not run: there is no provider key in
+0.9028, PII to provider 0, p95 69.4 ms (`evals/REPORT.md`). Live evals have not run: there is no provider key in
 this environment (`evals/REPORT.md`).
 
 ## Persistence

@@ -27,9 +27,12 @@ BENCH_PROFILE ?= ci
 LIVE_EVAL_BUDGET_USD ?= 2
 
 # Test infrastructure from compose.test.yaml (ports 8521/8531/8543).
-TEST_ENV := FRAUD_TEST_PG_DSN=postgres://fraud:fraud@127.0.0.1:8521/fraud?sslmode=disable \
-	FRAUD_TEST_REDIS_ADDR=127.0.0.1:8531 \
-	FRAUD_TEST_KAFKA_BROKERS=127.0.0.1:8543
+# The environment wins, so `make test-docker` points the same targets at the service names.
+FRAUD_TEST_PG_DSN ?= postgres://fraud:fraud@127.0.0.1:8521/fraud?sslmode=disable
+FRAUD_TEST_REDIS_ADDR ?= 127.0.0.1:8531
+FRAUD_TEST_KAFKA_BROKERS ?= 127.0.0.1:8543
+TEST_ENV := FRAUD_TEST_PG_DSN=$(FRAUD_TEST_PG_DSN) FRAUD_TEST_REDIS_ADDR=$(FRAUD_TEST_REDIS_ADDR) \
+	FRAUD_TEST_KAFKA_BROKERS=$(FRAUD_TEST_KAFKA_BROKERS)
 
 GO_CORE_PKGS := ./internal/features/... ./internal/rules/... ./internal/decide/... ./internal/store/...
 
@@ -127,6 +130,7 @@ test: test-deps-up ## Unit, integration and contract tests on the host
 	$(MAKE) test-go test-py test-web
 
 test-go:
+	@mkdir -p artifacts/coverage
 	$(TEST_ENV) $(GO) test -race -count=1 -tags integration -coverprofile=artifacts/coverage/go.out -coverpkg=./internal/...,./cmd/... $(GO_PKGS)
 	$(GO) run ./scripts/gocover -profile artifacts/coverage/go.out -core internal/features,internal/rules,internal/decide,internal/store -min-core 85 -min-total 70
 
@@ -142,7 +146,7 @@ test-docker: ## The full test suite inside containers
 	./scripts/test_docker.sh
 
 e2e: ## Playwright end-to-end tests against the running stack
-	NODE_PATH=$(CURDIR)/web/node_modules $(PNPM) -C web exec playwright test --config ../tests/e2e/playwright.config.ts
+	NODE_PATH="$(CURDIR)/web/node_modules" $(PNPM) -C web exec playwright test --config ../tests/e2e/playwright.config.ts
 
 # ---------------------------------------------------------------- data, model
 .PHONY: proto gen-data train register-model feature-parity bench-model sagemaker-dry-run
@@ -178,6 +182,7 @@ eval: eval-model eval-decisions eval-summary eval-judge ## Offline evals with th
 
 eval-model:
 	@test -f artifacts/data/eval/events.jsonl || $(MAKE) gen-data SIZE=eval
+	@test -f $(MODEL_DIR)/model.onnx || $(MAKE) train # a fresh clone has no model yet
 	$(PY) python -m training.evaluate --data artifacts/data/eval --out evals/reports/model.json
 	$(PY) evalgate check evals/reports/model.json $(call baseline,model) --max-regression-pp 1.0
 
@@ -222,9 +227,12 @@ dlq-peek: ## Show the latest DLQ messages
 verify: ## Everything except eval-live; the single gate
 	$(MAKE) lint
 	$(MAKE) typecheck
+	$(COMPOSE) --profile seed --profile jobs build # trivy in security scans the built images
 	$(MAKE) security
 	$(MAKE) test
 	$(MAKE) test-docker
+	$(MAKE) up # e2e drives the console of a running, seeded stack
+	$(MAKE) seed
 	$(MAKE) e2e
 	$(MAKE) eval
 	$(MAKE) bench
@@ -235,7 +243,7 @@ verify-clean: ## make verify in a fresh clone in a temporary folder
 
 docs: ## Regenerate diagrams, OpenAPI, frontend types and screenshots
 	./scripts/proto.sh
-	E2E_SCREENSHOTS=1 NODE_PATH=$(CURDIR)/web/node_modules $(PNPM) -C web exec playwright test --config ../tests/e2e/playwright.config.ts screenshots.spec.ts
+	E2E_SCREENSHOTS=1 NODE_PATH="$(CURDIR)/web/node_modules" $(PNPM) -C web exec playwright test --config ../tests/e2e/playwright.config.ts screenshots.spec.ts
 
 clean: ## Remove containers, volumes, caches and build outputs
 	-$(COMPOSE) --profile '*' down -v --remove-orphans

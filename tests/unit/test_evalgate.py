@@ -1,4 +1,4 @@
-"""Vendored evalgate subset (D-002, D-030): suite.v1 runs, report.v1 and the check.v1 gate."""
+"""Consumer contract for evalgate v0.1.0 (D-002, D-030, D-070): suite.v1 runs, report.v1 and the check.v1 gate."""
 
 from __future__ import annotations
 
@@ -7,11 +7,17 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from typer.testing import CliRunner
 
 import evalgate
-from evalgate.cli import main
+from evalgate.cli import app
 from evalgate.contracts import Case, Report, TargetResult
-from evalgate.gate import check
+from evalgate.stats.gate import check
+
+
+def main(argv: list[str]) -> int:
+    """Runs the evalgate CLI in-process and returns its exit code."""
+    return CliRunner().invoke(app, argv).exit_code
 
 
 def toy_target(case_input: dict[str, Any]) -> dict[str, Any]:
@@ -77,7 +83,7 @@ def test_run_scores_each_case_and_aggregates_metrics(tmp_path: Path) -> None:
     assert report.metrics["toy_even"].value == pytest.approx(10 / 20)  # even x; the error case is odd anyway
     lo, hi = report.metrics["exact_y"].ci_low, report.metrics["exact_y"].ci_high
     assert lo is not None and hi is not None and lo <= 0.7 <= hi
-    assert (report.extensions or {})["target_errors"] == 1
+    assert (report.extensions or {})["error_rate"] == pytest.approx(1 / 20)  # upstream records the rate
 
 
 def test_check_gates_on_thresholds_and_paired_regressions(tmp_path: Path) -> None:

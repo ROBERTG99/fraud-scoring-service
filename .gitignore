@@ -38,3 +38,6 @@ evals/reports/*.json
 evals/reports/calibration/
 !evals/reports/baseline/
 serving/triton/model_repository/*/1/model.onnx
+
+# evalgate run store (upstream v0.1.0 writes it next to the suites)
+.evalgate/

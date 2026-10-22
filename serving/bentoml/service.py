@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from typing import Any
 
 import bentoml
@@ -18,8 +19,14 @@ class FraudModel:
     def __init__(self) -> None:
         self.runtime = ModelRuntime.from_env()
         self.status = self.runtime.load_all()
+        # This worker keeps retrying the aliases missing at start-up (the registry is empty until `make seed`).
+        self._stop = threading.Event()
+        threading.Thread(
+            target=self.runtime.watch, args=(self._stop,), name="model-watch", daemon=True
+        ).start()
 
     def __is_ready__(self) -> bool:
+        # No load from the probe: this worker's model-watch thread picks up a model registered later.
         return self.runtime.ready()
 
     @bentoml.api(route="/predict")  # type: ignore[untyped-decorator]

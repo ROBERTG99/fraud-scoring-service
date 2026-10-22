@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      go: { patterns: ["*"] }
+  - package-ecosystem: uv
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      python: { patterns: ["*"] }
+  - package-ecosystem: npm
+    directory: /web
+    schedule: { interval: weekly }
+    groups:
+      web: { patterns: ["*"] }
+  - package-ecosystem: docker
+    directories: [/, /serving/bentoml, /deploy/mlflow, /deploy/seed, /training]
+    schedule: { interval: weekly }
+  - package-ecosystem: github-actions
+    directories: [/, /.github/actions/setup]
+    schedule: { interval: weekly }
+    groups:
+      actions: { patterns: ["*"] }
+  - package-ecosystem: terraform
+    directories: [/infra/terraform/modules/sagemaker_training, /infra/terraform/envs/dev]
+    schedule: { interval: weekly }

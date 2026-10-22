@@ -5,11 +5,10 @@ point-in-time features in Redis, a calibrated gradient-boosted model served over
 reason codes. A separate Python worker writes LLM case summaries for analysts, and is kept off the scoring path:
 the LLM can never change, delay or block a decision. All data is synthetic.
 
-> **Status.** Milestones M0 to M6 of the [build specification](docs/specs/000-build-spec.md) are done: scoring,
-> features, model, rules, persistence, the case summarizer, the analyst console, evaluation, tracing and the
-> security review. From M8, the scripted demo and this documentation are done. Not started: the one-command
-> compose stack, Terraform, CI (M7) and chaos testing (M9) ([`PROGRESS.md`](PROGRESS.md)). The quick start
-> below therefore runs the services on the host.
+> **Status.** Every milestone (M0 to M9) of the [build specification](docs/specs/000-build-spec.md) is done and
+> its Global Definition of Done is checked, each item with its evidence in [`PROGRESS.md`](PROGRESS.md);
+> [`docs/verification.md`](docs/verification.md) records the final run. What is not done is in
+> [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md).
 
 ## What it does
 
@@ -38,7 +37,7 @@ All numbers below are offline, on synthetic data (generator seed 7), as recorded
 | Calibration | ECE 0.0007 (gate ≤ 0.02); PR-AUC 0.8740 | [`evals/REPORT.md`](evals/REPORT.md), `make eval-model` |
 | Decisions | 90 of 90 golden test cases exact on action and reason codes | [`evals/REPORT.md`](evals/REPORT.md), `make eval-decisions` |
 | Summaries | schema-valid 1.0, faithfulness 1.0, pattern accuracy 0.9028, PII to provider 0 (offline FakeLLM) | [`evals/REPORT.md`](evals/REPORT.md), `make eval-summary` |
-| Score latency | p50 11.3 ms, p95 19.6 ms, p99 30.5 ms at 300 requests/s for 60 s (budget p95 80 ms; run of 2026-10-17 at f9ab2a5) | [`evals/REPORT.md`](evals/REPORT.md), `make bench` |
+| Score latency | p50 6.5 ms, p95 12.8 ms, p99 22.5 ms at 300 requests/s for 60 s (budget p95 80 ms; CI run of 2026-10-20 at f1dc295) | [`evals/REPORT.md`](evals/REPORT.md), `make bench` |
 | Model server | p95 4.63 ms per prediction (measured on the first model version, fraud-gbdt/1) | [`PROGRESS.md`](PROGRESS.md) T-16, `make bench-model` |
 | Rules engine | 14.9 µs per 64-rule evaluation | [`PROGRESS.md`](PROGRESS.md) T-19, `go test -bench BenchmarkEval64Rules ./internal/rules` |
 | Tests | Go core coverage 86.4%, Python 93.11%, 665 pytest and 67 Vitest tests | [`docs/verification.md`](docs/verification.md), `make test` |
@@ -83,25 +82,28 @@ the Grafana dashboard.
 
 ## Quick start
 
-Requirements: Docker, plus the toolchains `make bootstrap` installs (Go, Python with uv, Node with pnpm; see
-[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)). Everything runs offline; no API key is needed.
+Requirements: Docker with Compose v2. Everything runs offline; no API key is needed.
 
 ```bash
-make bootstrap                                                # toolchains, dependencies, .env from .env.example
-docker compose -f compose.test.yaml -p fraudtest up -d --wait  # Postgres, Redis, Redpanda on 85xx ports
-make train                                                    # trains the model into artifacts/model
-FULL=1 scripts/seed_host.sh                                   # services on the host, then a 72 h replay (the test split)
+make up      # docker compose up -d --build --wait: every service healthy
+make seed    # generate the demo data (seed 7), train and register the model, replay the last 72 h
 ```
 
-The console is then on <http://127.0.0.1:18500>; sign in by picking a synthetic persona from the dev issuer
-(an analyst can label cases). The script's
-header says how to stop the services. The one-command path (`make up`, `make seed`, then
-<http://localhost:8500>) arrives with the compose stack in M7 (T-43).
+The console is then on <http://localhost:8500>; sign in by picking a synthetic persona from the dev issuer (an
+analyst can label cases). Without make: `docker compose up -d --build --wait` and
+`docker compose run --rm seed`. From empty volumes on a laptop (Docker Desktop, macOS arm64) `make up` took
+94 s and `make seed` 104 s, once the images were built (`PROGRESS.md`, T-43). `make down` stops the stack;
+`docker compose down -v` also deletes its data.
+
+For development, the toolchains come from `make bootstrap` (Go, Python with uv, Node with pnpm; see
+[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)), and `FULL=1 scripts/seed_host.sh` runs the same services on the
+host against `compose.test.yaml` (console on <http://127.0.0.1:18500>; the script's header says how to stop
+them).
 
 ## Demo
 
-With the stack from the quick start running, `make demo` plays the spec's user journeys offline in about ten
-seconds. Each run uses fresh accounts.
+With the stack from the quick start running (compose or host), `make demo` plays the spec's user journeys
+offline in about ten seconds. Each run uses fresh accounts.
 
 1. **Analyst.** A USD 940 online purchase comes from a new device two minutes after an email change. It is
    REVIEWed with `NEW_DEVICE_AFTER_CREDENTIAL_CHANGE`, summarized as an account takeover with three verified
@@ -183,8 +185,8 @@ Every decision is recorded in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
 ## Limitations
 
-The main ones: offline evals only (no live LLM run), synthetic data only, govulncheck not run in the build
-environment, and the M7 to M9 work listed above. The full list is in
+The main ones: offline evals only (no live LLM run), synthetic data only, Triton never run, and timing tails of
+the compose stack on a laptop. The full list is in
 [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md) and the open security findings in
 [`docs/security.md`](docs/security.md).
 

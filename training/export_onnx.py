@@ -21,7 +21,83 @@ INPUT = "features"
 OUTPUT = "probability"
 
 
+def accumulate_in_double(m: onnx.ModelProto) -> onnx.ModelProto:
+    """Rewrite a binary TreeEnsembleClassifier as a TreeEnsembleRegressor that sums its trees in double.
+
+    onnxruntime's classifier only takes float thresholds and weights and sums the 300 trees in float32, in an
+    order that depends on the thread count and the CPU: one linux/arm64 run moved a raw score by 1.3e-6, which
+    the calibration slope turned into 1.3e-5 (D-076). The regressor (ai.onnx.ml opset 3) accepts the same trees
+    as double tensors and, given double input, accumulates in double. Features and thresholds widen from float32
+    without rounding, so every branch is unchanged; a Sigmoid on the margin and the [1 - p, p] probabilities
+    output match the classifier's logistic link.
+    """
+    graph = m.graph
+    for i, node in enumerate(graph.node):
+        if node.op_type != "TreeEnsembleClassifier":
+            continue
+        attrs = {a.name: helper.get_attribute_value(a) for a in node.attribute}
+        if len(attrs.get("classlabels_int64s", [])) != 2 or len(set(attrs["class_ids"])) != 1:
+            raise ValueError("accumulate_in_double handles binary classifiers with one score column only")
+
+        tree_p = node.output[1] + "_p"
+        # float32 → double is exact, and onnxruntime takes double thresholds only for double input.
+        cast = helper.make_node("Cast", [node.input[0]], [tree_p + "_x64"], to=TensorProto.DOUBLE)
+        if attrs.get("post_transform", b"NONE") != b"LOGISTIC":
+            raise ValueError("accumulate_in_double expects the logistic link of a binary XGBoost model")
+        regressor = helper.make_node(
+            "TreeEnsembleRegressor",
+            [cast.output[0]],
+            [tree_p + "_margin"],
+            domain="ai.onnx.ml",
+            n_targets=1,
+            aggregate_function="SUM",
+            post_transform="NONE",  # the margin; the logistic is a Sigmoid node below
+            nodes_treeids=attrs["nodes_treeids"],
+            nodes_nodeids=attrs["nodes_nodeids"],
+            nodes_featureids=attrs["nodes_featureids"],
+            nodes_modes=[v.decode() for v in attrs["nodes_modes"]],
+            nodes_truenodeids=attrs["nodes_truenodeids"],
+            nodes_falsenodeids=attrs["nodes_falsenodeids"],
+            nodes_missing_value_tracks_true=attrs["nodes_missing_value_tracks_true"],
+            target_treeids=attrs["class_treeids"],
+            target_nodeids=attrs["class_nodeids"],
+            target_ids=[0] * len(attrs["class_ids"]),
+        )
+        for name, source in (
+            ("nodes_values_as_tensor", "nodes_values"),
+            ("target_weights_as_tensor", "class_weights"),
+            ("base_values_as_tensor", "base_values"),
+        ):
+            # onnxmltools omits base_values when the base margin is 0 (base_score 0.5).
+            values = np.asarray(attrs.get(source, [0.0]), dtype=np.float64)
+            regressor.attribute.append(helper.make_attribute(name, numpy_helper.from_array(values, name)))
+        one = numpy_helper.from_array(np.array([[1.0]], dtype=np.float32), tree_p + "_one")
+        graph.initializer.append(one)
+        rest = [
+            helper.make_node("Sigmoid", [tree_p + "_margin"], [tree_p]),
+            helper.make_node("Sub", [one.name, tree_p], [tree_p + "_neg"]),
+            helper.make_node("Concat", [tree_p + "_neg", tree_p], [node.output[1]], axis=1),
+        ]
+        graph.node.remove(node)
+        for j, n in enumerate([cast, regressor, *rest]):
+            graph.node.insert(i + j, n)
+        kept = [o for o in graph.output if o.name != node.output[0]]  # the label output is never used
+        del graph.output[:]
+        graph.output.extend(kept)
+        for op in m.opset_import:
+            if op.domain == "ai.onnx.ml":
+                op.version = max(op.version, 3)
+        if not any(op.domain in ("", "ai.onnx") for op in m.opset_import):
+            m.opset_import.append(helper.make_opsetid("", 15))
+        break
+    return m
+
+
 def _tree_model(model: Any, backend: str) -> onnx.ModelProto:
+    return accumulate_in_double(_converted_trees(model, backend))
+
+
+def _converted_trees(model: Any, backend: str) -> onnx.ModelProto:
     if backend == "xgboost":
         from onnxmltools.convert import convert_xgboost
         from onnxmltools.convert.common.data_types import FloatTensorType

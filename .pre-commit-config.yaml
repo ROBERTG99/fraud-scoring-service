@@ -1,0 +1,37 @@
+# pre-commit install; the same checks run in CI (make lint). Local hooks use the pinned tools of make bootstrap.
+repos:
+  - repo: local
+    hooks:
+      - id: gofmt
+        name: gofmt
+        entry: bash -c 'out=$(gofmt -l "$@"); [ -z "$out" ] || { echo "$out"; exit 1; }' --
+        language: system
+        types: [go]
+        exclude: ^gen/
+      - id: ruff
+        name: ruff check
+        entry: uv run --frozen ruff check
+        language: system
+        types: [python]
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --frozen ruff format --check
+        language: system
+        types: [python]
+      - id: gitleaks
+        name: gitleaks
+        entry: gitleaks protect --staged --no-banner --redact
+        language: system
+        pass_filenames: false
+      - id: terraform-fmt
+        name: terraform fmt
+        entry: ./scripts/terraform.sh fmt -check -recursive infra/terraform
+        language: system
+        files: ^infra/terraform/
+        pass_filenames: false
+      - id: actionlint
+        name: actionlint
+        entry: actionlint
+        language: system
+        files: ^\.github/workflows/
+        pass_filenames: false

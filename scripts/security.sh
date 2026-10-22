@@ -28,11 +28,13 @@ skip() { ROWS+=("$1|n/a|$2"); }
 
 run gitleaks gitleaks detect --no-banner --redact --source .
 run gosec gosec -quiet ./cmd/... ./internal/...
-run govulncheck govulncheck ./cmd/... ./internal/...
+# The production binaries and everything they link; internal/testutil (testcontainers, docker client) is
+# test-only and no binary imports it (docs/security.md, accepted findings).
+run govulncheck govulncheck ./cmd/...
 run bandit bandit -q -r src training serving scripts evals -ll
 REQ=$(mktemp)
 if uv export --frozen --all-groups --no-emit-project --format requirements-txt >"$REQ.all" 2>"$OUT/uv-export.txt" &&
-  grep -v -- '-e \|third_party' "$REQ.all" >"$REQ" && [ "$(grep -c '==' "$REQ")" -gt 0 ]; then
+  grep -v -- '-e \|git+https://github.com/ROBERTG99/evalgate' "$REQ.all" >"$REQ" && [ "$(grep -c '==' "$REQ")" -gt 0 ]; then
   run pip-audit pip-audit -r "$REQ" --no-deps --disable-pip --progress-spinner off
 else # an empty requirements file would "pass" pip-audit: fail closed instead
   ROWS+=("pip-audit|NOT RUN|uv export failed or listed no packages (see $OUT/uv-export.txt)")
@@ -40,9 +42,9 @@ else # an empty requirements file would "pass" pip-audit: fail closed instead
 fi
 rm -f "$REQ.all"
 run pnpm-audit pnpm -C web audit --audit-level high
-run hadolint hadolint Dockerfile.go Dockerfile.summarizer serving/bentoml/Dockerfile deploy/mlflow/Dockerfile
-run checkov checkov --quiet --compact -d . --framework dockerfile --skip-path web/node_modules --skip-path third_party
-IMAGES=$(docker compose config --images 2>/dev/null | grep '^fraud/' || true)
+run hadolint hadolint Dockerfile.go Dockerfile.summarizer Dockerfile.test serving/bentoml/Dockerfile deploy/mlflow/Dockerfile deploy/seed/Dockerfile training/Dockerfile
+run checkov checkov --quiet --compact -d . --framework dockerfile --skip-path web/node_modules
+IMAGES=$(docker compose --profile seed --profile jobs config --images 2>/dev/null | grep '^fraud/' || true)
 if [ -z "$IMAGES" ]; then # no image scanned is not a pass
   ROWS+=("trivy|NOT RUN|docker compose config listed no fraud/ images")
   FAILED=1
@@ -54,8 +56,8 @@ for img in $IMAGES; do
   # patterns, e.g. the Anthropic SDK's '{"type": "service_account"}'); gitleaks covers this repository.
   run "trivy-secret-$tag" trivy image --quiet --scanners secret --skip-dirs /app/.venv --exit-code 1 "$img"
 done
-if [ -d infra/terraform ]; then run tflint tflint --chdir infra/terraform; else skip tflint "no infra/terraform yet (T-44)"; fi
-if [ -d .github/workflows ]; then run actionlint actionlint; else skip actionlint "no .github/workflows yet (T-45)"; fi
+run tflint tflint --chdir=infra/terraform --config="$PWD/infra/terraform/.tflint.hcl" --recursive
+run actionlint actionlint
 run licences .venv/bin/python scripts/check_licenses.py
 rm -f "$REQ"
 

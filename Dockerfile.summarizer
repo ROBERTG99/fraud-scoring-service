@@ -10,8 +10,6 @@ RUN --mount=type=secret,id=extra_ca,required=false \
     pip install --no-cache-dir uv==0.11.3
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
-COPY third_party/evalgate/pyproject.toml third_party/evalgate/pyproject.toml
-COPY third_party/evalgate/src third_party/evalgate/src
 RUN --mount=type=cache,target=/root/.cache/uv --mount=type=secret,id=extra_ca,required=false \
     if [ -s /run/secrets/extra_ca ]; then export SSL_CERT_FILE=/run/secrets/extra_ca UV_NATIVE_TLS=false; fi; \
     uv sync --frozen --no-default-groups --no-install-project

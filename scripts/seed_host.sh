@@ -8,6 +8,9 @@
 #   for p in web summarizer issuer scorer updater model; do kill -TERM -- -$(cat "$SEED_HOST_DIR/$p.pid"); done
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# macOS has no setsid(1): start the process in its own session with Python's os.setsid. Every call here is
+# backgrounded with "&", so exec replaces that subshell and $! is the new session's leader.
+command -v setsid >/dev/null 2>&1 || setsid() { exec python3 -c 'import os, sys; os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])' "$@"; }
 S=${SEED_HOST_DIR:-$PWD/artifacts/seed-host}
 mkdir -p "$S/bin"
 BINS="scorer feature-updater seed"

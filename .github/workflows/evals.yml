@@ -1,0 +1,76 @@
+name: evals
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Decisions and summaries through the released evalgate action, gated against the committed baselines.
+  suites:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write # the action upserts one report comment per suite
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [decisions, summaries]
+    env:
+      PYTHONPATH: ${{ github.workspace }}
+      FRAUD_SUMMARY_PROVIDER: fake
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+      # The action installs evalgate into this same interpreter (same version), so the graders' imports
+      # (this project and its dependencies) are installed first.
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+      - name: Project dependencies for the graders
+        run: |
+          uv export --frozen --no-default-groups --no-emit-project --no-hashes -o "$RUNNER_TEMP/req.txt"
+          python -m pip install --quiet -r "$RUNNER_TEMP/req.txt"
+          python -m pip install --quiet --no-deps .
+      - uses: ROBERTG99/evalgate/action@0681335a1b6b842cb881583fdfa78d698f83375a # v0.1.0
+        with:
+          suite: evals/suites/${{ matrix.suite }}.yaml
+          baseline: evals/reports/baseline/${{ matrix.suite }}.json
+          split: test
+          max-regression-pp: "1.0"
+          python-version: "3.13"
+          report-md: evalgate-${{ matrix.suite }}.md
+          comment: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+
+  # The full offline gate: model suite on the 2M-event eval data, every suite, the judge and REPORT.md.
+  gate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: ./.github/actions/setup
+      - name: Demo data and model
+        run: make train
+      - run: make eval
+      - name: REPORT.md is generated from this run
+        run: git diff --stat -- evals/REPORT.md
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evals
+          path: |
+            evals/REPORT.md
+            evals/reports/*.json
+          if-no-files-found: ignore

@@ -1,0 +1,93 @@
+name: release
+
+# Actions are pinned by commit SHA here: this workflow can push images and sign provenance (D-077).
+# Tags are cut by the maintainer (`make release` / the release skill); this repository never pushes tags.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  images:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write # the GitHub release and its SBOM assets
+      packages: write # images to GHCR
+      id-token: write # build provenance attestations
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: scorer, file: Dockerfile.go, target: scorer }
+          - { name: feature-updater, file: Dockerfile.go, target: feature-updater }
+          - { name: dev-issuer, file: Dockerfile.go, target: dev-issuer }
+          - { name: webserve, file: Dockerfile.go, target: webserve }
+          - { name: retention, file: Dockerfile.go, target: retention }
+          - { name: case-summarizer, file: Dockerfile.summarizer, target: runtime }
+          - { name: model-server, file: serving/bentoml/Dockerfile, target: runtime }
+          - { name: mlflow, file: deploy/mlflow/Dockerfile, target: runtime }
+          - { name: seed, file: deploy/seed/Dockerfile, target: seed }
+          - { name: training, file: training/Dockerfile, target: runtime }
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/fraud-${{ matrix.name }}
+          tags: type=semver,pattern={{version}}
+      - id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          target: ${{ matrix.target }}
+          build-args: VERSION=${{ github.ref_name }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          sbom: true
+          provenance: mode=max
+      - uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/fraud-${{ matrix.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: SBOM (SPDX JSON)
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ghcr.io/${{ github.repository_owner }}/fraud-${{ matrix.name }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.name }}.spdx.json
+          upload-release-assets: false
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-${{ matrix.name }}
+          path: sbom-${{ matrix.name }}.spdx.json
+
+  github-release:
+    needs: images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          pattern: sbom-*
+          merge-multiple: true
+      - name: Release with the SBOMs attached
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" sbom-*.spdx.json --verify-tag --title "$TAG" --notes-file CHANGELOG.md

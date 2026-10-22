@@ -8,10 +8,18 @@
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'fraud_summarizer') THEN
-    CREATE ROLE fraud_summarizer LOGIN PASSWORD 'fraud_summarizer';
+    BEGIN
+      CREATE ROLE fraud_summarizer LOGIN PASSWORD 'fraud_summarizer';
+    EXCEPTION WHEN duplicate_object OR unique_violation THEN
+      NULL; -- created at the same moment by another database's migration (roles are cluster-wide)
+    END;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'fraud_retention') THEN
-    CREATE ROLE fraud_retention LOGIN PASSWORD 'fraud_retention';
+    BEGIN
+      CREATE ROLE fraud_retention LOGIN PASSWORD 'fraud_retention';
+    EXCEPTION WHEN duplicate_object OR unique_violation THEN
+      NULL; -- created at the same moment by another database's migration (roles are cluster-wide)
+    END;
   END IF;
 END
 $$;

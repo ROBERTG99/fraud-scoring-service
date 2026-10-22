@@ -20,6 +20,8 @@ import logging
 import os
 import shutil
 import threading
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -113,6 +115,7 @@ class ModelRuntime:
         cache_dir: str | None = None,
         use_mlflow: bool | None = None,
         require_pin: bool | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.model_dir = Path(model_dir) if model_dir else None
         # Outside FRAUD_ENV=dev, a local or cached model needs FRAUD_MODEL_SHA256_<ALIAS>: its model_meta.json
@@ -124,12 +127,19 @@ class ModelRuntime:
         self.use_mlflow = bool(os.environ.get("MLFLOW_TRACKING_URI")) if use_mlflow is None else use_mlflow
         self.models: dict[str, LoadedModel] = {}
         self._lock = threading.Lock()
+        # An alias missing at startup (the registry is empty until `make seed` trains) is retried at most
+        # this often, from the readiness check (T-43, D-073).
+        self.retry_interval_s = float(os.environ.get("FRAUD_MODEL_RETRY_S", "5"))
+        self._clock = clock
+        self._last_attempt: float | None = None
+        self._refreshing = threading.Lock()  # one load at a time: they share the staging directory
 
     @classmethod
     def from_env(cls) -> ModelRuntime:
         return cls(model_dir=os.environ.get("FRAUD_MODEL_DIR"))
 
     def load_all(self) -> dict[str, str]:
+        self._last_attempt = self._clock()
         status = {}
         for alias in ALIASES:
             try:
@@ -186,6 +196,35 @@ class ModelRuntime:
             self.models[alias] = loaded
         log.info("loaded %s as @%s from %s", loaded.version, alias, source)
         return loaded
+
+    def refresh(self, force: bool = False) -> bool:
+        """Loads the aliases still missing, at most once per retry interval unless forced; returns ready()."""
+        missing = [a for a in ALIASES if a not in self.models]
+        now = self._clock()
+        due = force or self._last_attempt is None or now - self._last_attempt >= self.retry_interval_s
+        if missing and due and self._refreshing.acquire(blocking=False):
+            try:
+                self._last_attempt = now
+                for alias in missing:
+                    try:
+                        self.load(alias)
+                    except ModelNotReadyError as exc:
+                        log.info("@%s still unavailable: %s", alias, exc)
+            finally:
+                self._refreshing.release()
+        return self.ready()
+
+    def watch(self, stop: threading.Event) -> None:
+        """Retries the missing aliases every retry interval until all are loaded or stop is set.
+
+        Each BentoML worker process runs one, so every worker picks up a model registered after it started,
+        not only the one that answers /readyz (T-43, D-073).
+        """
+        while not stop.is_set():
+            self.refresh(force=True)  # the wait below already spaces the attempts
+            if all(a in self.models for a in ALIASES):
+                return
+            stop.wait(self.retry_interval_s)
 
     def ready(self) -> bool:
         return "production" in self.models

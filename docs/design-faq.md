@@ -72,7 +72,7 @@ flush interval plus one shared commit, within the 30 ms Postgres budget (`intern
 If the queue stays full for 5 ms the caller gets `RESOURCE_EXHAUSTED` (`internal/store/writer.go:22-24`,
 `:148-160`). If Postgres is slow or down, the decision goes to an fsynced disk spool and is replayed later
 (`internal/store/spool.go:81-104`); in that breaker mode each Commit fsyncs on its own (D-027). The cost was
-not measured on its own. The end-to-end figures include it: p50 11.3 ms, p95 19.6 ms, p99 30.5 ms at 300 RPS
+not measured on its own. The end-to-end figures include it: p50 6.5 ms, p95 12.8 ms, p99 22.5 ms at 300 RPS
 (`make bench`, `evals/REPORT.md:68`). The `postgres.commit` span (`internal/api/scorer.go:214`) can show the
 share in traces. What it buys is tested by `TestCommitBeforeRespond` (`internal/store/writer_test.go:77`).
 The NFR-7 proof, `TestDurabilityKill` (0 lost decisions when the scorer is killed under load), waits for T-48.
@@ -195,7 +195,7 @@ No live provider call has been made from this environment (`evals/REPORT.md:9`).
 
 ## 13. How would this reach 20,000 RPS?
 
-Nothing near 20,000 RPS has been measured. The gated CI run sustains 300 RPS at p95 19.6 ms (`make bench`,
+Nothing near 20,000 RPS has been measured. The gated CI run sustains 300 RPS at p95 12.8 ms (`make bench`,
 `evals/REPORT.md:68`). The 2,000 RPS laptop profile reached only 586 RPS, with 99.3% of decisions degraded,
 in the 4-vCPU container where the load generator and every service share CPUs
 (`docs/KNOWN_LIMITATIONS.md:68-73`). What follows is reasoning from the architecture, not a measurement:

@@ -135,7 +135,10 @@ def test_service_containers_are_hardened() -> None:
     """Audit M6 L8: read-only root, no capabilities, no privilege gain; bases pinned by digest."""
     services = yaml.safe_load((ROOT / "compose.yaml").read_text())["services"]
     built = {n: s for n, s in services.items() if "build" in s}
-    assert set(built) == {"scorer", "case-summarizer"}
+    # Every image this repository builds runs hardened, jobs included (T-43).
+    assert {"scorer", "case-summarizer", "model-server", "webserve", "seed", "migrate", "mlflow"} <= set(
+        built
+    )
     for name, svc in built.items():
         assert svc.get("read_only") is True, name
         assert svc.get("cap_drop") == ["ALL"], name
@@ -143,8 +146,10 @@ def test_service_containers_are_hardened() -> None:
     for dockerfile in (
         "Dockerfile.go",
         "Dockerfile.summarizer",
+        "Dockerfile.test",
         "serving/bentoml/Dockerfile",
         "deploy/mlflow/Dockerfile",
+        "deploy/seed/Dockerfile",
     ):
         text = (ROOT / dockerfile).read_text()
         bases = re.findall(r"^FROM (\S+)", text, re.M) + re.findall(r"^ARG \w+_IMAGE=(\S+)", text, re.M)

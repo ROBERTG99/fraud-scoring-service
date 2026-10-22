@@ -13,7 +13,8 @@ this page included, which the maintainer asked for ahead of M7 (D-070).
 
 ## The specification drove the build
 
-The specification is one file, `BUILD.md`, copied to `docs/specs/000-build-spec.md` in M0 (spec §1.2). The
+The specification is one file, `BUILD.md`, copied to `docs/specs/000-build-spec.md` in M0 (spec §1.2) and moved
+there with `git mv` at the final verification (§19). The
 agent was started with one instruction: execute it end to end and do not stop until every item in the Global
 Definition of Done is checked (spec header). Three parts of it shaped the work.
 

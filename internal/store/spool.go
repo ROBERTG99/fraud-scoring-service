@@ -25,6 +25,8 @@ type Spool struct {
 	mu    sync.Mutex
 	f     *os.File
 	depth int
+	// syncFile makes appended lines durable; nil means (*os.File).Sync. Tests wrap it to time the disk.
+	syncFile func(*os.File) error
 }
 
 type spoolLine struct {
@@ -92,8 +94,18 @@ func (s *Spool) Append(recs []DecisionRecord) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.f == nil {
-		f, err := os.OpenFile(filepath.Join(s.dir, activeSpool), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) // #nosec G304 -- spool dir from config
+		path := filepath.Join(s.dir, activeSpool)
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) // #nosec G304 -- spool dir from config
 		if err != nil {
+			return err
+		}
+		// A crash mid-write can leave a torn last line; start on a fresh line so the next record stays readable.
+		torn, err := endsTorn(path)
+		if err == nil && torn {
+			_, err = f.WriteString("\n")
+		}
+		if err != nil {
+			_ = f.Close()
 			return err
 		}
 		s.f = f
@@ -101,11 +113,33 @@ func (s *Spool) Append(recs []DecisionRecord) error {
 	if _, err := s.f.WriteString(buf.String()); err != nil {
 		return err
 	}
-	if err := s.f.Sync(); err != nil {
+	syncFn := (*os.File).Sync
+	if s.syncFile != nil {
+		syncFn = s.syncFile
+	}
+	if err := syncFn(s.f); err != nil {
 		return err
 	}
 	s.depth += len(recs)
 	return nil
+}
+
+// endsTorn reports whether the file at path is non-empty and does not end with a newline.
+func endsTorn(path string) (bool, error) {
+	f, err := os.Open(path) // #nosec G304 -- spool dir from config
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = f.Close() }()
+	st, err := f.Stat()
+	if err != nil || st.Size() == 0 {
+		return false, err
+	}
+	last := make([]byte, 1)
+	if _, err := f.ReadAt(last, st.Size()-1); err != nil {
+		return false, err
+	}
+	return last[0] != '\n', nil
 }
 
 // Drain rotates the active file and hands every pending record to commit; files are deleted only after
@@ -115,13 +149,15 @@ func (s *Spool) Drain(commit func([]DecisionRecord) error) (int, error) {
 	if s.f != nil {
 		_ = s.f.Close()
 		s.f = nil
-		active := filepath.Join(s.dir, activeSpool)
-		if _, err := os.Stat(active); err == nil {
-			rotated := filepath.Join(s.dir, fmt.Sprintf("spool.%d.replay", time.Now().UnixNano()))
-			if err := os.Rename(active, rotated); err != nil {
-				s.mu.Unlock()
-				return 0, err
-			}
+	}
+	// Rotate the active file even when this process never opened it: a scorer killed while Postgres was down
+	// leaves its fsync'd decisions there, and the restarted process must replay them (T-48, D-075).
+	active := filepath.Join(s.dir, activeSpool)
+	if _, err := os.Stat(active); err == nil {
+		rotated := filepath.Join(s.dir, fmt.Sprintf("spool.%d.replay", time.Now().UnixNano()))
+		if err := os.Rename(active, rotated); err != nil {
+			s.mu.Unlock()
+			return 0, err
 		}
 	}
 	s.mu.Unlock()

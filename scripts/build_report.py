@@ -15,14 +15,17 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from evalgate.contracts import Report  # noqa: E402
-from evalgate.gate import check  # noqa: E402
+from evalgate.stats.gate import check  # noqa: E402
 from fraud_summarizer.pipeline import PROMPT_VERSION, load_prompt, prompt_hash  # noqa: E402
 
 REPORTS = ROOT / "evals" / "reports"
+SUITES_DIR = ROOT / "evals" / "suites"
 # make eval runs these; a missing report or baseline fails the gate. latency (make bench) is optional there
 # and the Gate line says when it did not run.
 REQUIRED = ("model", "decisions", "summaries")
@@ -39,6 +42,19 @@ def _load(path: Path) -> tuple[Report, str] | None:
         return None
     raw = path.read_bytes()
     return Report.model_validate(json.loads(raw)), hashlib.sha256(raw).hexdigest()
+
+
+def _dataset_sha256(name: str, ext: dict[str, Any]) -> str:
+    """The report's dataset hash, else the sha256 of the dataset its suite file names (evalgate v0.1.0
+    does not record it)."""
+    if ext.get("dataset_sha256"):
+        return str(ext["dataset_sha256"])
+    suite = SUITES_DIR / f"{name}.yaml"
+    if not suite.is_file():
+        return "unknown"
+    rel = (yaml.safe_load(suite.read_text(encoding="utf-8")) or {}).get("dataset")
+    dataset = (suite.parent / rel).resolve() if rel else None
+    return hashlib.sha256(dataset.read_bytes()).hexdigest() if dataset and dataset.is_file() else "unknown"
 
 
 def _int(v: object) -> str:
@@ -106,7 +122,7 @@ def _details(name: str, r: Report) -> list[str]:
             )
         return lines
     lines = [
-        f"{r.n_cases} cases ({ext.get('split', '?')} split), dataset sha256 {str(ext.get('dataset_sha256', ''))[:12]}; "
+        f"{r.n_cases} cases ({ext.get('split', '?')} split), dataset sha256 {_dataset_sha256(name, ext)[:12]}; "
         f"p50 {r.latency_p50_ms:.1f} ms, p95 {r.latency_p95_ms:.1f} ms; cost USD {r.cost_usd_total:.4f}."
     ]
     if r.models:

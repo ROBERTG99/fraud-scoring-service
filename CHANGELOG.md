@@ -10,13 +10,35 @@ quoted below come from [`PROGRESS.md`](PROGRESS.md), decisions from [`docs/DECIS
 
 ## Unreleased
 
-### Pending: M7 to M9
+### Changed
 
-Not started (`PROGRESS.md`, Tasks):
+- evalgate is now the released `v0.1.0` (`git+https://github.com/ROBERTG99/evalgate@v0.1.0`, locked at
+  0681335 in `uv.lock`); the vendored stand-in in `third_party/evalgate/` is removed (D-072).
 
-- **M7:** images, compose profiles and the test compose file for `make test-docker` (T-43), the SageMaker
-  Terraform module (T-44), CI workflows (T-45).
-- **M9:** durability and chaos tests (T-48), final reviews and fixes (T-49), final verification (T-50).
+### M9: durability, reviews and final verification (T-48 to T-50)
+
+#### Added
+
+- `TestDurabilityKill` (SIGKILL of the real scorer under about 1,000 Score calls per second with Postgres cut)
+  and its control, `scripts/chaos.sh` for the §4.7 outage signals, `make verify-clean`, the `verify` workflow.
+
+#### Fixed
+
+- A scorer killed while Postgres was down lost its spooled decisions on restart; a torn spool line could hide the
+  next record (D-075, D-077).
+- The spool fallback ran after the 45 ms Score budget when the model had timed out (D-078).
+- ONNX scores depended on onnxruntime's thread count; trees are now summed in double (D-076).
+- Role migrations raced on a fresh server; `make verify` lacked a model before `eval`, a stack before `e2e`,
+  images before `security`; `setsid` was missing on macOS.
+
+### M7: images, Terraform and CI (T-43 to T-45)
+
+#### Added
+
+- The compose stack with the `seed`, `jobs`, `live`, `triton`, `observability` and `datadog` profiles, and
+  `make test-docker` (D-073).
+- The SageMaker training Terraform module with mock-provider tests (T-44).
+- Seven workflows, Dependabot, templates, pre-commit and a devcontainer (D-074).
 
 ### M8: demo and documentation (T-46, T-47)
 

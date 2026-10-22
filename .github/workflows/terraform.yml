@@ -1,0 +1,33 @@
+name: terraform
+
+on:
+  push:
+    branches: [main]
+    paths: ["infra/terraform/**", "scripts/tf_check.sh", "scripts/terraform.sh", ".github/workflows/terraform.yml"]
+  pull_request:
+    paths: ["infra/terraform/**", "scripts/tf_check.sh", "scripts/terraform.sh", ".github/workflows/terraform.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  # fmt, validate, test (mock_provider "aws"), tflint and checkov. No AWS credentials exist in this
+  # workflow and nothing is ever applied (spec §0 rule 8).
+  tf-check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - name: Terraform, tflint and checkov (pinned in scripts/bootstrap.sh)
+        run: |
+          set -euo pipefail
+          tf=$(sed -n 's/^TERRAFORM_VERSION=//p' scripts/bootstrap.sh)
+          tfl=$(sed -n 's/^TFLINT_VERSION=//p' scripts/bootstrap.sh)
+          mkdir -p .cache/bin
+          curl -fsSL --retry 4 -o /tmp/tf.zip "https://releases.hashicorp.com/terraform/${tf}/terraform_${tf}_linux_amd64.zip"
+          curl -fsSL --retry 4 -o /tmp/tflint.zip "https://github.com/terraform-linters/tflint/releases/download/v${tfl}/tflint_linux_amd64.zip"
+          unzip -oq /tmp/tf.zip -d .cache/bin && unzip -oq /tmp/tflint.zip -d .cache/bin
+          uv tool install --quiet checkov
+          echo "$PWD/.cache/bin" >> "$GITHUB_PATH"
+      - run: make tf-check
