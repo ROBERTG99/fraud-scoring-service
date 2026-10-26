@@ -3,7 +3,7 @@ description: Go, Python (uv), Node (pnpm) and the pinned tools of scripts/bootst
 runs:
   using: composite
   steps:
-    - uses: actions/setup-go@v6
+    - uses: actions/setup-go@v7
       with:
         go-version-file: go.mod
         cache-dependency-path: go.sum
@@ -11,16 +11,16 @@ runs:
       with:
         enable-cache: true
         cache-dependency-glob: uv.lock
-    - uses: pnpm/action-setup@v4
+    - uses: pnpm/action-setup@v6
       with:
         package_json_file: web/package.json
-    - uses: actions/setup-node@v5
+    - uses: actions/setup-node@v7
       with:
         node-version: 22
         cache: pnpm
         cache-dependency-path: web/pnpm-lock.yaml
     - name: Cache pinned tools
-      uses: actions/cache@v4
+      uses: actions/cache@v6
       with:
         path: |
           ~/go/bin
