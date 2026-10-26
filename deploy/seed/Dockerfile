@@ -17,7 +17,7 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     go build -ldflags "-s -w" -o /out/seed ./cmd/seed && go build -ldflags "-s -w" -o /out/gen ./cmd/gen
 
-FROM python:3.12.15-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 AS pybuild
+FROM python:3.15.0-slim@sha256:f5b92f2a669a4c347044f29367f31983280b648250ca94dea66f98c53bc87e58 AS pybuild
 ARG HTTPS_PROXY
 ARG HTTP_PROXY
 ARG NO_PROXY
@@ -32,7 +32,7 @@ RUN --mount=type=cache,target=/root/.cache/uv --mount=type=secret,id=extra_ca,re
     if [ -s /run/secrets/extra_ca ]; then export SSL_CERT_FILE=/run/secrets/extra_ca UV_NATIVE_TLS=false; fi; \
     uv sync --frozen --no-default-groups --group training --no-install-project
 
-FROM python:3.12.15-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1 AS seed
+FROM python:3.15.0-slim@sha256:f5b92f2a669a4c347044f29367f31983280b648250ca94dea66f98c53bc87e58 AS seed
 RUN useradd --system --uid 10001 --create-home app && mkdir -p /data && chown 10001 /data
 WORKDIR /app
 COPY --from=pybuild /app/.venv /app/.venv
