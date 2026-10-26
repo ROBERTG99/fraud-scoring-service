@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/setup
       - name: Stack up (docker compose up -d --build --wait)
         run: make up
@@ -32,7 +32,7 @@ jobs:
       - if: failure()
         run: docker compose logs --no-color > compose.log
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e
           path: |
