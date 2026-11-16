@@ -2,7 +2,7 @@
 # SageMaker training image: `training.sagemaker_entry` reads the `train` channel and writes the
 # calibrated ONNX model to /opt/ml/model. Pushed to the ECR repository from
 # infra/terraform/modules/sagemaker_training; never built or pushed by CI.
-FROM python:3.12-slim AS build
+FROM python:3.15-slim AS build
 ARG HTTPS_PROXY
 ARG HTTP_PROXY
 ARG NO_PROXY
@@ -17,7 +17,7 @@ RUN --mount=type=cache,target=/root/.cache/uv --mount=type=secret,id=extra_ca,re
     if [ -s /run/secrets/extra_ca ]; then export SSL_CERT_FILE=/run/secrets/extra_ca UV_NATIVE_TLS=false; fi; \
     uv sync --frozen --no-default-groups --group training --no-install-project
 
-FROM python:3.12-slim AS runtime
+FROM python:3.15-slim AS runtime
 RUN useradd --system --uid 10001 --create-home app && mkdir -p /opt/ml && chown -R 10001 /opt/ml
 WORKDIR /app
 COPY --from=build /app/.venv /app/.venv
